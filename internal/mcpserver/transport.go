@@ -1,0 +1,144 @@
+package mcpserver
+
+import (
+	"crypto/sha256"
+	"crypto/subtle"
+	"net"
+	"net/http"
+	"strings"
+
+	"github.com/BenDManning/jetkvm-mcp/internal/httporigin"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
+)
+
+const (
+	DefaultHTTPAddress = "127.0.0.1:8080"
+	MCPPath            = "/mcp"
+	HealthPath         = "/healthz"
+)
+
+// NewHTTPHandler exposes the server over stateless MCP Streamable HTTP. An
+// empty bearer token deliberately means no application-level authentication.
+func NewHTTPHandler(server *mcp.Server, bearerToken string, allowedOrigins ...string) http.Handler {
+	streamable := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server {
+		return server
+	}, &mcp.StreamableHTTPOptions{
+		Stateless:                    true,
+		JSONResponse:                 true,
+		PropagateRequestCancellation: true,
+		DisableLocalhostProtection:   true, // trustedHostAndOrigin permits only loopback or explicitly configured public Hosts.
+	})
+
+	mcpHandler := postOnly(streamable)
+	if bearerToken != "" {
+		mcpHandler = requireBearer(mcpHandler, bearerToken)
+	}
+	mcpHandler = trustedHostAndOrigin(mcpHandler, allowedOrigins)
+
+	mux := http.NewServeMux()
+	mux.Handle(MCPPath, mcpHandler)
+	mux.HandleFunc(HealthPath, func(response http.ResponseWriter, request *http.Request) {
+		if request.Method != http.MethodGet {
+			response.Header().Set("Allow", http.MethodGet)
+			http.Error(response, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
+			return
+		}
+		response.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		response.WriteHeader(http.StatusOK)
+		_, _ = response.Write([]byte("ok\n"))
+	})
+	return mux
+}
+
+func postOnly(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		if request.Method != http.MethodPost {
+			response.Header().Set("Allow", http.MethodPost)
+			http.Error(response, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
+			return
+		}
+		next.ServeHTTP(response, request)
+	})
+}
+
+func trustedHostAndOrigin(next http.Handler, configured []string) http.Handler {
+	allowedOrigins := make(map[string]struct{}, len(configured))
+	allowedHosts := make(map[string]struct{}, len(configured))
+	for _, value := range configured {
+		origin, err := httporigin.Parse(value)
+		if err != nil {
+			continue
+		}
+		allowedOrigins[origin.Value] = struct{}{}
+		allowedHosts[origin.Host] = struct{}{}
+	}
+	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		requestHost, err := httporigin.ParseAuthority(request.Host)
+		if err != nil {
+			http.Error(response, "forbidden host", http.StatusForbidden)
+			return
+		}
+		loopback := loopbackHTTPHost(requestHost)
+		if _, allowed := allowedHosts[requestHost]; !loopback && !allowed {
+			http.Error(response, "forbidden host", http.StatusForbidden)
+			return
+		}
+		origin := strings.TrimSpace(request.Header.Get("Origin"))
+		if origin == "" {
+			next.ServeHTTP(response, request)
+			return
+		}
+		parsedOrigin, err := httporigin.Parse(origin)
+		if err != nil || parsedOrigin.Host != requestHost {
+			http.Error(response, "forbidden origin", http.StatusForbidden)
+			return
+		}
+		if loopback {
+			requestScheme := "http"
+			if request.TLS != nil {
+				requestScheme = "https"
+			}
+			if parsedOrigin.Scheme != requestScheme {
+				http.Error(response, "forbidden origin", http.StatusForbidden)
+				return
+			}
+		} else {
+			if _, allowed := allowedOrigins[parsedOrigin.Value]; !allowed {
+				http.Error(response, "forbidden origin", http.StatusForbidden)
+				return
+			}
+		}
+		next.ServeHTTP(response, request)
+	})
+}
+
+func loopbackHTTPHost(hostPort string) bool {
+	host := hostPort
+	if parsedHost, _, err := net.SplitHostPort(hostPort); err == nil {
+		host = parsedHost
+	}
+	host = strings.Trim(strings.TrimSpace(host), "[]")
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	address := net.ParseIP(host)
+	return address != nil && address.IsLoopback()
+}
+
+func requireBearer(next http.Handler, token string) http.Handler {
+	want := sha256.Sum256([]byte(token))
+	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		authorization := request.Header.Get("Authorization")
+		provided := ""
+		if scheme, value, found := strings.Cut(authorization, " "); found && scheme == "Bearer" {
+			provided = value
+		}
+		got := sha256.Sum256([]byte(provided))
+		if subtle.ConstantTimeCompare(got[:], want[:]) != 1 {
+			response.Header().Set("WWW-Authenticate", "Bearer")
+			http.Error(response, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+			return
+		}
+		next.ServeHTTP(response, request)
+	})
+}

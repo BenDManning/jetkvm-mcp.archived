@@ -1,0 +1,17 @@
+devices:
+  lab:
+    url: https://jetkvm.example.invalid
+    password_env: JETKVM_LAB_PASSWORD
+    # insecure_skip_verify: false
+    # media_directory: /media
+    # wake_on_lan:
+    #   server:
+    #     mac_address: "02:00:00:00:00:01"
+    #     broadcast_ip: 192.0.2.255
+
+# Optional. Leave unset for loopback Streamable HTTP without authentication.
+# http:
+#   bearer_token_env: JETKVM_MCP_HTTP_TOKEN
+#   # Required for browser or native reverse-proxy requests using a public Host.
+#   allowed_origins:
+#     - https://mcp.example.invalid

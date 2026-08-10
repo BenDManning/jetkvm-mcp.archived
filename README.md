@@ -1,0 +1,149 @@
+# JetKVM MCP
+
+A conventional, single-process Go [Model Context Protocol](https://modelcontextprotocol.io/) server for operating JetKVM devices. It supports MCP over stdio and MCP Streamable HTTP using protocol generation `2026-07-28` and the official Go SDK.
+
+## Features
+
+- JetKVM status and attached-host state
+- Fresh PNG screenshots decoded locally with FFmpeg
+- Keyboard typing and named key presses
+- Absolute/relative mouse movement, clicks, and scrolling
+- Seven separately named host-power tools
+- Wake-on-LAN with named configured targets
+- Virtual-media status, URL mount, confined local upload/mount, and unmount
+- Multiple named JetKVM devices
+- Stdio and stateless Streamable HTTP transports
+- Optional HTTP bearer token; no deprecated HTTP+SSE endpoint
+- Local-only raw diagnostic RPC command
+
+## Installation
+
+### Option A: Using Go (Recommended)
+
+Requires Go 1.25 or newer and `ffmpeg` on `PATH`:
+
+```sh
+go install github.com/BenDManning/jetkvm-mcp/cmd/jetkvm-mcp@latest
+```
+
+### Option B: Download Binary
+
+Download the archive for your platform from the Forgejo **Releases** page, verify it against `checksums.txt`, extract `jetkvm-mcp`, and place it on `PATH`. FFmpeg must also be installed on the host.
+
+Release binaries are built for:
+
+- Linux amd64
+- Linux arm64
+- macOS amd64
+- macOS arm64
+
+Windows is unsupported and not planned.
+
+### Option C: Container image
+
+The image contains the Go server and FFmpeg in one image and runs one Go server process:
+
+```sh
+docker run --rm -i \
+  --network host \
+  -v "$PWD/config.yaml:/config.yaml:ro" \
+  -v "/srv/jetkvm-media:/media:ro" \
+  -e JETKVM_LAB_PASSWORD \
+  github.com/BenDManning/jetkvm-mcp:latest \
+  --config /config.yaml
+```
+
+Container targets are Linux amd64 and Linux arm64.
+
+## Configuration
+
+Copy [`config.example.yaml`](config.example.yaml). Credentials are never stored inline; the YAML names environment variables that contain them. Device URLs must not contain user information, and appliance connections are direct rather than routed through `HTTP_PROXY` or `HTTPS_PROXY`.
+
+```yaml
+devices:
+  lab:
+    url: https://jetkvm.example.invalid
+    password_env: JETKVM_LAB_PASSWORD
+    media_directory: /media
+    wake_on_lan:
+      server:
+        mac_address: "02:00:00:00:00:01"
+        broadcast_ip: 192.0.2.255
+
+http:
+  bearer_token_env: JETKVM_MCP_HTTP_TOKEN
+  allowed_origins:
+    - https://mcp.example.invalid
+```
+
+`media_directory` is optional. Without it, URL-based media remains available, while local upload/mount operations are rejected. Local sources must be relative paths that resolve inside the configured directory. URL-based media sources must use HTTP(S) and must not contain inline user information; use an appliance-reachable URL whose access controls do not embed credentials in the URL.
+
+JetKVM firmware exposes partial-upload resumption by byte count but provides no prefix hash. To prevent a replaced local file from being combined with stale appliance data, `jetkvm-mcp` serializes virtual-media operations per device, deletes a matching `.incomplete` artifact before upload, and accepts only a fresh offset-zero upload. It hashes the confined source before upload, hashes the exact bytes consumed by the upload, and reopens and hashes the configured path before mounting or reporting completion. Interrupted, ambiguous, or locally changed uploads are cleaned up rather than resumed.
+
+`insecure_skip_verify: true` is available for explicitly configured local appliances but should be avoided when the device has a trusted certificate.
+
+## Run over stdio
+
+```sh
+jetkvm-mcp --config config.yaml
+```
+
+Logs go to stderr; stdout is reserved for MCP messages.
+
+## Run over Streamable HTTP
+
+The recommended direct default is loopback without authentication:
+
+```sh
+jetkvm-mcp --config config.yaml --http 127.0.0.1:8080
+```
+
+The MCP endpoint is `/mcp`; liveness is `/healthz`. The server is stateless and exposes no legacy SSE session endpoint. Binding to a non-loopback address requires `http.bearer_token_env` to resolve to a non-empty token.
+
+For remote access, keep the server on loopback and place it behind a TLS reverse proxy, or configure a bearer token and explicitly bind a protected interface. Initial releases do not implement the MCP OAuth extension.
+
+The proxy must preserve the public `Host` header, and every accepted public origin must be listed exactly under `http.allowed_origins` (including scheme and optional port). Public Hosts that do not match a configured origin are rejected even when `Host` and `Origin` match, preventing DNS rebinding to the default loopback listener. Browser requests must have a configured origin whose host and port match `Host`; native MCP clients may omit `Origin` but their public `Host` must still be configured. Loopback and `localhost` Hosts remain trusted without an allowlist.
+
+## MCP tools
+
+- `jetkvm_get_status`
+- `jetkvm_capture_screen`
+- `jetkvm_keyboard`
+- `jetkvm_mouse`
+- `jetkvm_virtual_media`
+- `jetkvm_press_host_power_button`
+- `jetkvm_force_host_power_off`
+- `jetkvm_press_host_reset_button`
+- `jetkvm_turn_host_dc_power_on`
+- `jetkvm_turn_host_dc_power_off`
+- `jetkvm_wake_host_usb`
+- `jetkvm_wake_host_lan`
+
+## Local diagnostic RPC
+
+Raw RPC is deliberately outside MCP `tools/list` and only available as a local CLI subcommand:
+
+```sh
+jetkvm-mcp debug rpc \
+  --config config.yaml \
+  --device lab \
+  --method getVideoState \
+  --params '{}'
+```
+
+## Development
+
+The repository is intentionally independent from its archived predecessor. It contains no legacy Git history or remote.
+
+Protocol provenance and exact inspected upstream revisions are recorded in [`docs/protocol-sources.md`](docs/protocol-sources.md).
+
+```sh
+go test -race ./...
+go vet ./...
+```
+
+The checked-in Dockerfile builds the Linux amd64/arm64 image. `.goreleaser.yaml` builds the four supported binary targets.
+
+## License
+
+MIT — see [`LICENSE`](LICENSE).

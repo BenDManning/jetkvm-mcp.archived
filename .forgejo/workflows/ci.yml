@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.5'
+          cache: true
+      - run: go mod verify
+      - run: go test -race ./...
+      - run: go vet ./...
+      - name: Verify release targets
+        run: |
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -o /tmp/linux-amd64 ./cmd/jetkvm-mcp
+          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -o /tmp/linux-arm64 ./cmd/jetkvm-mcp
+          CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -trimpath -o /tmp/darwin-amd64 ./cmd/jetkvm-mcp
+          CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -trimpath -o /tmp/darwin-arm64 ./cmd/jetkvm-mcp
+  container:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - name: Verify container binary architectures
+        run: |
+          docker buildx build --platform linux/amd64 --target binary --output=type=local,dest=/tmp/container-amd64 .
+          docker buildx build --platform linux/arm64 --target binary --output=type=local,dest=/tmp/container-arm64 .
+          python3 -c 'import struct; assert struct.unpack("<H", open("/tmp/container-amd64/jetkvm-mcp", "rb").read(20)[18:20])[0] == 62'
+          python3 -c 'import struct; assert struct.unpack("<H", open("/tmp/container-arm64/jetkvm-mcp", "rb").read(20)[18:20])[0] == 183'
+      - run: docker buildx build --platform linux/amd64,linux/arm64 --output=type=cacheonly .
