@@ -142,6 +142,26 @@ go test -race ./...
 go vet ./...
 ```
 
+### Read-only real-hardware validation
+
+After building the server, the separate validation runner can exercise one
+configured device through actual MCP stdio. It lists tools, verifies the status
+and capture tools' read-only annotations, validates status fields, and fully
+decodes one PNG without writing or displaying it. It never invokes keyboard,
+mouse, virtual-media, power, wake, or raw-RPC operations.
+
+```sh
+go run ./cmd/jetkvm-mcp-validate \
+  --binary /path/to/jetkvm-mcp \
+  --config /path/to/config.yaml \
+  --device configured-device-name
+```
+
+Output is a single sanitized JSON pass/fail record. It excludes configuration
+paths, device names, server logs, status values, error details, and image data.
+The capture call has a dedicated 30-second deadline, and its PNG buffer is
+cleared after full in-memory decoding.
+
 The checked-in Dockerfile builds the Linux amd64/arm64 image. `.goreleaser.yaml` builds the four supported binary targets.
 
 ## License
