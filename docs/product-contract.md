@@ -9,7 +9,10 @@ public surface, prerequisite, support matrix, exclusion, or compatibility claim
 changes. The [README](../README.md) owns setup and operation; the
 [protocol sources](protocol-sources.md) own inspected upstream revisions and
 provenance, and the [threat model](threat-model.md) owns current security and
-privacy boundaries. Code and tests remain authoritative for executable behavior.
+privacy boundaries. The [architecture decision index](adr/README.md) owns the
+rationale, rejected alternatives, consequences, and revisit triggers for
+consequential current design choices. Code and tests remain authoritative for
+executable behavior.
 
 ## Product boundary
 
