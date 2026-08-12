@@ -58,7 +58,7 @@ func Load(path string, lookup LookupEnvironment) (Runtime, error) {
 	}
 	file, err := os.Open(path)
 	if err != nil {
-		return Runtime{}, fmt.Errorf("open config: %w", err)
+		return Runtime{}, errors.New("open config")
 	}
 	defer file.Close()
 	data, err := io.ReadAll(io.LimitReader(file, maxConfigBytes+1))

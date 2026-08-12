@@ -88,6 +88,17 @@ func TestLoadRejectsTrailingYAMLDocument(t *testing.T) {
 	}
 }
 
+func TestLoadOpenErrorDoesNotExposeConfigPath(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "PRIVATE-CONFIG-PATH-SENTINEL.yaml")
+	_, err := Load(path, os.LookupEnv)
+	if err == nil {
+		t.Fatal("missing configuration was accepted")
+	}
+	if strings.Contains(err.Error(), "PRIVATE-CONFIG-PATH-SENTINEL") {
+		t.Fatalf("error leaked configuration path: %v", err)
+	}
+}
+
 func writeConfig(t *testing.T, content string) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "config.yaml")

@@ -8,7 +8,8 @@ and repository review. Review is required for every release and whenever a
 public surface, prerequisite, support matrix, exclusion, or compatibility claim
 changes. The [README](../README.md) owns setup and operation; the
 [protocol sources](protocol-sources.md) own inspected upstream revisions and
-provenance. Code and tests remain authoritative for executable behavior.
+provenance, and the [threat model](threat-model.md) owns current security and
+privacy boundaries. Code and tests remain authoritative for executable behavior.
 
 ## Product boundary
 
