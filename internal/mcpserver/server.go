@@ -83,7 +83,10 @@ type wakeLANInput struct {
 
 // New builds a JetKVM MCP server using only the official Go SDK.
 func New(device Device, version string) *mcp.Server {
-	server := mcp.NewServer(&mcp.Implementation{Name: "jetkvm-mcp", Version: version}, nil)
+	// The manifest is static, so do not advertise tool-list change notifications.
+	server := mcp.NewServer(&mcp.Implementation{Name: "jetkvm-mcp", Version: version}, &mcp.ServerOptions{
+		Capabilities: &mcp.ServerCapabilities{Tools: &mcp.ToolCapabilities{}},
+	})
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        GetStatusToolName,
