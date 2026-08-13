@@ -38,12 +38,12 @@ type CaptureResult struct {
 }
 
 type CaptureOutput struct {
-	Device     string    `json:"device"`
-	CapturedAt time.Time `json:"capturedAt"`
-	MIMEType   string    `json:"mimeType"`
-	Width      int       `json:"width"`
-	Height     int       `json:"height"`
-	SizeBytes  int       `json:"sizeBytes"`
+	Device     string    `json:"device" jsonschema:"configured device identifier"`
+	CapturedAt time.Time `json:"capturedAt" jsonschema:"time the private PNG was captured"`
+	MIMEType   string    `json:"mimeType" jsonschema:"private PNG image MIME type"`
+	Width      int       `json:"width" jsonschema:"private PNG width in pixels"`
+	Height     int       `json:"height" jsonschema:"private PNG height in pixels"`
+	SizeBytes  int       `json:"sizeBytes" jsonschema:"private PNG byte count"`
 }
 
 type KeyboardOperation string
@@ -61,9 +61,9 @@ type KeyboardRequest struct {
 }
 
 type KeyboardResult struct {
-	Device    string            `json:"device"`
-	Operation KeyboardOperation `json:"operation"`
-	Status    string            `json:"status"`
+	Device    string            `json:"device" jsonschema:"configured device identifier"`
+	Operation KeyboardOperation `json:"operation" jsonschema:"submitted HID keyboard operation, not typed text"`
+	Status    string            `json:"status" jsonschema:"completed means the HID RPC returned, not independent host-state proof"`
 }
 
 type MouseOperation string
@@ -87,9 +87,9 @@ type MouseRequest struct {
 }
 
 type MouseResult struct {
-	Device    string         `json:"device"`
-	Operation MouseOperation `json:"operation"`
-	Status    string         `json:"status"`
+	Device    string         `json:"device" jsonschema:"configured device identifier"`
+	Operation MouseOperation `json:"operation" jsonschema:"submitted HID mouse operation"`
+	Status    string         `json:"status" jsonschema:"completed means the HID RPC returned, not independent host-state proof"`
 }
 
 type VirtualMediaOperation string
@@ -119,78 +119,79 @@ const (
 // state. It deliberately identifies only the source class, never a URL, path,
 // filename, or unknown firmware field.
 type VirtualMediaState struct {
-	Mounted    bool                   `json:"mounted"`
-	SourceType VirtualMediaSourceType `json:"sourceType,omitempty"`
-	Mode       string                 `json:"mode,omitempty"`
+	Mounted    bool                   `json:"mounted" jsonschema:"whether firmware reports a mounted medium"`
+	SourceType VirtualMediaSourceType `json:"sourceType,omitempty" jsonschema:"redacted media source class; never a URL, path, or filename"`
+	Mode       string                 `json:"mode,omitempty" jsonschema:"reported read_only or read_write mode when available"`
 }
 
 type VirtualMediaResult struct {
-	Device     string                 `json:"device"`
-	Operation  VirtualMediaOperation  `json:"operation"`
-	Mounted    bool                   `json:"mounted"`
-	SourceType VirtualMediaSourceType `json:"sourceType,omitempty"`
-	Mode       string                 `json:"mode,omitempty"`
-	Status     string                 `json:"status"`
+	Device     string                 `json:"device" jsonschema:"configured device identifier"`
+	Operation  VirtualMediaOperation  `json:"operation" jsonschema:"submitted or observed virtual-media operation"`
+	Mounted    bool                   `json:"mounted" jsonschema:"reported mount state"`
+	SourceType VirtualMediaSourceType `json:"sourceType,omitempty" jsonschema:"redacted media source class; never a URL, path, or filename"`
+	Mode       string                 `json:"mode,omitempty" jsonschema:"reported read_only or read_write mode when available"`
+	Status     string                 `json:"status" jsonschema:"observed for status, completed for an acknowledged mutation; neither independently proves final device state"`
 }
 
 type captureInput struct {
-	Device    string `json:"device" jsonschema:"JetKVM device name from the server configuration"`
-	MaxWidth  int    `json:"max_width,omitempty" jsonschema:"maximum PNG width; omit to use the configured default"`
-	MaxHeight int    `json:"max_height,omitempty" jsonschema:"maximum PNG height; omit to use the configured default"`
+	Device    string `json:"device" jsonschema:"configured JetKVM device name whose host display will be captured"`
+	MaxWidth  int    `json:"max_width,omitempty" jsonschema:"maximum private PNG width from 1 through 3840; omit to use the configured default"`
+	MaxHeight int    `json:"max_height,omitempty" jsonschema:"maximum private PNG height from 1 through 2160; omit to use the configured default"`
 }
 
 type keyboardInput struct {
-	Device    string            `json:"device" jsonschema:"JetKVM device name from the server configuration"`
-	Operation KeyboardOperation `json:"operation" jsonschema:"typed keyboard operation"`
-	Text      string            `json:"text,omitempty" jsonschema:"text to type for type_text"`
-	Key       string            `json:"key,omitempty" jsonschema:"named key or one printable character for press_key"`
-	Modifiers []string          `json:"modifiers,omitempty" jsonschema:"optional ctrl, alt, shift, meta modifiers"`
+	Device    string            `json:"device" jsonschema:"configured JetKVM device name whose attached host receives HID input"`
+	Operation KeyboardOperation `json:"operation" jsonschema:"HID operation: type_text or press_key"`
+	Text      string            `json:"text,omitempty" jsonschema:"private US-ASCII text for type_text, at most 4096 bytes; it is sent transiently and not logged"`
+	Key       string            `json:"key,omitempty" jsonschema:"named key or one printable character for press_key; this host-control intent is private operational data"`
+	Modifiers []string          `json:"modifiers,omitempty" jsonschema:"optional ctrl, alt, shift, meta modifiers for press_key; this host-control intent is private operational data"`
 }
 
 type mouseInput struct {
-	Device    string         `json:"device" jsonschema:"JetKVM device name from the server configuration"`
-	Operation MouseOperation `json:"operation" jsonschema:"typed mouse operation"`
-	X         *int           `json:"x,omitempty" jsonschema:"absolute x coordinate from 0 through 32767"`
-	Y         *int           `json:"y,omitempty" jsonschema:"absolute y coordinate from 0 through 32767"`
-	DX        *int           `json:"dx,omitempty" jsonschema:"relative horizontal movement"`
-	DY        *int           `json:"dy,omitempty" jsonschema:"relative vertical movement"`
-	Button    string         `json:"button,omitempty" jsonschema:"left, middle, or right button for click"`
-	WheelX    int            `json:"wheel_x,omitempty" jsonschema:"horizontal wheel movement"`
-	WheelY    int            `json:"wheel_y,omitempty" jsonschema:"vertical wheel movement"`
+	Device    string         `json:"device" jsonschema:"configured JetKVM device name whose attached host receives HID input"`
+	Operation MouseOperation `json:"operation" jsonschema:"HID operation: move_absolute, move_relative, click, or scroll"`
+	X         *int           `json:"x,omitempty" jsonschema:"absolute x coordinate from 0 through 32767 for move_absolute"`
+	Y         *int           `json:"y,omitempty" jsonschema:"absolute y coordinate from 0 through 32767 for move_absolute"`
+	DX        *int           `json:"dx,omitempty" jsonschema:"relative horizontal movement for move_relative"`
+	DY        *int           `json:"dy,omitempty" jsonschema:"relative vertical movement for move_relative"`
+	Button    string         `json:"button,omitempty" jsonschema:"left, middle, or right button for click; can activate host UI actions"`
+	WheelX    int            `json:"wheel_x,omitempty" jsonschema:"horizontal wheel movement for scroll"`
+	WheelY    int            `json:"wheel_y,omitempty" jsonschema:"vertical wheel movement for scroll"`
 }
 
 type virtualMediaInput struct {
-	Device    string                `json:"device" jsonschema:"JetKVM device name from the server configuration"`
-	Operation VirtualMediaOperation `json:"operation" jsonschema:"typed virtual-media operation"`
-	Source    string                `json:"source,omitempty" jsonschema:"URL or configured-media-directory path required by the selected operation"`
-	Mode      string                `json:"mode,omitempty" jsonschema:"read_only or read_write; defaults to read_only"`
+	Device    string                `json:"device" jsonschema:"configured JetKVM device name"`
+	Operation VirtualMediaOperation `json:"operation" jsonschema:"deprecated compatibility operation: status, mount_url, mount_file, unmount, or upload"`
+	Source    string                `json:"source,omitempty" jsonschema:"private URL or configured-media-directory relative path required by the selected operation; never returned in media state"`
+	Mode      string                `json:"mode,omitempty" jsonschema:"read_only or read_write mount mode; defaults to read_only"`
 }
 
 type virtualMediaStatusInput struct {
-	Device string `json:"device" jsonschema:"JetKVM device name from the server configuration"`
+	Device string `json:"device" jsonschema:"configured JetKVM device name"`
 }
 
 type virtualMediaURLInput struct {
-	Device string `json:"device" jsonschema:"JetKVM device name from the server configuration"`
-	URL    string `json:"url" jsonschema:"HTTP(S) media URL fetched by the configured JetKVM"`
-	Mode   string `json:"mode,omitempty" jsonschema:"read_only or read_write; defaults to read_only"`
+	Device string `json:"device" jsonschema:"configured JetKVM device name with an allowed media URL origin"`
+	URL    string `json:"url" jsonschema:"private HTTP(S) media URL; the appliance fetches it only when its origin matches configured exact scheme, host, and effective port"`
+	Mode   string `json:"mode,omitempty" jsonschema:"read_only or read_write mount mode; defaults to read_only"`
 }
 
 type virtualMediaFileInput struct {
-	Device string `json:"device" jsonschema:"JetKVM device name from the server configuration"`
-	Path   string `json:"path" jsonschema:"relative path below the device's configured media directory"`
-	Mode   string `json:"mode,omitempty" jsonschema:"read_only or read_write; defaults to read_only"`
+	Device string `json:"device" jsonschema:"configured JetKVM device name with a media directory"`
+	Path   string `json:"path" jsonschema:"private relative local-media path confined below the device's configured media directory"`
+	Mode   string `json:"mode,omitempty" jsonschema:"read_only or read_write mount mode; defaults to read_only"`
 }
 
 type virtualMediaUploadInput struct {
-	Device string `json:"device" jsonschema:"JetKVM device name from the server configuration"`
-	Path   string `json:"path" jsonschema:"relative path below the device's configured media directory"`
+	Device string `json:"device" jsonschema:"configured JetKVM device name with a media directory"`
+	Path   string `json:"path" jsonschema:"private relative local-media path confined below the device's configured media directory"`
 }
 
 func addControlTools(server *mcp.Server, device Device) {
 	addReadTool(server, &mcp.Tool{
 		Name:        CaptureScreenToolName,
-		Description: "Capture one fresh PNG from the host display attached to a configured JetKVM.",
+		Title:       "Capture host screen",
+		Description: "Capture one fresh private PNG from the host display attached to a configured JetKVM. The result can contain any visible host secret and is returned only to the MCP caller, not written to disk. This read has no unknown mutation outcome; follow a failure's retryable flag before retrying.",
 		InputSchema: captureSchema(),
 		Annotations: annotations(true, false, true),
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, input captureInput) (*mcp.CallToolResult, CaptureOutput, error) {
@@ -216,7 +217,8 @@ func addControlTools(server *mcp.Server, device Device) {
 
 	addMutationTool(server, &mcp.Tool{
 		Name:        KeyboardToolName,
-		Description: "Type bounded text or press one named key through JetKVM USB HID.",
+		Title:       "Send keyboard input",
+		Description: "Send private bounded US-ASCII text or one named key through USB HID to a configured attached host; it can enter credentials, execute commands, or alter host data. Input is transient and not logged. If a mutation reports outcome unknown, do not blindly retry; inspect host state first.",
 		InputSchema: keyboardSchema(),
 		Annotations: annotations(false, false, false),
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, input keyboardInput) (*mcp.CallToolResult, KeyboardResult, error) {
@@ -230,7 +232,8 @@ func addControlTools(server *mcp.Server, device Device) {
 
 	addMutationTool(server, &mcp.Tool{
 		Name:        MouseToolName,
-		Description: "Move, click, or scroll the host pointer through JetKVM USB HID.",
+		Title:       "Send mouse input",
+		Description: "Move, click, or scroll a configured attached host's pointer through USB HID; clicks can activate destructive host UI actions. If a mutation reports outcome unknown, do not blindly retry; inspect host state first.",
 		InputSchema: mouseSchema(),
 		Annotations: annotations(false, false, false),
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, input mouseInput) (*mcp.CallToolResult, MouseResult, error) {
@@ -247,7 +250,8 @@ func addControlTools(server *mcp.Server, device Device) {
 
 	addReadTool(server, &mcp.Tool{
 		Name:         GetVirtualMediaStatusToolName,
-		Description:  "Read the current virtual-media mount state of a configured JetKVM without changing it. Requires only a configured device. Returns the firmware-reported mount state from this read; it does not prove that a later mutation is safe.",
+		Title:        "Get virtual-media status",
+		Description:  "Read the current virtual-media mount state of a configured JetKVM without changing it. The result is a redacted source class and mode, never a URL, path, filename, or raw firmware fields. This read has no unknown mutation outcome; follow a failure's retryable flag before retrying.",
 		OutputSchema: virtualMediaResultSchema(),
 		Annotations:  annotations(true, false, true),
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, input virtualMediaStatusInput) (*mcp.CallToolResult, VirtualMediaResult, error) {
@@ -260,7 +264,8 @@ func addControlTools(server *mcp.Server, device Device) {
 
 	addSanitizedInputMutationTool(server, &mcp.Tool{
 		Name:         MountVirtualMediaURLToolName,
-		Description:  "Ask the configured JetKVM appliance to fetch an HTTP(S) URL whose scheme, host, and effective port match a configured exact origin, then replace its current virtual-media mount. URL mounting is unavailable without an allowed origin. Success acknowledges the firmware RPC but does not independently verify the resulting mount; inspect status before deciding whether another mutation is safe.",
+		Title:        "Mount virtual media from URL",
+		Description:  "Ask the configured JetKVM appliance to fetch a private HTTP(S) URL whose scheme, host, and effective port match a configured exact origin, then replace its current virtual-media mount. URL mounting is unavailable without an allowed origin. If a mutation reports outcome unknown, do not blindly retry; inspect status first.",
 		InputSchema:  virtualMediaURLSchema(),
 		OutputSchema: virtualMediaResultSchema(),
 		Annotations:  annotationsWithOpenWorld(false, true, false, true),
@@ -275,7 +280,8 @@ func addControlTools(server *mcp.Server, device Device) {
 
 	addSanitizedInputMutationTool(server, &mcp.Tool{
 		Name:         MountVirtualMediaFileToolName,
-		Description:  "Upload one confined local media file and replace the configured JetKVM's current mount. Requires a configured media directory and a non-empty relative path confined beneath it. Success means upload and mount RPCs completed, not that an external observer verified the mount; inspect status before another mutation.",
+		Title:        "Mount virtual media from file",
+		Description:  "Upload one private confined local media file and replace the configured JetKVM's current mount. Requires a configured media directory and a non-empty relative path beneath it. If a mutation reports outcome unknown, do not blindly retry; inspect status first.",
 		InputSchema:  virtualMediaFileSchema(),
 		OutputSchema: virtualMediaResultSchema(),
 		Annotations:  annotations(false, true, false),
@@ -290,7 +296,8 @@ func addControlTools(server *mcp.Server, device Device) {
 
 	addMutationTool(server, &mcp.Tool{
 		Name:         UnmountVirtualMediaToolName,
-		Description:  "Unmount the configured JetKVM's current virtual media. Requires only a configured device; the request is valid even when no media is mounted. Success acknowledges the firmware RPC but does not independently verify that media is absent; inspect status before another mutation.",
+		Title:        "Unmount virtual media",
+		Description:  "Unmount a configured JetKVM's current virtual media. The request is valid even when no media is mounted and is intended to converge. If a mutation reports outcome unknown, do not blindly retry; inspect status first.",
 		OutputSchema: virtualMediaResultSchema(),
 		Annotations:  annotations(false, true, true),
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, input virtualMediaStatusInput) (*mcp.CallToolResult, VirtualMediaResult, error) {
@@ -303,7 +310,8 @@ func addControlTools(server *mcp.Server, device Device) {
 
 	addSanitizedInputMutationTool(server, &mcp.Tool{
 		Name:         UploadVirtualMediaFileToolName,
-		Description:  "Upload one confined local media file to the configured JetKVM without mounting it. Requires a configured media directory and a non-empty relative path confined beneath it. Success means the upload completed without a mount request; the appliance retains the stored file outside this process.",
+		Title:        "Upload virtual-media file",
+		Description:  "Upload one private confined local media file to appliance storage on a configured JetKVM without mounting it. Requires a configured media directory and a non-empty relative path beneath it; appliance storage retention is outside this process. If a mutation reports outcome unknown, do not blindly retry; inspect status first.",
 		InputSchema:  virtualMediaUploadSchema(),
 		OutputSchema: virtualMediaResultSchema(),
 		Annotations:  annotations(false, true, false),
@@ -318,7 +326,8 @@ func addControlTools(server *mcp.Server, device Device) {
 
 	addSanitizedConditionalMutationTool(server, &mcp.Tool{
 		Name:         VirtualMediaToolName,
-		Description:  "Deprecated compatibility tool for virtual-media status, mount, unmount, and upload operations; use the one-purpose jetkvm_*_virtual_media* tools instead.",
+		Title:        "Virtual media (deprecated)",
+		Description:  "Deprecated compatibility tool for configured virtual-media status, mount, unmount, and upload operations; use the one-purpose jetkvm_*_virtual_media* tools instead. Status is read-only, while mount and upload can alter appliance storage or network state. If a mutation reports outcome unknown, do not blindly retry; inspect status first.",
 		InputSchema:  operationSchema[virtualMediaInput]([]string{string(VirtualMediaStatus), string(VirtualMediaMountURL), string(VirtualMediaMountFile), string(VirtualMediaUnmount), string(VirtualMediaUpload)}),
 		OutputSchema: virtualMediaResultSchema(),
 		Annotations:  annotations(false, true, false),

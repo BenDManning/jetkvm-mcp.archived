@@ -39,47 +39,47 @@ const (
 // Status is the device state returned by the status tool. Optional fields remain
 // absent when a particular firmware does not report them.
 type Status struct {
-	Device          string             `json:"device"`
-	Connected       bool               `json:"connected"`
-	Application     string             `json:"applicationVersion,omitempty"`
-	System          string             `json:"systemVersion,omitempty"`
-	Extension       string             `json:"activeExtension,omitempty"`
-	ATXPowerOn      *bool              `json:"atxPowerOn,omitempty"`
-	DCPowerOn       *bool              `json:"dcPowerOn,omitempty"`
-	DCVoltage       float64            `json:"dcVoltage,omitempty"`
-	VideoReady      *bool              `json:"videoReady,omitempty"`
-	VideoWidth      int                `json:"videoWidth,omitempty"`
-	VideoHeight     int                `json:"videoHeight,omitempty"`
-	VideoFPS        int                `json:"videoFPS,omitempty"`
-	VirtualMedia    *VirtualMediaState `json:"virtualMedia,omitempty"`
-	USBState        string             `json:"usbState,omitempty"`
-	USBWakeAttached *bool              `json:"usbWakeAttached,omitempty"`
-	Warnings        []string           `json:"warnings,omitempty"`
+	Device          string             `json:"device" jsonschema:"configured device identifier"`
+	Connected       bool               `json:"connected" jsonschema:"whether the appliance status read connected"`
+	Application     string             `json:"applicationVersion,omitempty" jsonschema:"private appliance application version when reported"`
+	System          string             `json:"systemVersion,omitempty" jsonschema:"private appliance system version when reported"`
+	Extension       string             `json:"activeExtension,omitempty" jsonschema:"private active appliance extension when reported"`
+	ATXPowerOn      *bool              `json:"atxPowerOn,omitempty" jsonschema:"private observed ATX host power state when reported"`
+	DCPowerOn       *bool              `json:"dcPowerOn,omitempty" jsonschema:"private observed DC output state when reported"`
+	DCVoltage       float64            `json:"dcVoltage,omitempty" jsonschema:"private observed DC voltage when reported"`
+	VideoReady      *bool              `json:"videoReady,omitempty" jsonschema:"private observed host video availability when reported"`
+	VideoWidth      int                `json:"videoWidth,omitempty" jsonschema:"private observed host video width when reported"`
+	VideoHeight     int                `json:"videoHeight,omitempty" jsonschema:"private observed host video height when reported"`
+	VideoFPS        int                `json:"videoFPS,omitempty" jsonschema:"private observed host video frame rate when reported"`
+	VirtualMedia    *VirtualMediaState `json:"virtualMedia,omitempty" jsonschema:"redacted observed virtual-media state when reported"`
+	USBState        string             `json:"usbState,omitempty" jsonschema:"private observed USB state when reported"`
+	USBWakeAttached *bool              `json:"usbWakeAttached,omitempty" jsonschema:"private observed USB wake attachment state when reported"`
+	Warnings        []string           `json:"warnings,omitempty" jsonschema:"private appliance warnings when reported"`
 }
 
 // PowerResult describes the submitted host-power operation without exposing
 // firmware-private RPC details.
 type PowerResult struct {
-	Device string      `json:"device"`
-	Action PowerAction `json:"action"`
-	Target string      `json:"target,omitempty"`
-	Status string      `json:"status"`
+	Device string      `json:"device" jsonschema:"configured device identifier"`
+	Action PowerAction `json:"action" jsonschema:"submitted power or wake action"`
+	Target string      `json:"target,omitempty" jsonschema:"configured Wake-on-LAN target identifier when applicable"`
+	Status string      `json:"status" jsonschema:"completed means the appliance RPC returned, not independent physical-state proof"`
 }
 
 type DeviceCapabilities struct {
-	MountVirtualMediaURL   bool `json:"mountVirtualMediaURL"`
-	MountVirtualMediaFile  bool `json:"mountVirtualMediaFile"`
-	UploadVirtualMediaFile bool `json:"uploadVirtualMediaFile"`
-	WakeHostLAN            bool `json:"wakeHostLAN"`
+	MountVirtualMediaURL   bool `json:"mountVirtualMediaURL" jsonschema:"whether required URL-mount configuration exists"`
+	MountVirtualMediaFile  bool `json:"mountVirtualMediaFile" jsonschema:"whether a configured local media directory exists"`
+	UploadVirtualMediaFile bool `json:"uploadVirtualMediaFile" jsonschema:"whether a configured local media directory exists"`
+	WakeHostLAN            bool `json:"wakeHostLAN" jsonschema:"whether configured Wake-on-LAN targets exist"`
 }
 
 type ConfiguredDevice struct {
-	Device       string             `json:"device"`
-	Capabilities DeviceCapabilities `json:"capabilities"`
+	Device       string             `json:"device" jsonschema:"configured device alias"`
+	Capabilities DeviceCapabilities `json:"capabilities" jsonschema:"configuration-derived availability flags, not firmware qualification"`
 }
 
 type DeviceList struct {
-	Devices []ConfiguredDevice `json:"devices"`
+	Devices []ConfiguredDevice `json:"devices" jsonschema:"configured device aliases in deterministic order"`
 }
 
 // Device is the device-layer boundary used by MCP handlers.
@@ -94,14 +94,14 @@ type Device interface {
 }
 
 type deviceInput struct {
-	Device string `json:"device" jsonschema:"JetKVM device name from the server configuration"`
+	Device string `json:"device" jsonschema:"configured JetKVM device name"`
 }
 
 type listDevicesInput struct{}
 
 type wakeLANInput struct {
-	Device string `json:"device" jsonschema:"JetKVM device name from the server configuration"`
-	Target string `json:"target" jsonschema:"Configured Wake-on-LAN target name"`
+	Device string `json:"device" jsonschema:"configured JetKVM device name"`
+	Target string `json:"target" jsonschema:"configured Wake-on-LAN target name; it does not accept arbitrary network destinations"`
 }
 
 // New builds a JetKVM MCP server using only the official Go SDK.
@@ -113,7 +113,8 @@ func New(device Device, version string) *mcp.Server {
 
 	addReadTool(server, &mcp.Tool{
 		Name:         ListDevicesToolName,
-		Description:  "List configured JetKVM aliases and configuration-derived tool availability flags without contacting a device. Flags report only whether required local configuration exists; they do not qualify firmware or prove hardware support.",
+		Title:        "List configured JetKVM devices",
+		Description:  "List configured JetKVM aliases and configuration-derived availability flags without contacting a device. Results contain private deployment identifiers but omit URLs, credentials, origins, media paths, and Wake-on-LAN details. This read has no unknown mutation outcome; follow a failure's retryable flag before retrying.",
 		OutputSchema: deviceListOutputSchema(),
 		Annotations:  annotations(true, false, true),
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, _ listDevicesInput) (*mcp.CallToolResult, DeviceList, error) {
@@ -123,7 +124,8 @@ func New(device Device, version string) *mcp.Server {
 
 	addReadTool(server, &mcp.Tool{
 		Name:         GetStatusToolName,
-		Description:  "Read the current status of a configured JetKVM and its attached host.",
+		Title:        "Get JetKVM status",
+		Description:  "Read private current appliance and attached-host status from a configured JetKVM without changing it. Status can expose power, video, USB, version, warning, and redacted media state. This read has no unknown mutation outcome; follow a failure's retryable flag before retrying.",
 		OutputSchema: statusOutputSchema(),
 		Annotations:  annotations(true, false, true),
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, input deviceInput) (*mcp.CallToolResult, Status, error) {
@@ -135,21 +137,22 @@ func New(device Device, version string) *mcp.Server {
 	})
 
 	registerPowerTool(server, device, PressHostPowerButtonToolName,
-		"Briefly press the attached host's ATX power button.", PowerActionPressHostPowerButton, true, false)
+		"Press host power button", "Briefly press the physical ATX power button of a configured attached host; host firmware or OS behavior may change power state. If a mutation reports outcome unknown, do not blindly retry; inspect status first.", PowerActionPressHostPowerButton, true, false)
 	registerPowerTool(server, device, ForceHostPowerOffToolName,
-		"Hold the attached host's ATX power button to force it off.", PowerActionForceHostPowerOff, true, false)
+		"Force host power off", "Hold the physical ATX power button of a configured attached host to force it off; this can interrupt work and cause data loss. If a mutation reports outcome unknown, do not blindly retry; inspect status first.", PowerActionForceHostPowerOff, true, false)
 	registerPowerTool(server, device, PressHostResetButtonToolName,
-		"Briefly press the attached host's reset button.", PowerActionPressHostResetButton, true, false)
+		"Press host reset button", "Briefly press the physical reset button of a configured attached host; this can interrupt work or corrupt data. If a mutation reports outcome unknown, do not blindly retry; inspect status first.", PowerActionPressHostResetButton, true, false)
 	registerPowerTool(server, device, TurnHostDCPowerOnToolName,
-		"Turn on the JetKVM-controlled DC output for the attached host.", PowerActionTurnHostDCPowerOn, false, true)
+		"Turn host DC power on", "Enable the physical JetKVM-controlled DC output for a configured attached host, which may boot equipment. The request is intended to converge, but if its outcome is unknown do not blindly retry; inspect status first.", PowerActionTurnHostDCPowerOn, false, true)
 	registerPowerTool(server, device, TurnHostDCPowerOffToolName,
-		"Turn off the JetKVM-controlled DC output for the attached host.", PowerActionTurnHostDCPowerOff, true, true)
+		"Turn host DC power off", "Disable the physical JetKVM-controlled DC output for a configured attached host, which can interrupt work and cause data loss. The request is intended to converge, but if its outcome is unknown do not blindly retry; inspect status first.", PowerActionTurnHostDCPowerOff, true, true)
 	registerPowerTool(server, device, WakeHostUSBToolName,
-		"Wake the attached host through JetKVM USB HID.", PowerActionWakeHostUSB, false, true)
+		"Wake host over USB", "Send a USB HID wake action to a configured attached host, which may resume or boot it. The request is intended to converge, but if its outcome is unknown do not blindly retry; inspect status first.", PowerActionWakeHostUSB, false, true)
 
 	addMutationTool(server, &mcp.Tool{
 		Name:        WakeHostLANToolName,
-		Description: "Send Wake-on-LAN to a named target configured for this JetKVM.",
+		Title:       "Wake host over LAN",
+		Description: "Make the configured JetKVM send a Wake-on-LAN network magic packet to a named configured target; callers cannot supply an arbitrary MAC address. The request is intended to converge, but if its outcome is unknown do not blindly retry; inspect status first.",
 		Annotations: annotations(false, false, true),
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, input wakeLANInput) (*mcp.CallToolResult, PowerResult, error) {
 		if err := validDevice(input.Device); err != nil {
@@ -167,9 +170,10 @@ func New(device Device, version string) *mcp.Server {
 	return server
 }
 
-func registerPowerTool(server *mcp.Server, device Device, name, description string, action PowerAction, destructive, idempotent bool) {
+func registerPowerTool(server *mcp.Server, device Device, name, title, description string, action PowerAction, destructive, idempotent bool) {
 	addMutationTool(server, &mcp.Tool{
 		Name:        name,
+		Title:       title,
 		Description: description,
 		Annotations: annotations(false, destructive, idempotent),
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, input deviceInput) (*mcp.CallToolResult, PowerResult, error) {
