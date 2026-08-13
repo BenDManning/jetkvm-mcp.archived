@@ -217,7 +217,7 @@ func addControlTools(server *mcp.Server, device Device) {
 	addMutationTool(server, &mcp.Tool{
 		Name:        KeyboardToolName,
 		Description: "Type bounded text or press one named key through JetKVM USB HID.",
-		InputSchema: operationSchema[keyboardInput]([]string{string(KeyboardTypeText), string(KeyboardPressKey)}),
+		InputSchema: keyboardSchema(),
 		Annotations: annotations(false, false, false),
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, input keyboardInput) (*mcp.CallToolResult, KeyboardResult, error) {
 		request := KeyboardRequest{Operation: input.Operation, Text: input.Text, Key: input.Key, Modifiers: input.Modifiers}
@@ -401,10 +401,63 @@ func virtualMediaSchema[T any](sourceProperty string) *jsonschema.Schema {
 
 func mouseSchema() *jsonschema.Schema {
 	schema := operationSchema[mouseInput]([]string{string(MouseMoveAbsolute), string(MouseMoveRelative), string(MouseClick), string(MouseScroll)})
+	setIntegerRange(schema.Properties["x"], 0, 32767)
+	setIntegerRange(schema.Properties["y"], 0, 32767)
 	for _, name := range []string{"dx", "dy", "wheel_x", "wheel_y"} {
 		setIntegerRange(schema.Properties[name], -128, 127)
 	}
+	setStringEnum(schema.Properties["button"], []string{"left", "middle", "right"})
+	schema.AnyOf = []*jsonschema.Schema{
+		operationCase(string(MouseMoveAbsolute), []string{"x", "y"}, []string{"dx", "dy", "button", "wheel_x", "wheel_y"}),
+		operationCase(string(MouseMoveRelative), []string{"dx", "dy"}, []string{"x", "y", "button", "wheel_x", "wheel_y"}),
+		operationCase(string(MouseClick), []string{"button"}, []string{"x", "y", "dx", "dy", "wheel_x", "wheel_y"}),
+		operationCase(string(MouseScroll), nil, []string{"x", "y", "dx", "dy", "button"}),
+	}
+	schema.AnyOf[3].AnyOf = []*jsonschema.Schema{
+		requiredNonZeroProperty("wheel_x"),
+		requiredNonZeroProperty("wheel_y"),
+	}
 	return schema
+}
+
+func requiredNonZeroProperty(name string) *jsonschema.Schema {
+	zero := any(0)
+	return &jsonschema.Schema{
+		Properties: map[string]*jsonschema.Schema{name: {Not: &jsonschema.Schema{Const: &zero}}},
+		Required:   []string{name},
+	}
+}
+
+func keyboardSchema() *jsonschema.Schema {
+	schema := operationSchema[keyboardInput]([]string{string(KeyboardTypeText), string(KeyboardPressKey)})
+	minimum, maximum := 1, 4096
+	schema.Properties["text"].MinLength = &minimum
+	schema.Properties["text"].MaxLength = &maximum
+	schema.Properties["key"].MinLength = &minimum
+	setStringEnum(schema.Properties["modifiers"].Items, []string{"ctrl", "alt", "shift", "meta"})
+	schema.AnyOf = []*jsonschema.Schema{
+		operationCase(string(KeyboardTypeText), []string{"text"}, []string{"key", "modifiers"}),
+		operationCase(string(KeyboardPressKey), []string{"key"}, []string{"text"}),
+	}
+	return schema
+}
+
+func operationCase(operation string, required, forbidden []string) *jsonschema.Schema {
+	operationValue := any(operation)
+	branch := &jsonschema.Schema{
+		Properties: map[string]*jsonschema.Schema{
+			"operation": {Const: &operationValue},
+		},
+		Required: append([]string{"device", "operation"}, required...),
+	}
+	if len(forbidden) == 0 {
+		return branch
+	}
+	branch.Not = &jsonschema.Schema{AnyOf: make([]*jsonschema.Schema, 0, len(forbidden))}
+	for _, property := range forbidden {
+		branch.Not.AnyOf = append(branch.Not.AnyOf, &jsonschema.Schema{Required: []string{property}})
+	}
+	return branch
 }
 
 func operationSchema[T any](values []string) *jsonschema.Schema {
