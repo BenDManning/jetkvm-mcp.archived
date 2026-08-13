@@ -50,9 +50,6 @@ func (manager *Manager) VirtualMedia(ctx context.Context, name string, request m
 	if err != nil {
 		return mcpserver.VirtualMediaResult{}, err
 	}
-	mediaLock := manager.mediaLocks[device.Name]
-	mediaLock.Lock()
-	defer mediaLock.Unlock()
 	mode, err := firmwareMediaMode(request.Mode)
 	if err != nil {
 		return mcpserver.VirtualMediaResult{}, classifyOperationError(err, ToolOutcomeNotSent)
@@ -61,6 +58,20 @@ func (manager *Manager) VirtualMedia(ctx context.Context, name string, request m
 	if err != nil {
 		return mcpserver.VirtualMediaResult{}, err
 	}
+	mutating := request.Operation != mcpserver.VirtualMediaStatus
+	var result mcpserver.VirtualMediaResult
+	err = manager.withOperation(ctx, device, mutating, false, func() error {
+		var operationErr error
+		result, operationErr = manager.virtualMedia(ctx, device, request, mode, publicMode)
+		return operationErr
+	})
+	if err != nil {
+		return mcpserver.VirtualMediaResult{}, err
+	}
+	return result, nil
+}
+
+func (manager *Manager) virtualMedia(ctx context.Context, device DeviceConfig, request mcpserver.VirtualMediaRequest, mode, publicMode string) (mcpserver.VirtualMediaResult, error) {
 	switch request.Operation {
 	case mcpserver.VirtualMediaStatus:
 		return manager.virtualMediaStatus(ctx, device)
@@ -77,7 +88,7 @@ func (manager *Manager) VirtualMedia(ctx context.Context, name string, request m
 		}
 		return mcpserver.VirtualMediaResult{Device: device.Name, Operation: request.Operation, Mounted: true, SourceType: mcpserver.VirtualMediaSourceHTTP, Mode: publicMode, Status: "completed"}, nil
 	case mcpserver.VirtualMediaUnmount:
-		err = manager.withSession(ctx, device, SessionProfileData, func(session Session) error {
+		err := manager.withSession(ctx, device, SessionProfileData, func(session Session) error {
 			return session.Call(ctx, "unmountImage", nil, nil)
 		})
 		if err != nil {

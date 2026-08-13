@@ -43,8 +43,11 @@ func (manager *Manager) DebugRPC(ctx context.Context, name, method string, param
 		return nil, fmt.Errorf("%w: RPC params", ErrUnsupportedInput)
 	}
 	var result json.RawMessage
-	err = manager.provider.WithSession(ctx, device, SessionProfileData, func(session Session) error {
-		return session.Call(ctx, method, object, &result)
+	_, reviewed := debugRPCReadOnlyMethods[method]
+	err = manager.withOperation(ctx, device, !reviewed, false, func() error {
+		return manager.withSession(ctx, device, SessionProfileData, func(session Session) error {
+			return session.Call(ctx, method, object, &result)
+		})
 	})
 	if err != nil {
 		return nil, err

@@ -86,6 +86,17 @@ http:
     - https://mcp.example.invalid
 ```
 
+`limits` is optional and bounds all in-flight device work equally for stdio and
+stateless HTTP: `max_operations` (16), `max_operations_per_device` (4),
+`max_sessions` (8), `max_captures` (2), and `max_decoders` (2). Values must be
+positive integers no greater than 1024; per-device and session capacity cannot
+exceed global operations, and captures cannot exceed sessions. Exhausted global,
+per-device, session, capture, or decoder
+capacity returns the normal non-retryable `busy`/`not_sent` tool result before
+device dispatch; requests are not queued. Mutating HID, power, and virtual-media
+work is serialized per device, while unrelated devices and read-only work can
+proceed within their separate limits.
+
 Validate the complete strict configuration without starting FFmpeg, a listener,
 or a device/network session:
 

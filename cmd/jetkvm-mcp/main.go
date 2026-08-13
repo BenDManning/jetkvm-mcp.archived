@@ -108,7 +108,7 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	}
 	provider := jetkvm.NewWebRTCProvider(jetkvm.WebRTCProviderOptions{})
 	if options.kind == commandDebugRPC {
-		manager, err := jetkvm.NewManager(loaded.Devices, provider)
+		manager, err := jetkvm.NewManager(loaded.Devices, provider, jetkvm.WithLimits(loaded.Limits))
 		if err != nil {
 			return err
 		}
@@ -125,7 +125,7 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	if err != nil {
 		return err
 	}
-	manager, err := jetkvm.NewManager(loaded.Devices, provider, jetkvm.WithDecoder(decoder))
+	manager, err := jetkvm.NewManager(loaded.Devices, provider, jetkvm.WithDecoder(decoder), jetkvm.WithLimits(loaded.Limits))
 	if err != nil {
 		return err
 	}
