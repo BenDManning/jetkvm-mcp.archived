@@ -2,6 +2,7 @@ package mcpserver
 
 import (
 	"context"
+	"errors"
 	"net/http/httptest"
 	"sync"
 	"testing"
@@ -49,12 +50,14 @@ func TestHTTPClientCancellationReachesToolHandler(t *testing.T) {
 	defer clientSession.Close()
 	ctx, cancel := context.WithCancel(context.Background())
 	callDone := make(chan struct{})
+	callResult := make(chan error, 1)
 	go func() {
 		defer close(callDone)
-		_, _ = clientSession.CallTool(ctx, &mcp.CallToolParams{
+		_, err := clientSession.CallTool(ctx, &mcp.CallToolParams{
 			Name:      GetStatusToolName,
 			Arguments: map[string]any{"device": "lab"},
 		})
+		callResult <- err
 	}()
 	select {
 	case <-device.started:
@@ -72,5 +75,8 @@ func TestHTTPClientCancellationReachesToolHandler(t *testing.T) {
 	case <-callDone:
 	case <-time.After(time.Second):
 		t.Fatal("client call did not stop")
+	}
+	if err := <-callResult; !errors.Is(err, context.Canceled) {
+		t.Fatalf("client call error = %v, want cancellation", err)
 	}
 }

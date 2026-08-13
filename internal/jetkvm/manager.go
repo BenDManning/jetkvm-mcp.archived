@@ -264,18 +264,24 @@ func (manager *Manager) Status(ctx context.Context, name string) (mcpserver.Stat
 				System      string `json:"systemVersion"`
 			}
 			if err := session.Call(ctx, methodLocalVersion, nil, &version); err != nil {
-				status.Warnings = append(status.Warnings, "version unavailable")
+				if err := statusProbeFailure(&status, err, "version unavailable"); err != nil {
+					return err
+				}
 			} else {
 				status.Application, status.System = version.Application, version.System
 			}
 
 			if err := session.Call(ctx, methodActiveExtension, nil, &status.Extension); err != nil {
-				status.Warnings = append(status.Warnings, "active extension unavailable")
+				if err := statusProbeFailure(&status, err, "active extension unavailable"); err != nil {
+					return err
+				}
 			}
 
 			var media *firmwareVirtualMediaState
 			if err := session.Call(ctx, methodVirtualMediaState, nil, &media); err != nil {
-				status.Warnings = append(status.Warnings, "virtual media unavailable")
+				if err := statusProbeFailure(&status, err, "virtual media unavailable"); err != nil {
+					return err
+				}
 			} else if projected, projectErr := publicVirtualMediaState(media); projectErr != nil {
 				status.Warnings = append(status.Warnings, "virtual media unavailable")
 			} else {
@@ -289,13 +295,17 @@ func (manager *Manager) Status(ctx context.Context, name string) (mcpserver.Stat
 				FPS    int   `json:"fps"`
 			}
 			if err := session.Call(ctx, methodVideoState, nil, &video); err != nil {
-				status.Warnings = append(status.Warnings, "video unavailable")
+				if err := statusProbeFailure(&status, err, "video unavailable"); err != nil {
+					return err
+				}
 			} else {
 				status.VideoReady, status.VideoWidth, status.VideoHeight, status.VideoFPS = video.Ready, video.Width, video.Height, video.FPS
 			}
 
 			if err := session.Call(ctx, methodUSBState, nil, &status.USBState); err != nil {
-				status.Warnings = append(status.Warnings, "USB unavailable")
+				if err := statusProbeFailure(&status, err, "USB unavailable"); err != nil {
+					return err
+				}
 			} else {
 				attached := status.USBState != "not attached" && status.USBState != ""
 				status.USBWakeAttached = &attached
@@ -307,7 +317,9 @@ func (manager *Manager) Status(ctx context.Context, name string) (mcpserver.Stat
 					Power *bool `json:"power"`
 				}
 				if err := session.Call(ctx, methodATXState, nil, &atx); err != nil {
-					status.Warnings = append(status.Warnings, "ATX state unavailable")
+					if err := statusProbeFailure(&status, err, "ATX state unavailable"); err != nil {
+						return err
+					}
 				} else {
 					status.ATXPowerOn = atx.Power
 				}
@@ -317,7 +329,9 @@ func (manager *Manager) Status(ctx context.Context, name string) (mcpserver.Stat
 					Voltage float64 `json:"voltage"`
 				}
 				if err := session.Call(ctx, methodDCPowerState, nil, &dc); err != nil {
-					status.Warnings = append(status.Warnings, "DC state unavailable")
+					if err := statusProbeFailure(&status, err, "DC state unavailable"); err != nil {
+						return err
+					}
 				} else {
 					status.DCPowerOn, status.DCVoltage = dc.On, dc.Voltage
 				}
@@ -329,6 +343,14 @@ func (manager *Manager) Status(ctx context.Context, name string) (mcpserver.Stat
 		return mcpserver.Status{}, classifyReadFailure(err)
 	}
 	return status, nil
+}
+
+func statusProbeFailure(status *mcpserver.Status, err error, warning string) error {
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return err
+	}
+	status.Warnings = append(status.Warnings, warning)
+	return nil
 }
 
 func (manager *Manager) Power(ctx context.Context, name string, action mcpserver.PowerAction, targetName string) (mcpserver.PowerResult, error) {
