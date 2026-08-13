@@ -127,6 +127,33 @@ stream, category, exit semantics, and any documented structured representation
 remain compatible. Status strings and JSON fields documented as structured
 results are versioned surfaces, not free-form diagnostics.
 
+### MCP tool-manifest review
+
+[`internal/mcpserver/testdata/tool-manifest.json`](../internal/mcpserver/testdata/tool-manifest.json)
+is the reviewed wire-contract fixture. It normalizes server discovery metadata,
+the intentionally empty client capability set used by the contract test,
+advertised server capabilities, every tool title, description, input and output
+schema, and annotation, plus representative success, operational-error, and
+protocol-error envelopes. The same fixture is exercised over in-memory, stdio
+subprocess, and stateless HTTP transports. Structured success values are
+validated against each advertised output schema.
+
+Classify every deliberate fixture change before updating it:
+
+- **breaking:** a removal or rename; tighter input acceptance; weaker output
+  guarantees; incompatible schema, content, error, capability, or transport
+  semantics;
+- **additive:** a new optional tool, field, content form, or capability that
+  existing supported clients can ignore; or
+- **patch:** a correction that preserves accepted inputs and observable output
+  semantics, such as wording or explicitly non-contractual metadata.
+
+Run `make update-tool-manifest`, inspect the complete diff, record the
+classification in review, and then run `make verify` and `make race`. CI runs
+the manifest contract through `go test ./...`, so an unreviewed runtime delta
+fails against the committed fixture. Regeneration produces review evidence; it
+does not itself approve a compatibility change.
+
 ## Configuration evolution and migrations
 
 The YAML grammar is currently unversioned and has no migration engine. Product

@@ -1,0 +1,1216 @@
+{
+  "protocolVersion": "2026-07-28",
+  "clientCapabilities": {},
+  "serverInfo": {
+    "name": "jetkvm-mcp",
+    "version": "contract-test"
+  },
+  "instructions": "",
+  "initializeMeta": null,
+  "capabilities": {
+    "tools": {}
+  },
+  "discovery": {
+    "meta": {
+      "io.modelcontextprotocol/serverInfo": {
+        "name": "jetkvm-mcp",
+        "version": "contract-test"
+      }
+    },
+    "cacheScope": "public",
+    "capabilities": {
+      "tools": {}
+    },
+    "instructions": "",
+    "resultType": "complete",
+    "supportedVersions": [
+      "2026-07-28",
+      "2025-11-25",
+      "2025-06-18",
+      "2025-03-26",
+      "2024-11-05"
+    ],
+    "ttlMs": 0
+  },
+  "tools": [
+    {
+      "meta": null,
+      "name": "jetkvm_capture_screen",
+      "title": "",
+      "description": "Capture one fresh PNG from the host display attached to a configured JetKVM.",
+      "icons": null,
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "device": {
+            "description": "JetKVM device name from the server configuration",
+            "type": "string"
+          },
+          "max_height": {
+            "description": "maximum PNG height; omit to use the configured default",
+            "maximum": 2160,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "max_width": {
+            "description": "maximum PNG width; omit to use the configured default",
+            "maximum": 3840,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "device"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "capturedAt": {
+            "type": "string"
+          },
+          "device": {
+            "type": "string"
+          },
+          "height": {
+            "type": "integer"
+          },
+          "mimeType": {
+            "type": "string"
+          },
+          "sizeBytes": {
+            "type": "integer"
+          },
+          "width": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "device",
+          "capturedAt",
+          "mimeType",
+          "width",
+          "height",
+          "sizeBytes"
+        ],
+        "type": "object"
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      }
+    },
+    {
+      "meta": null,
+      "name": "jetkvm_force_host_power_off",
+      "title": "",
+      "description": "Hold the attached host's ATX power button to force it off.",
+      "icons": null,
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "device": {
+            "description": "JetKVM device name from the server configuration",
+            "type": "string"
+          }
+        },
+        "required": [
+          "device"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "type": "string"
+          },
+          "device": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "target": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "device",
+          "action",
+          "status"
+        ],
+        "type": "object"
+      },
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      }
+    },
+    {
+      "meta": null,
+      "name": "jetkvm_get_status",
+      "title": "",
+      "description": "Read the current status of a configured JetKVM and its attached host.",
+      "icons": null,
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "device": {
+            "description": "JetKVM device name from the server configuration",
+            "type": "string"
+          }
+        },
+        "required": [
+          "device"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "activeExtension": {
+            "type": "string"
+          },
+          "applicationVersion": {
+            "type": "string"
+          },
+          "atxPowerOn": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "connected": {
+            "type": "boolean"
+          },
+          "dcPowerOn": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "dcVoltage": {
+            "type": "number"
+          },
+          "device": {
+            "type": "string"
+          },
+          "systemVersion": {
+            "type": "string"
+          },
+          "usbState": {
+            "type": "string"
+          },
+          "usbWakeAttached": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "videoFPS": {
+            "type": "integer"
+          },
+          "videoHeight": {
+            "type": "integer"
+          },
+          "videoReady": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "videoWidth": {
+            "type": "integer"
+          },
+          "virtualMedia": {
+            "type": "string"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          }
+        },
+        "required": [
+          "device",
+          "connected"
+        ],
+        "type": "object"
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      }
+    },
+    {
+      "meta": null,
+      "name": "jetkvm_keyboard",
+      "title": "",
+      "description": "Type bounded text or press one named key through JetKVM USB HID.",
+      "icons": null,
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "device": {
+            "description": "JetKVM device name from the server configuration",
+            "type": "string"
+          },
+          "key": {
+            "description": "named key or one printable character for press_key",
+            "type": "string"
+          },
+          "modifiers": {
+            "description": "optional ctrl, alt, shift, meta modifiers",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
+          "operation": {
+            "description": "typed keyboard operation",
+            "enum": [
+              "type_text",
+              "press_key"
+            ],
+            "type": "string"
+          },
+          "text": {
+            "description": "text to type for type_text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "device",
+          "operation"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "device": {
+            "type": "string"
+          },
+          "operation": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "device",
+          "operation",
+          "status"
+        ],
+        "type": "object"
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      }
+    },
+    {
+      "meta": null,
+      "name": "jetkvm_mouse",
+      "title": "",
+      "description": "Move, click, or scroll the host pointer through JetKVM USB HID.",
+      "icons": null,
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "button": {
+            "description": "left, middle, or right button for click",
+            "type": "string"
+          },
+          "device": {
+            "description": "JetKVM device name from the server configuration",
+            "type": "string"
+          },
+          "dx": {
+            "description": "relative horizontal movement",
+            "maximum": 127,
+            "minimum": -128,
+            "type": [
+              "null",
+              "integer"
+            ]
+          },
+          "dy": {
+            "description": "relative vertical movement",
+            "maximum": 127,
+            "minimum": -128,
+            "type": [
+              "null",
+              "integer"
+            ]
+          },
+          "operation": {
+            "description": "typed mouse operation",
+            "enum": [
+              "move_absolute",
+              "move_relative",
+              "click",
+              "scroll"
+            ],
+            "type": "string"
+          },
+          "wheel_x": {
+            "description": "horizontal wheel movement",
+            "maximum": 127,
+            "minimum": -128,
+            "type": "integer"
+          },
+          "wheel_y": {
+            "description": "vertical wheel movement",
+            "maximum": 127,
+            "minimum": -128,
+            "type": "integer"
+          },
+          "x": {
+            "description": "absolute x coordinate from 0 through 32767",
+            "type": [
+              "null",
+              "integer"
+            ]
+          },
+          "y": {
+            "description": "absolute y coordinate from 0 through 32767",
+            "type": [
+              "null",
+              "integer"
+            ]
+          }
+        },
+        "required": [
+          "device",
+          "operation"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "device": {
+            "type": "string"
+          },
+          "operation": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "device",
+          "operation",
+          "status"
+        ],
+        "type": "object"
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      }
+    },
+    {
+      "meta": null,
+      "name": "jetkvm_press_host_power_button",
+      "title": "",
+      "description": "Briefly press the attached host's ATX power button.",
+      "icons": null,
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "device": {
+            "description": "JetKVM device name from the server configuration",
+            "type": "string"
+          }
+        },
+        "required": [
+          "device"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "type": "string"
+          },
+          "device": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "target": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "device",
+          "action",
+          "status"
+        ],
+        "type": "object"
+      },
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      }
+    },
+    {
+      "meta": null,
+      "name": "jetkvm_press_host_reset_button",
+      "title": "",
+      "description": "Briefly press the attached host's reset button.",
+      "icons": null,
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "device": {
+            "description": "JetKVM device name from the server configuration",
+            "type": "string"
+          }
+        },
+        "required": [
+          "device"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "type": "string"
+          },
+          "device": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "target": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "device",
+          "action",
+          "status"
+        ],
+        "type": "object"
+      },
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      }
+    },
+    {
+      "meta": null,
+      "name": "jetkvm_turn_host_dc_power_off",
+      "title": "",
+      "description": "Turn off the JetKVM-controlled DC output for the attached host.",
+      "icons": null,
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "device": {
+            "description": "JetKVM device name from the server configuration",
+            "type": "string"
+          }
+        },
+        "required": [
+          "device"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "type": "string"
+          },
+          "device": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "target": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "device",
+          "action",
+          "status"
+        ],
+        "type": "object"
+      },
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      }
+    },
+    {
+      "meta": null,
+      "name": "jetkvm_turn_host_dc_power_on",
+      "title": "",
+      "description": "Turn on the JetKVM-controlled DC output for the attached host.",
+      "icons": null,
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "device": {
+            "description": "JetKVM device name from the server configuration",
+            "type": "string"
+          }
+        },
+        "required": [
+          "device"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "type": "string"
+          },
+          "device": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "target": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "device",
+          "action",
+          "status"
+        ],
+        "type": "object"
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      }
+    },
+    {
+      "meta": null,
+      "name": "jetkvm_virtual_media",
+      "title": "",
+      "description": "Inspect, mount, unmount, or upload JetKVM virtual media using a URL or configured media-directory path.",
+      "icons": null,
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "device": {
+            "description": "JetKVM device name from the server configuration",
+            "type": "string"
+          },
+          "mode": {
+            "description": "read_only or read_write; defaults to read_only",
+            "type": "string"
+          },
+          "operation": {
+            "description": "typed virtual-media operation",
+            "enum": [
+              "status",
+              "mount_url",
+              "mount_file",
+              "unmount",
+              "upload"
+            ],
+            "type": "string"
+          },
+          "source": {
+            "description": "URL or configured-media-directory path required by the selected operation",
+            "type": "string"
+          }
+        },
+        "required": [
+          "device",
+          "operation"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "device": {
+            "type": "string"
+          },
+          "mode": {
+            "type": "string"
+          },
+          "mounted": {
+            "type": "boolean"
+          },
+          "operation": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "device",
+          "operation",
+          "mounted",
+          "status"
+        ],
+        "type": "object"
+      },
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      }
+    },
+    {
+      "meta": null,
+      "name": "jetkvm_wake_host_lan",
+      "title": "",
+      "description": "Send Wake-on-LAN to a named target configured for this JetKVM.",
+      "icons": null,
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "device": {
+            "description": "JetKVM device name from the server configuration",
+            "type": "string"
+          },
+          "target": {
+            "description": "Configured Wake-on-LAN target name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "device",
+          "target"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "type": "string"
+          },
+          "device": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "target": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "device",
+          "action",
+          "status"
+        ],
+        "type": "object"
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      }
+    },
+    {
+      "meta": null,
+      "name": "jetkvm_wake_host_usb",
+      "title": "",
+      "description": "Wake the attached host through JetKVM USB HID.",
+      "icons": null,
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "device": {
+            "description": "JetKVM device name from the server configuration",
+            "type": "string"
+          }
+        },
+        "required": [
+          "device"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "type": "string"
+          },
+          "device": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "target": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "device",
+          "action",
+          "status"
+        ],
+        "type": "object"
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      }
+    }
+  ],
+  "results": {
+    "jetkvm_capture_screen": {
+      "content": [
+        {
+          "annotations": null,
+          "meta": null,
+          "mimeType": "image/png",
+          "sizeBytes": 73,
+          "type": "image"
+        }
+      ],
+      "inputRequests": null,
+      "isError": false,
+      "meta": {
+        "io.modelcontextprotocol/serverInfo": {
+          "name": "jetkvm-mcp",
+          "version": "contract-test"
+        }
+      },
+      "needsInput": false,
+      "requestState": "",
+      "structuredContent": {
+        "capturedAt": "2026-01-02T03:04:05Z",
+        "device": "fixture-device",
+        "height": 1,
+        "mimeType": "image/png",
+        "sizeBytes": 73,
+        "width": 1
+      }
+    },
+    "jetkvm_force_host_power_off": {
+      "content": [
+        {
+          "annotations": null,
+          "json": {
+            "action": "force_host_power_off",
+            "device": "fixture-device",
+            "status": "completed"
+          },
+          "meta": null,
+          "type": "text"
+        }
+      ],
+      "inputRequests": null,
+      "isError": false,
+      "meta": {
+        "io.modelcontextprotocol/serverInfo": {
+          "name": "jetkvm-mcp",
+          "version": "contract-test"
+        }
+      },
+      "needsInput": false,
+      "requestState": "",
+      "structuredContent": {
+        "action": "force_host_power_off",
+        "device": "fixture-device",
+        "status": "completed"
+      }
+    },
+    "jetkvm_get_status": {
+      "content": [
+        {
+          "annotations": null,
+          "json": {
+            "activeExtension": "atx-power",
+            "applicationVersion": "fixture-app",
+            "atxPowerOn": true,
+            "connected": true,
+            "device": "fixture-device",
+            "systemVersion": "fixture-system",
+            "usbState": "attached",
+            "usbWakeAttached": true,
+            "videoFPS": 30,
+            "videoHeight": 480,
+            "videoReady": true,
+            "videoWidth": 640,
+            "virtualMedia": "{\"mounted\":false}",
+            "warnings": [
+              "fixture warning"
+            ]
+          },
+          "meta": null,
+          "type": "text"
+        }
+      ],
+      "inputRequests": null,
+      "isError": false,
+      "meta": {
+        "io.modelcontextprotocol/serverInfo": {
+          "name": "jetkvm-mcp",
+          "version": "contract-test"
+        }
+      },
+      "needsInput": false,
+      "requestState": "",
+      "structuredContent": {
+        "activeExtension": "atx-power",
+        "applicationVersion": "fixture-app",
+        "atxPowerOn": true,
+        "connected": true,
+        "device": "fixture-device",
+        "systemVersion": "fixture-system",
+        "usbState": "attached",
+        "usbWakeAttached": true,
+        "videoFPS": 30,
+        "videoHeight": 480,
+        "videoReady": true,
+        "videoWidth": 640,
+        "virtualMedia": "{\"mounted\":false}",
+        "warnings": [
+          "fixture warning"
+        ]
+      }
+    },
+    "jetkvm_keyboard": {
+      "content": [
+        {
+          "annotations": null,
+          "json": {
+            "device": "fixture-device",
+            "operation": "press_key",
+            "status": "completed"
+          },
+          "meta": null,
+          "type": "text"
+        }
+      ],
+      "inputRequests": null,
+      "isError": false,
+      "meta": {
+        "io.modelcontextprotocol/serverInfo": {
+          "name": "jetkvm-mcp",
+          "version": "contract-test"
+        }
+      },
+      "needsInput": false,
+      "requestState": "",
+      "structuredContent": {
+        "device": "fixture-device",
+        "operation": "press_key",
+        "status": "completed"
+      }
+    },
+    "jetkvm_mouse": {
+      "content": [
+        {
+          "annotations": null,
+          "json": {
+            "device": "fixture-device",
+            "operation": "click",
+            "status": "completed"
+          },
+          "meta": null,
+          "type": "text"
+        }
+      ],
+      "inputRequests": null,
+      "isError": false,
+      "meta": {
+        "io.modelcontextprotocol/serverInfo": {
+          "name": "jetkvm-mcp",
+          "version": "contract-test"
+        }
+      },
+      "needsInput": false,
+      "requestState": "",
+      "structuredContent": {
+        "device": "fixture-device",
+        "operation": "click",
+        "status": "completed"
+      }
+    },
+    "jetkvm_press_host_power_button": {
+      "content": [
+        {
+          "annotations": null,
+          "json": {
+            "action": "press_host_power_button",
+            "device": "fixture-device",
+            "status": "completed"
+          },
+          "meta": null,
+          "type": "text"
+        }
+      ],
+      "inputRequests": null,
+      "isError": false,
+      "meta": {
+        "io.modelcontextprotocol/serverInfo": {
+          "name": "jetkvm-mcp",
+          "version": "contract-test"
+        }
+      },
+      "needsInput": false,
+      "requestState": "",
+      "structuredContent": {
+        "action": "press_host_power_button",
+        "device": "fixture-device",
+        "status": "completed"
+      }
+    },
+    "jetkvm_press_host_reset_button": {
+      "content": [
+        {
+          "annotations": null,
+          "json": {
+            "action": "press_host_reset_button",
+            "device": "fixture-device",
+            "status": "completed"
+          },
+          "meta": null,
+          "type": "text"
+        }
+      ],
+      "inputRequests": null,
+      "isError": false,
+      "meta": {
+        "io.modelcontextprotocol/serverInfo": {
+          "name": "jetkvm-mcp",
+          "version": "contract-test"
+        }
+      },
+      "needsInput": false,
+      "requestState": "",
+      "structuredContent": {
+        "action": "press_host_reset_button",
+        "device": "fixture-device",
+        "status": "completed"
+      }
+    },
+    "jetkvm_turn_host_dc_power_off": {
+      "content": [
+        {
+          "annotations": null,
+          "json": {
+            "action": "turn_host_dc_power_off",
+            "device": "fixture-device",
+            "status": "completed"
+          },
+          "meta": null,
+          "type": "text"
+        }
+      ],
+      "inputRequests": null,
+      "isError": false,
+      "meta": {
+        "io.modelcontextprotocol/serverInfo": {
+          "name": "jetkvm-mcp",
+          "version": "contract-test"
+        }
+      },
+      "needsInput": false,
+      "requestState": "",
+      "structuredContent": {
+        "action": "turn_host_dc_power_off",
+        "device": "fixture-device",
+        "status": "completed"
+      }
+    },
+    "jetkvm_turn_host_dc_power_on": {
+      "content": [
+        {
+          "annotations": null,
+          "json": {
+            "action": "turn_host_dc_power_on",
+            "device": "fixture-device",
+            "status": "completed"
+          },
+          "meta": null,
+          "type": "text"
+        }
+      ],
+      "inputRequests": null,
+      "isError": false,
+      "meta": {
+        "io.modelcontextprotocol/serverInfo": {
+          "name": "jetkvm-mcp",
+          "version": "contract-test"
+        }
+      },
+      "needsInput": false,
+      "requestState": "",
+      "structuredContent": {
+        "action": "turn_host_dc_power_on",
+        "device": "fixture-device",
+        "status": "completed"
+      }
+    },
+    "jetkvm_virtual_media": {
+      "content": [
+        {
+          "annotations": null,
+          "json": {
+            "device": "fixture-device",
+            "mounted": false,
+            "operation": "status",
+            "status": "completed"
+          },
+          "meta": null,
+          "type": "text"
+        }
+      ],
+      "inputRequests": null,
+      "isError": false,
+      "meta": {
+        "io.modelcontextprotocol/serverInfo": {
+          "name": "jetkvm-mcp",
+          "version": "contract-test"
+        }
+      },
+      "needsInput": false,
+      "requestState": "",
+      "structuredContent": {
+        "device": "fixture-device",
+        "mounted": false,
+        "operation": "status",
+        "status": "completed"
+      }
+    },
+    "jetkvm_wake_host_lan": {
+      "content": [
+        {
+          "annotations": null,
+          "json": {
+            "action": "wake_host_lan",
+            "device": "fixture-device",
+            "status": "completed",
+            "target": "fixture-target"
+          },
+          "meta": null,
+          "type": "text"
+        }
+      ],
+      "inputRequests": null,
+      "isError": false,
+      "meta": {
+        "io.modelcontextprotocol/serverInfo": {
+          "name": "jetkvm-mcp",
+          "version": "contract-test"
+        }
+      },
+      "needsInput": false,
+      "requestState": "",
+      "structuredContent": {
+        "action": "wake_host_lan",
+        "device": "fixture-device",
+        "status": "completed",
+        "target": "fixture-target"
+      }
+    },
+    "jetkvm_wake_host_usb": {
+      "content": [
+        {
+          "annotations": null,
+          "json": {
+            "action": "wake_host_usb",
+            "device": "fixture-device",
+            "status": "completed"
+          },
+          "meta": null,
+          "type": "text"
+        }
+      ],
+      "inputRequests": null,
+      "isError": false,
+      "meta": {
+        "io.modelcontextprotocol/serverInfo": {
+          "name": "jetkvm-mcp",
+          "version": "contract-test"
+        }
+      },
+      "needsInput": false,
+      "requestState": "",
+      "structuredContent": {
+        "action": "wake_host_usb",
+        "device": "fixture-device",
+        "status": "completed"
+      }
+    },
+    "operational_error": {
+      "content": [
+        {
+          "annotations": null,
+          "meta": null,
+          "text": "fixture device unavailable",
+          "type": "text"
+        }
+      ],
+      "inputRequests": null,
+      "isError": true,
+      "meta": {
+        "io.modelcontextprotocol/serverInfo": {
+          "name": "jetkvm-mcp",
+          "version": "contract-test"
+        }
+      },
+      "needsInput": false,
+      "requestState": "",
+      "structuredContent": null
+    },
+    "protocol_error": {
+      "category": "invalid_params",
+      "code": -32602
+    }
+  }
+}
