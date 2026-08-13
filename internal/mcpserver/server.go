@@ -12,6 +12,7 @@ import (
 )
 
 const (
+	ListDevicesToolName          = "jetkvm_list_devices"
 	GetStatusToolName            = "jetkvm_get_status"
 	PressHostPowerButtonToolName = "jetkvm_press_host_power_button"
 	ForceHostPowerOffToolName    = "jetkvm_force_host_power_off"
@@ -65,8 +66,25 @@ type PowerResult struct {
 	Status string      `json:"status"`
 }
 
+type DeviceCapabilities struct {
+	MountVirtualMediaURL   bool `json:"mountVirtualMediaURL"`
+	MountVirtualMediaFile  bool `json:"mountVirtualMediaFile"`
+	UploadVirtualMediaFile bool `json:"uploadVirtualMediaFile"`
+	WakeHostLAN            bool `json:"wakeHostLAN"`
+}
+
+type ConfiguredDevice struct {
+	Device       string             `json:"device"`
+	Capabilities DeviceCapabilities `json:"capabilities"`
+}
+
+type DeviceList struct {
+	Devices []ConfiguredDevice `json:"devices"`
+}
+
 // Device is the device-layer boundary used by MCP handlers.
 type Device interface {
+	ListDevices(ctx context.Context) (DeviceList, error)
 	Status(ctx context.Context, device string) (Status, error)
 	Power(ctx context.Context, device string, action PowerAction, target string) (PowerResult, error)
 	CaptureScreen(ctx context.Context, device string, request CaptureRequest) (CaptureResult, error)
@@ -79,6 +97,8 @@ type deviceInput struct {
 	Device string `json:"device" jsonschema:"JetKVM device name from the server configuration"`
 }
 
+type listDevicesInput struct{}
+
 type wakeLANInput struct {
 	Device string `json:"device" jsonschema:"JetKVM device name from the server configuration"`
 	Target string `json:"target" jsonschema:"Configured Wake-on-LAN target name"`
@@ -89,6 +109,16 @@ func New(device Device, version string) *mcp.Server {
 	// The manifest is static, so do not advertise tool-list change notifications.
 	server := mcp.NewServer(&mcp.Implementation{Name: "jetkvm-mcp", Version: version}, &mcp.ServerOptions{
 		Capabilities: &mcp.ServerCapabilities{Tools: &mcp.ToolCapabilities{}},
+	})
+
+	addReadTool(server, &mcp.Tool{
+		Name:         ListDevicesToolName,
+		Description:  "List configured JetKVM aliases and configuration-derived tool availability flags without contacting a device. Flags report only whether required local configuration exists; they do not qualify firmware or prove hardware support.",
+		OutputSchema: deviceListOutputSchema(),
+		Annotations:  annotations(true, false, true),
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, _ listDevicesInput) (*mcp.CallToolResult, DeviceList, error) {
+		devices, err := device.ListDevices(ctx)
+		return nil, devices, err
 	})
 
 	addReadTool(server, &mcp.Tool{
@@ -273,6 +303,14 @@ func annotationsWithOpenWorld(readOnly, destructive, idempotent, openWorld bool)
 		IdempotentHint:  idempotent,
 		OpenWorldHint:   &openWorld,
 	}
+}
+
+func deviceListOutputSchema() *jsonschema.Schema {
+	schema, err := jsonschema.For[DeviceList](nil)
+	if err != nil {
+		panic(fmt.Sprintf("device list output schema: %v", err))
+	}
+	return schema
 }
 
 func validDevice(device string) error {

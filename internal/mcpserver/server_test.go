@@ -10,6 +10,10 @@ import (
 
 type recordingDevice struct{}
 
+func (*recordingDevice) ListDevices(context.Context) (DeviceList, error) {
+	return DeviceList{Devices: []ConfiguredDevice{}}, nil
+}
+
 func (*recordingDevice) Status(context.Context, string) (Status, error) {
 	return Status{}, nil
 }
@@ -73,6 +77,7 @@ func TestServerPublishesExplicitPowerTools(t *testing.T) {
 		}
 	}
 
+	assertTool(t, tools, ListDevicesToolName, true, false, true, nil)
 	assertTool(t, tools, "jetkvm_get_status", true, false, true, []string{"device"})
 	assertTool(t, tools, "jetkvm_press_host_power_button", false, true, false, []string{"device"})
 	assertTool(t, tools, "jetkvm_force_host_power_off", false, true, false, []string{"device"})

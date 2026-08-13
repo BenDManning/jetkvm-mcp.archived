@@ -36,6 +36,7 @@ func TestParseArgsRequiresExplicitInputs(t *testing.T) {
 func TestValidateReadOnlyTools(t *testing.T) {
 	no := false
 	tools := []*mcp.Tool{
+		{Name: deviceListTool, Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: &no, IdempotentHint: true, OpenWorldHint: &no}},
 		{Name: statusTool, Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: &no, IdempotentHint: true, OpenWorldHint: &no}},
 		{Name: captureTool, Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: &no, IdempotentHint: true, OpenWorldHint: &no}},
 		{Name: mediaStatusTool, Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: &no, IdempotentHint: true, OpenWorldHint: &no}},
@@ -43,9 +44,108 @@ func TestValidateReadOnlyTools(t *testing.T) {
 	if err := validateReadOnlyTools(tools); err != nil {
 		t.Fatal(err)
 	}
-	tools[2].Annotations.ReadOnlyHint = false
+	if err := validateReadOnlyTools(tools[1:]); err == nil {
+		t.Fatal("accepted a tool list without configured-device discovery")
+	}
+	tools[3].Annotations.ReadOnlyHint = false
 	if err := validateReadOnlyTools(tools); err == nil {
 		t.Fatal("accepted a mutating virtual-media status tool")
+	}
+}
+
+func TestValidateConfiguredDeviceDiscovery(t *testing.T) {
+	valid := map[string]any{"devices": []any{
+		map[string]any{"device": "alpha", "capabilities": map[string]any{
+			"mountVirtualMediaURL": false, "mountVirtualMediaFile": false, "uploadVirtualMediaFile": false, "wakeHostLAN": false,
+		}},
+		map[string]any{"device": "lab", "capabilities": map[string]any{
+			"mountVirtualMediaURL": true, "mountVirtualMediaFile": true, "uploadVirtualMediaFile": true, "wakeHostLAN": true,
+		}},
+	}}
+	if err := validateConfiguredDevices(valid, "lab"); err != nil {
+		t.Fatal(err)
+	}
+	for _, invalid := range []map[string]any{
+		{"devices": []any{}},
+		{"devices": []any{map[string]any{"device": "other", "capabilities": valid["devices"].([]any)[0].(map[string]any)["capabilities"]}}},
+		{"devices": []any{map[string]any{"device": "lab", "url": "https://private.invalid", "capabilities": valid["devices"].([]any)[0].(map[string]any)["capabilities"]}}},
+		{"devices": []any{map[string]any{"device": "lab", "capabilities": map[string]any{
+			"mountVirtualMediaURL": true, "mountVirtualMediaFile": true, "uploadVirtualMediaFile": true, "wakeHostLAN": true, "mediaDirectory": "/private",
+		}}}},
+		{"devices": []any{valid["devices"].([]any)[1], valid["devices"].([]any)[0]}},
+	} {
+		if err := validateConfiguredDevices(invalid, "lab"); err == nil {
+			t.Fatalf("accepted discovery result %#v", invalid)
+		}
+	}
+}
+
+type configuredDeviceCaller struct {
+	params *mcp.CallToolParams
+	result *mcp.CallToolResult
+	err    error
+}
+
+func (caller *configuredDeviceCaller) CallTool(_ context.Context, params *mcp.CallToolParams) (*mcp.CallToolResult, error) {
+	caller.params = params
+	return caller.result, caller.err
+}
+
+func TestValidateConfiguredDeviceCallUsesEmptyInput(t *testing.T) {
+	caller := &configuredDeviceCaller{result: &mcp.CallToolResult{
+		StructuredContent: map[string]any{"devices": []any{
+			map[string]any{"device": "lab", "capabilities": map[string]any{
+				"mountVirtualMediaURL": false, "mountVirtualMediaFile": false, "uploadVirtualMediaFile": false, "wakeHostLAN": false,
+			}},
+		}},
+	}}
+	if err := validateConfiguredDeviceCall(context.Background(), caller, "lab"); err != nil {
+		t.Fatal(err)
+	}
+	arguments, ok := caller.params.Arguments.(map[string]any)
+	if caller.params == nil || caller.params.Name != deviceListTool || !ok || len(arguments) != 0 {
+		t.Fatalf("call params = %#v", caller.params)
+	}
+	caller.result.IsError = true
+	if err := validateConfiguredDeviceCall(context.Background(), caller, "lab"); err == nil {
+		t.Fatal("accepted a tool-error discovery result")
+	}
+}
+
+type discoveryRejectingSession struct {
+	calls []string
+}
+
+func (*discoveryRejectingSession) ListTools(context.Context, *mcp.ListToolsParams) (*mcp.ListToolsResult, error) {
+	no := false
+	annotations := func() *mcp.ToolAnnotations {
+		return &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: &no, IdempotentHint: true, OpenWorldHint: &no}
+	}
+	return &mcp.ListToolsResult{Tools: []*mcp.Tool{
+		{Name: deviceListTool, Annotations: annotations()},
+		{Name: statusTool, Annotations: annotations()},
+		{Name: captureTool, Annotations: annotations()},
+		{Name: mediaStatusTool, Annotations: annotations()},
+	}}, nil
+}
+
+func (session *discoveryRejectingSession) CallTool(_ context.Context, params *mcp.CallToolParams) (*mcp.CallToolResult, error) {
+	session.calls = append(session.calls, params.Name)
+	return &mcp.CallToolResult{StructuredContent: map[string]any{"devices": []any{
+		map[string]any{"device": "other", "capabilities": map[string]any{
+			"mountVirtualMediaURL": false, "mountVirtualMediaFile": false, "uploadVirtualMediaFile": false, "wakeHostLAN": false,
+		}},
+	}}}, nil
+}
+
+func TestValidateSessionRejectsMissingAliasBeforeDeviceCalls(t *testing.T) {
+	session := new(discoveryRejectingSession)
+	report := validateSession(context.Background(), session, "lab")
+	if report.Result != "fail" || report.Failed != "devices" || !reflect.DeepEqual(report.Checks, []string{"tools_list"}) {
+		t.Fatalf("report = %#v", report)
+	}
+	if !reflect.DeepEqual(session.calls, []string{deviceListTool}) {
+		t.Fatalf("tool calls = %#v", session.calls)
 	}
 }
 

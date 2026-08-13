@@ -112,6 +112,7 @@ The proxy must preserve the public `Host` header, and every accepted public orig
 
 ## MCP tools
 
+- `jetkvm_list_devices`
 - `jetkvm_get_status`
 - `jetkvm_capture_screen`
 - `jetkvm_keyboard`
@@ -129,6 +130,12 @@ The proxy must preserve the public `Host` header, and every accepted public orig
 - `jetkvm_turn_host_dc_power_off`
 - `jetkvm_wake_host_usb`
 - `jetkvm_wake_host_lan`
+
+`jetkvm_list_devices` returns configured device aliases in deterministic order
+with configuration-derived availability flags for URL mounting, local-file
+mounting and upload, and Wake-on-LAN. It does not open a device session or
+probe hardware. It omits device URLs, credentials, allowed origins, media
+directories, and Wake-on-LAN target details.
 
 Status and virtual-media results are typed and redacted. They report whether
 media is mounted, whether its source class is `http` or `storage`, and its
@@ -166,8 +173,9 @@ go vet ./...
 
 After building the server, the separate validation runner can exercise one
 configured device through actual MCP stdio. It lists tools, verifies the
-device-status, virtual-media-status, and capture tools' read-only annotations,
-validates status fields, and fully
+configured-device discovery, device-status, virtual-media-status, and capture
+tools' read-only annotations, confirms that discovery contains the selected
+alias, validates status fields, and fully
 decodes one PNG without writing or displaying it. It never invokes keyboard,
 mouse, virtual-media, power, wake, or raw-RPC operations.
 
