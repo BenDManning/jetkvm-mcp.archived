@@ -56,10 +56,14 @@ func ParseEffective(value string) (Origin, error) {
 		return Origin{}, ErrInvalid
 	}
 	port := parsed.Port()
-	portNumber, err := strconv.Atoi(port)
 	if port == "" {
-		return origin, nil
+		host := canonicalEffectiveHostname(parsed.Hostname())
+		if strings.Contains(host, ":") {
+			host = "[" + host + "]"
+		}
+		return Origin{Value: origin.Scheme + "://" + host, Scheme: origin.Scheme, Host: host}, nil
 	}
+	portNumber, err := strconv.Atoi(port)
 	if err != nil {
 		return Origin{}, ErrInvalid
 	}
