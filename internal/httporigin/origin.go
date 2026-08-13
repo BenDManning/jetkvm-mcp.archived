@@ -2,6 +2,7 @@ package httporigin
 
 import (
 	"errors"
+	"net/netip"
 	"net/url"
 	"strconv"
 	"strings"
@@ -64,7 +65,7 @@ func ParseEffective(value string) (Origin, error) {
 	}
 	if origin.Scheme != "http" || portNumber != 80 {
 		if origin.Scheme != "https" || portNumber != 443 {
-			host := parsed.Hostname()
+			host := canonicalEffectiveHostname(parsed.Hostname())
 			if strings.Contains(host, ":") {
 				host = "[" + host + "]"
 			}
@@ -72,11 +73,19 @@ func ParseEffective(value string) (Origin, error) {
 			return Origin{Value: origin.Scheme + "://" + host, Scheme: origin.Scheme, Host: host}, nil
 		}
 	}
-	host := parsed.Hostname()
+	host := canonicalEffectiveHostname(parsed.Hostname())
 	if strings.Contains(host, ":") {
 		host = "[" + host + "]"
 	}
 	return Origin{Value: origin.Scheme + "://" + host, Scheme: origin.Scheme, Host: host}, nil
+}
+
+func canonicalEffectiveHostname(host string) string {
+	address, err := netip.ParseAddr(host)
+	if err != nil {
+		return host
+	}
+	return address.String()
 }
 
 // ParseAuthority validates and canonicalizes an HTTP Host authority without

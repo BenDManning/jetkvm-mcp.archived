@@ -190,6 +190,12 @@ func TestManagerVirtualMediaURLMountRequiresAnExactAllowedOrigin(t *testing.T) {
 			source:  "http://[fe80::1]:8080/install.iso",
 			wantURL: "http://[fe80::1]:8080/install.iso",
 		},
+		{
+			name:    "equivalent IPv6 literal spellings",
+			allowed: []string{"https://[2001:0db8:0:0:0:0:0:1]:8443"},
+			source:  "https://[2001:db8::1]:8443/install.iso",
+			wantURL: "https://[2001:db8::1]:8443/install.iso",
+		},
 		{name: "scheme mismatch", allowed: []string{"https://media.example.invalid"}, source: "http://media.example.invalid/install.iso"},
 		{name: "host mismatch", allowed: []string{"https://media.example.invalid"}, source: "https://other.example.invalid/install.iso"},
 		{name: "port mismatch", allowed: []string{"https://media.example.invalid:8443"}, source: "https://media.example.invalid:9443/install.iso"},

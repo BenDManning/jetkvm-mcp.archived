@@ -26,6 +26,8 @@ devices:
       - https://default.example.invalid:0443
       - http://127.0.0.1:8080
       - http://[::1]:8080
+      - https://[2001:0db8:0:0:0:0:0:1]:8443
+      - https://[2001:db8::1]:8443
     wake_on_lan:
       server:
         mac_address: "02:00:00:00:00:01"
@@ -50,7 +52,7 @@ http:
 	if first.Password != "a-secret" || !first.InsecureSkipVerify || first.MediaDirectory != "/media" || first.WakeOnLAN["server"].MACAddress != "02:00:00:00:00:01" {
 		t.Fatalf("first device = %#v", first)
 	}
-	if len(first.MediaURLAllowedOrigins) != 4 || first.MediaURLAllowedOrigins[0] != "https://media.example.invalid:8443" || first.MediaURLAllowedOrigins[1] != "https://default.example.invalid" || first.MediaURLAllowedOrigins[2] != "http://127.0.0.1:8080" || first.MediaURLAllowedOrigins[3] != "http://[::1]:8080" {
+	if len(first.MediaURLAllowedOrigins) != 5 || first.MediaURLAllowedOrigins[0] != "https://media.example.invalid:8443" || first.MediaURLAllowedOrigins[1] != "https://default.example.invalid" || first.MediaURLAllowedOrigins[2] != "http://127.0.0.1:8080" || first.MediaURLAllowedOrigins[3] != "http://[::1]:8080" || first.MediaURLAllowedOrigins[4] != "https://[2001:db8::1]:8443" {
 		t.Fatalf("media URL allowed origins = %#v", first.MediaURLAllowedOrigins)
 	}
 	if loaded.HTTPBearerToken != "http-secret" {

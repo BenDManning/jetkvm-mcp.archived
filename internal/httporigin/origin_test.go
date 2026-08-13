@@ -71,6 +71,8 @@ func TestParseEffectiveNormalizesOnlyDefaultPorts(t *testing.T) {
 		{input: "http://media.example.invalid:80", want: Origin{Value: "http://media.example.invalid", Scheme: "http", Host: "media.example.invalid"}},
 		{input: "https://media.example.invalid:0443", want: Origin{Value: "https://media.example.invalid", Scheme: "https", Host: "media.example.invalid"}},
 		{input: "https://[::1]:443", want: Origin{Value: "https://[::1]", Scheme: "https", Host: "[::1]"}},
+		{input: "https://[2001:0db8:0:0:0:0:0:1]:8443", want: Origin{Value: "https://[2001:db8::1]:8443", Scheme: "https", Host: "[2001:db8::1]:8443"}},
+		{input: "https://[0:0:0:0:0:ffff:c000:0280]:8443", want: Origin{Value: "https://[::ffff:192.0.2.128]:8443", Scheme: "https", Host: "[::ffff:192.0.2.128]:8443"}},
 		{input: "https://media.example.invalid:8443", want: Origin{Value: "https://media.example.invalid:8443", Scheme: "https", Host: "media.example.invalid:8443"}},
 		{input: "https://media.example.invalid:08443", want: Origin{Value: "https://media.example.invalid:8443", Scheme: "https", Host: "media.example.invalid:8443"}},
 	} {
