@@ -53,6 +53,8 @@ product rather than document the current integration.
   deployment responsibilities.
 - Native HTTP clients may omit `Origin`, but their public `Host` must still be
   configured and non-loopback binding still requires the bearer.
+- Browser same-origin and CORS behavior is refined by
+  [ADR 0007](0007-same-origin-browser-http.md).
 - Stateless operation makes retries simple at the transport layer, but callers
   must still avoid retrying uncertain physical mutations.
 - Features that require server-initiated streams or durable MCP sessions are not

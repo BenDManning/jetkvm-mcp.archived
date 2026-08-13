@@ -43,9 +43,9 @@ func Parse(value string) (Origin, error) {
 }
 
 // ParseEffective canonicalizes an HTTP(S) origin by effective port. It is used
-// for destination authorization where omitted and explicit default ports name
-// the same network endpoint. Parse remains available for transport policy that
-// treats the serialized authority literally.
+// for authorization where omitted and explicit default ports name the same
+// network endpoint. Parse remains available when the serialized authority is
+// intentionally significant.
 func ParseEffective(value string) (Origin, error) {
 	origin, err := Parse(value)
 	if err != nil {

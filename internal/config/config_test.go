@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -63,6 +64,34 @@ http:
 	}
 }
 
+func TestLoadNormalizesHTTPAdmissionOriginsByEffectivePort(t *testing.T) {
+	path := writeConfig(t, `
+devices:
+  lab:
+    url: https://lab.invalid
+http:
+  allowed_origins:
+    - https://MCP.EXAMPLE.INVALID
+    - https://mcp.example.invalid:443
+    - http://mcp.example.invalid
+    - http://mcp.example.invalid:080
+    - https://[2001:0db8:0:0:0:0:0:1]:8443
+    - https://[2001:db8::1]:8443
+`)
+	loaded, err := Load(path, func(string) (string, bool) { return "", false })
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{
+		"https://mcp.example.invalid",
+		"http://mcp.example.invalid",
+		"https://[2001:db8::1]:8443",
+	}
+	if !reflect.DeepEqual(loaded.HTTPAllowedOrigins, want) {
+		t.Fatalf("HTTP allowed origins = %#v, want %#v", loaded.HTTPAllowedOrigins, want)
+	}
+}
+
 func TestLoadRejectsUnknownInlineCredentialAndMissingEnvironment(t *testing.T) {
 	for _, test := range []struct {
 		name    string
@@ -74,6 +103,9 @@ func TestLoadRejectsUnknownInlineCredentialAndMissingEnvironment(t *testing.T) {
 		{name: "missing password environment", yaml: "devices:\n  lab:\n    url: https://lab.invalid\n    password_env: MISSING_PASSWORD\n", wantErr: "MISSING_PASSWORD"},
 		{name: "missing bearer environment", yaml: "devices:\n  lab:\n    url: https://lab.invalid\nhttp:\n  bearer_token_env: MISSING_TOKEN\n", wantErr: "MISSING_TOKEN"},
 		{name: "allowed origin credentials", yaml: "devices:\n  lab:\n    url: https://lab.invalid\nhttp:\n  allowed_origins:\n    - https://admin:secret@mcp.invalid\n", wantErr: "must not include credentials"},
+		{name: "allowed origin wildcard host", yaml: "devices:\n  lab:\n    url: https://lab.invalid\nhttp:\n  allowed_origins:\n    - https://*.mcp.invalid\n", wantErr: "without wildcard hosts"},
+		{name: "allowed origin bare wildcard host", yaml: "devices:\n  lab:\n    url: https://lab.invalid\nhttp:\n  allowed_origins:\n    - https://*\n", wantErr: "without wildcard hosts"},
+		{name: "allowed origin embedded wildcard host", yaml: "devices:\n  lab:\n    url: https://lab.invalid\nhttp:\n  allowed_origins:\n    - https://mcp.*.invalid\n", wantErr: "without wildcard hosts"},
 		{name: "allowed origin path", yaml: "devices:\n  lab:\n    url: https://lab.invalid\nhttp:\n  allowed_origins:\n    - https://mcp.invalid/path\n", wantErr: "without a path"},
 		{name: "allowed origin empty query", yaml: "devices:\n  lab:\n    url: https://lab.invalid\nhttp:\n  allowed_origins:\n    - https://mcp.invalid?\n", wantErr: "without a path"},
 		{name: "allowed origin empty fragment", yaml: "devices:\n  lab:\n    url: https://lab.invalid\nhttp:\n  allowed_origins:\n    - https://mcp.invalid#\n", wantErr: "without a path"},
