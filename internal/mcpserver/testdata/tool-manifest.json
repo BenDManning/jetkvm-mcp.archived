@@ -256,6 +256,62 @@
     },
     {
       "meta": null,
+      "name": "jetkvm_get_virtual_media_status",
+      "title": "",
+      "description": "Read the current virtual-media mount state of a configured JetKVM without changing it. Requires only a configured device. Returns the firmware-reported mount state from this read; it does not prove that a later mutation is safe.",
+      "icons": null,
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "device": {
+            "description": "JetKVM device name from the server configuration",
+            "type": "string"
+          }
+        },
+        "required": [
+          "device"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "device": {
+            "type": "string"
+          },
+          "mode": {
+            "type": "string"
+          },
+          "mounted": {
+            "type": "boolean"
+          },
+          "operation": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "device",
+          "operation",
+          "mounted",
+          "status"
+        ],
+        "type": "object"
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      }
+    },
+    {
+      "meta": null,
       "name": "jetkvm_keyboard",
       "title": "",
       "description": "Type bounded text or press one named key through JetKVM USB HID.",
@@ -324,6 +380,148 @@
         "destructiveHint": false,
         "idempotentHint": false,
         "openWorldHint": false,
+        "readOnlyHint": false
+      }
+    },
+    {
+      "meta": null,
+      "name": "jetkvm_mount_virtual_media_file",
+      "title": "",
+      "description": "Upload one confined local media file and replace the configured JetKVM's current mount. Requires a configured media directory and a non-empty relative path confined beneath it. Success means upload and mount RPCs completed, not that an external observer verified the mount; inspect status before another mutation.",
+      "icons": null,
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "device": {
+            "description": "JetKVM device name from the server configuration",
+            "type": "string"
+          },
+          "mode": {
+            "description": "read_only or read_write; defaults to read_only",
+            "enum": [
+              "read_only",
+              "read_write"
+            ],
+            "type": "string"
+          },
+          "path": {
+            "description": "relative path below the device's configured media directory",
+            "maxLength": 4096,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "device",
+          "path"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "device": {
+            "type": "string"
+          },
+          "mode": {
+            "type": "string"
+          },
+          "mounted": {
+            "type": "boolean"
+          },
+          "operation": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "device",
+          "operation",
+          "mounted",
+          "status"
+        ],
+        "type": "object"
+      },
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      }
+    },
+    {
+      "meta": null,
+      "name": "jetkvm_mount_virtual_media_url",
+      "title": "",
+      "description": "Ask the configured JetKVM to fetch an HTTP(S) URL and replace its current virtual-media mount. Requires a configured device and a non-empty HTTP(S) URL. Success acknowledges the firmware RPC but does not independently verify the resulting mount; inspect status before deciding whether another mutation is safe.",
+      "icons": null,
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "device": {
+            "description": "JetKVM device name from the server configuration",
+            "type": "string"
+          },
+          "mode": {
+            "description": "read_only or read_write; defaults to read_only",
+            "enum": [
+              "read_only",
+              "read_write"
+            ],
+            "type": "string"
+          },
+          "url": {
+            "description": "HTTP(S) media URL fetched by the configured JetKVM",
+            "maxLength": 4096,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "device",
+          "url"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "device": {
+            "type": "string"
+          },
+          "mode": {
+            "type": "string"
+          },
+          "mounted": {
+            "type": "boolean"
+          },
+          "operation": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "device",
+          "operation",
+          "mounted",
+          "status"
+        ],
+        "type": "object"
+      },
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": true,
         "readOnlyHint": false
       }
     },
@@ -630,9 +828,128 @@
     },
     {
       "meta": null,
+      "name": "jetkvm_unmount_virtual_media",
+      "title": "",
+      "description": "Unmount the configured JetKVM's current virtual media. Requires only a configured device; the request is valid even when no media is mounted. Success acknowledges the firmware RPC but does not independently verify that media is absent; inspect status before another mutation.",
+      "icons": null,
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "device": {
+            "description": "JetKVM device name from the server configuration",
+            "type": "string"
+          }
+        },
+        "required": [
+          "device"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "device": {
+            "type": "string"
+          },
+          "mode": {
+            "type": "string"
+          },
+          "mounted": {
+            "type": "boolean"
+          },
+          "operation": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "device",
+          "operation",
+          "mounted",
+          "status"
+        ],
+        "type": "object"
+      },
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      }
+    },
+    {
+      "meta": null,
+      "name": "jetkvm_upload_virtual_media_file",
+      "title": "",
+      "description": "Upload one confined local media file to the configured JetKVM without mounting it. Requires a configured media directory and a non-empty relative path confined beneath it. Success means the upload completed without a mount request; the appliance retains the stored file outside this process.",
+      "icons": null,
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "device": {
+            "description": "JetKVM device name from the server configuration",
+            "type": "string"
+          },
+          "path": {
+            "description": "relative path below the device's configured media directory",
+            "maxLength": 4096,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "device",
+          "path"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "device": {
+            "type": "string"
+          },
+          "mode": {
+            "type": "string"
+          },
+          "mounted": {
+            "type": "boolean"
+          },
+          "operation": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "device",
+          "operation",
+          "mounted",
+          "status"
+        ],
+        "type": "object"
+      },
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      }
+    },
+    {
+      "meta": null,
       "name": "jetkvm_virtual_media",
       "title": "",
-      "description": "Inspect, mount, unmount, or upload JetKVM virtual media using a URL or configured media-directory path.",
+      "description": "Deprecated compatibility tool for virtual-media status, mount, unmount, and upload operations; use the one-purpose jetkvm_*_virtual_media* tools instead.",
       "icons": null,
       "inputSchema": {
         "additionalProperties": false,
@@ -922,6 +1239,37 @@
         ]
       }
     },
+    "jetkvm_get_virtual_media_status": {
+      "content": [
+        {
+          "annotations": null,
+          "json": {
+            "device": "fixture-device",
+            "mounted": false,
+            "operation": "status",
+            "status": "completed"
+          },
+          "meta": null,
+          "type": "text"
+        }
+      ],
+      "inputRequests": null,
+      "isError": false,
+      "meta": {
+        "io.modelcontextprotocol/serverInfo": {
+          "name": "jetkvm-mcp",
+          "version": "contract-test"
+        }
+      },
+      "needsInput": false,
+      "requestState": "",
+      "structuredContent": {
+        "device": "fixture-device",
+        "mounted": false,
+        "operation": "status",
+        "status": "completed"
+      }
+    },
     "jetkvm_keyboard": {
       "content": [
         {
@@ -948,6 +1296,72 @@
       "structuredContent": {
         "device": "fixture-device",
         "operation": "press_key",
+        "status": "completed"
+      }
+    },
+    "jetkvm_mount_virtual_media_file": {
+      "content": [
+        {
+          "annotations": null,
+          "json": {
+            "device": "fixture-device",
+            "mounted": false,
+            "operation": "mount_file",
+            "source": "fixture.iso",
+            "status": "completed"
+          },
+          "meta": null,
+          "type": "text"
+        }
+      ],
+      "inputRequests": null,
+      "isError": false,
+      "meta": {
+        "io.modelcontextprotocol/serverInfo": {
+          "name": "jetkvm-mcp",
+          "version": "contract-test"
+        }
+      },
+      "needsInput": false,
+      "requestState": "",
+      "structuredContent": {
+        "device": "fixture-device",
+        "mounted": false,
+        "operation": "mount_file",
+        "source": "fixture.iso",
+        "status": "completed"
+      }
+    },
+    "jetkvm_mount_virtual_media_url": {
+      "content": [
+        {
+          "annotations": null,
+          "json": {
+            "device": "fixture-device",
+            "mounted": false,
+            "operation": "mount_url",
+            "source": "https://example.invalid/media.iso",
+            "status": "completed"
+          },
+          "meta": null,
+          "type": "text"
+        }
+      ],
+      "inputRequests": null,
+      "isError": false,
+      "meta": {
+        "io.modelcontextprotocol/serverInfo": {
+          "name": "jetkvm-mcp",
+          "version": "contract-test"
+        }
+      },
+      "needsInput": false,
+      "requestState": "",
+      "structuredContent": {
+        "device": "fixture-device",
+        "mounted": false,
+        "operation": "mount_url",
+        "source": "https://example.invalid/media.iso",
         "status": "completed"
       }
     },
@@ -1093,6 +1507,70 @@
       "structuredContent": {
         "action": "turn_host_dc_power_on",
         "device": "fixture-device",
+        "status": "completed"
+      }
+    },
+    "jetkvm_unmount_virtual_media": {
+      "content": [
+        {
+          "annotations": null,
+          "json": {
+            "device": "fixture-device",
+            "mounted": false,
+            "operation": "unmount",
+            "status": "completed"
+          },
+          "meta": null,
+          "type": "text"
+        }
+      ],
+      "inputRequests": null,
+      "isError": false,
+      "meta": {
+        "io.modelcontextprotocol/serverInfo": {
+          "name": "jetkvm-mcp",
+          "version": "contract-test"
+        }
+      },
+      "needsInput": false,
+      "requestState": "",
+      "structuredContent": {
+        "device": "fixture-device",
+        "mounted": false,
+        "operation": "unmount",
+        "status": "completed"
+      }
+    },
+    "jetkvm_upload_virtual_media_file": {
+      "content": [
+        {
+          "annotations": null,
+          "json": {
+            "device": "fixture-device",
+            "mounted": false,
+            "operation": "upload",
+            "source": "fixture.iso",
+            "status": "completed"
+          },
+          "meta": null,
+          "type": "text"
+        }
+      ],
+      "inputRequests": null,
+      "isError": false,
+      "meta": {
+        "io.modelcontextprotocol/serverInfo": {
+          "name": "jetkvm-mcp",
+          "version": "contract-test"
+        }
+      },
+      "needsInput": false,
+      "requestState": "",
+      "structuredContent": {
+        "device": "fixture-device",
+        "mounted": false,
+        "operation": "upload",
+        "source": "fixture.iso",
         "status": "completed"
       }
     },

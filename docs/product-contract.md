@@ -98,7 +98,7 @@ or point-in-time protocol observations.
 | YAML configuration | Declared: the current strict, unversioned grammar; no schema-version field or migration engine | Loader tests cover the grammar. The exact example is [`config.example.yaml`](../config.example.yaml); unknown fields, empty or over-1 MiB input, and multiple YAML documents are rejected. |
 | Server CLI | Declared: `--config`, optional `--http`, `--version`, and `debug rpc` with its documented flags, streams, and JSON result | Parser and integration tests exercise these entry points. Free-form diagnostic wording is not stable unless documented as structured output. |
 | Validator CLI | Declared source-run interface: required `--binary`, `--config`, and `--device`; sanitized JSON and exit status | Unit tests exercise argument and report shape. Physical qualification is absent until retained evidence satisfies the policy below. No validator binary is distributed. |
-| MCP tools, results, errors, and annotations | Declared: the 12 current tools, their schemas, structured results/content, tool-result error semantics, and annotations | [`server.go`](../internal/mcpserver/server.go), [`controls.go`](../internal/mcpserver/controls.go), and their tests are the executable source of truth. Execution failures use tool results with `IsError`, not protocol errors. |
+| MCP tools, results, errors, and annotations | Declared: the 17 current tools, their schemas, structured results/content, tool-result error semantics, and annotations | [`server.go`](../internal/mcpserver/server.go), [`controls.go`](../internal/mcpserver/controls.go), and their tests are the executable source of truth. Execution failures use tool results with `IsError`, not protocol errors. `jetkvm_virtual_media` is retained as a deprecated compatibility surface; clients should migrate each operation to the corresponding one-purpose `jetkvm_*_virtual_media*` tool. |
 | Binary artifacts | Intended: one `jetkvm-mcp` binary in `jetkvm-mcp_<version>_<os>_<arch>.tar.gz` for each declared native target, plus `checksums.txt` | [GoReleaser configuration](../.goreleaser.yaml) and CI establish naming and cross-build evidence, not publication or runtime qualification. |
 | Container artifacts | Intended: Linux amd64 and arm64, one `jetkvm-mcp` entry point, bundled FFmpeg, UID/GID 10001 | The [Dockerfile](../Dockerfile) and CI establish build intent. No image name, registry channel, publication, indefinite availability, or per-platform runtime qualification is promised. |
 
@@ -212,12 +212,13 @@ Non-loopback Streamable HTTP requires a bearer token. Public reverse-proxy Hosts
 and browser origins require explicit configuration. These controls do not add
 OAuth, user identity, authorization grants, or a general trust/control plane.
 
-Every current MCP tool reports `openWorldHint=false`. This is observed tool
-metadata, not proof that an operation has no external effect: `mount_url` asks
-the appliance to retrieve a caller-selected HTTP(S) URL. The allowed URL forms,
-fetching actor, credential prohibition, result/error behavior, and annotation
-are separately versioned public behavior. The current annotation is documented
-as-is and is not a firmware, network, or safety guarantee.
+`jetkvm_mount_virtual_media_url` reports `openWorldHint=true` because it asks the
+appliance to retrieve a caller-selected HTTP(S) URL. Every other current MCP tool
+reports `openWorldHint=false`. These annotations describe the tools' intended
+interaction boundaries; they are not proof that firmware, network, or hardware
+effects are contained. The allowed URL forms, fetching actor, credential
+prohibition, result/error behavior, and annotations are separately versioned
+public behavior.
 
 Tool execution failures use a versioned caller-visible JSON object with
 `version`, `code`, `message`, `outcome`, and `retryable`. Stable codes include

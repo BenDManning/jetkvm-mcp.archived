@@ -56,7 +56,7 @@ func TestServerPublishesExplicitPowerTools(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, want := len(listed.Tools), 12; got != want {
+	if got, want := len(listed.Tools), toolManifestCount; got != want {
 		t.Fatalf("tool count = %d, want %d", got, want)
 	}
 
