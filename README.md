@@ -165,6 +165,12 @@ The server does not emit CORS response headers. An admitted same-origin `OPTIONS
 - `jetkvm_wake_host_usb`
 - `jetkvm_wake_host_lan`
 
+Each `jetkvm_capture_screen` operation has a server-owned 30-second maximum,
+including fresh video-session setup, fresh-frame wait, and local PNG decode.
+This bound applies even when a caller provides no deadline; an earlier caller
+cancellation or deadline takes precedence. Expiry is returned through the
+normal read-error timeout result.
+
 `jetkvm_list_devices` returns configured device aliases in deterministic order
 with configuration-derived availability flags for URL mounting, local-file
 mounting and upload, and Wake-on-LAN. It does not open a device session or
