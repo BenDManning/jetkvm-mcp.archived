@@ -433,7 +433,14 @@ func keyboardSchema() *jsonschema.Schema {
 	minimum, maximum := 1, 4096
 	schema.Properties["text"].MinLength = &minimum
 	schema.Properties["text"].MaxLength = &maximum
+	// The HID text path supports tab, line breaks, and printable US-ASCII, so
+	// code-point and byte limits are equivalent for every admitted value.
+	schema.Properties["text"].Pattern = `^[	\n\r\x20-\x7E]+$`
 	schema.Properties["key"].MinLength = &minimum
+	// Every supported printable or named key contains a non-space ASCII byte.
+	// This rejects both ASCII and Unicode whitespace-only values while retaining
+	// handler-side trimming as defense in depth.
+	schema.Properties["key"].Pattern = `[!-~]`
 	setStringEnum(schema.Properties["modifiers"].Items, []string{"ctrl", "alt", "shift", "meta"})
 	schema.AnyOf = []*jsonschema.Schema{
 		operationCase(string(KeyboardTypeText), []string{"text"}, []string{"key", "modifiers"}),
@@ -481,6 +488,8 @@ func setStringEnum(property *jsonschema.Schema, values []string) {
 func setIntegerRange(schema *jsonschema.Schema, minimum, maximum int) {
 	min := float64(minimum)
 	max := float64(maximum)
+	schema.Type = "integer"
+	schema.Types = nil
 	schema.Minimum = &min
 	schema.Maximum = &max
 }

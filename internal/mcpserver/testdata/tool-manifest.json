@@ -417,6 +417,7 @@
           "key": {
             "description": "named key or one printable character for press_key",
             "minLength": 1,
+            "pattern": "[!-~]",
             "type": "string"
           },
           "modifiers": {
@@ -447,6 +448,7 @@
             "description": "text to type for type_text",
             "maxLength": 4096,
             "minLength": 1,
+            "pattern": "^[\t\\n\\r\\x20-\\x7E]+$",
             "type": "string"
           }
         },
@@ -956,19 +958,13 @@
             "description": "relative horizontal movement",
             "maximum": 127,
             "minimum": -128,
-            "type": [
-              "null",
-              "integer"
-            ]
+            "type": "integer"
           },
           "dy": {
             "description": "relative vertical movement",
             "maximum": 127,
             "minimum": -128,
-            "type": [
-              "null",
-              "integer"
-            ]
+            "type": "integer"
           },
           "operation": {
             "description": "typed mouse operation",
@@ -996,19 +992,13 @@
             "description": "absolute x coordinate from 0 through 32767",
             "maximum": 32767,
             "minimum": 0,
-            "type": [
-              "null",
-              "integer"
-            ]
+            "type": "integer"
           },
           "y": {
             "description": "absolute y coordinate from 0 through 32767",
             "maximum": 32767,
             "minimum": 0,
-            "type": [
-              "null",
-              "integer"
-            ]
+            "type": "integer"
           }
         },
         "required": [
