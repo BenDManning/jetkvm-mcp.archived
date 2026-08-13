@@ -34,7 +34,7 @@ keep their explicitly injected version.
 
 ### Option B: Download Binary
 
-Download the archive for your platform from the Forgejo **Releases** page, verify it against `checksums.txt`, extract `jetkvm-mcp`, and place it on `PATH`. FFmpeg must also be installed on the host.
+Download the archive for your platform from [GitHub Releases](https://github.com/BenDManning/jetkvm-mcp/releases), verify it against `checksums.txt`, extract `jetkvm-mcp`, and place it on `PATH`. FFmpeg must also be installed on the host.
 
 Release binaries are built for:
 
@@ -47,15 +47,17 @@ Windows is unsupported and not planned.
 
 ### Option C: Container image
 
-The image contains the Go server and FFmpeg in one image and runs one Go server process:
+The image contains the Go server and FFmpeg in one image and runs one Go server process. Until a GitHub Container Registry package is published under the release policy, build it from the canonical checkout:
 
 ```sh
+docker build -t jetkvm-mcp:local .
+
 docker run --rm -i \
   --network host \
   -v "$PWD/config.yaml:/config.yaml:ro" \
   -v "/srv/jetkvm-media:/media:ro" \
   -e JETKVM_LAB_PASSWORD \
-  github.com/BenDManning/jetkvm-mcp:latest \
+  jetkvm-mcp:local \
   --config /config.yaml
 ```
 
