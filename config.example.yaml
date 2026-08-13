@@ -12,7 +12,20 @@ devices:
     # wake_on_lan:
     #   server:
     #     mac_address: "02:00:00:00:00:01"
-    #     broadcast_ip: 192.0.2.255
+#     broadcast_ip: 192.0.2.255
+
+# Optional process-wide admission limits. Omitted values use conservative
+# defaults: 16 operations, 4 operations per device, 8 live sessions, and 2
+# captures/FFmpeg decoders. Each value must be 1 through 1024; per-device and
+# session limits cannot exceed operations, captures cannot exceed sessions, and
+# while captures cannot exceed sessions. Capacity exhaustion returns a busy tool
+# error immediately rather than queueing requests.
+# limits:
+#   max_operations: 16
+#   max_operations_per_device: 4
+#   max_sessions: 8
+#   max_captures: 2
+#   max_decoders: 2
 
 # Optional. Leave unset for loopback Streamable HTTP without authentication.
 # http:

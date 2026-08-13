@@ -46,21 +46,27 @@ func (manager *Manager) CaptureScreen(ctx context.Context, name string, request 
 	if maxWidth < 1 || maxWidth > 3840 || maxHeight < 1 || maxHeight > 2160 {
 		return mcpserver.CaptureResult{}, classifyOperationError(fmt.Errorf("%w: capture bounds", ErrUnsupportedInput), ToolOutcomeNotSent)
 	}
+	if !tryAcquire(manager.decoders) {
+		return mcpserver.CaptureResult{}, busyNotSent()
+	}
+	defer release(manager.decoders)
 	var annexB []byte
 	var capturedAt time.Time
-	err = manager.withSession(ctx, device, SessionProfileVideo, func(session Session) error {
-		var state struct {
-			Ready *bool `json:"ready"`
-		}
-		if err := session.Call(ctx, methodVideoState, nil, &state); err != nil {
+	err = manager.withOperation(ctx, device, false, true, func() error {
+		return manager.withSession(ctx, device, SessionProfileVideo, func(session Session) error {
+			var state struct {
+				Ready *bool `json:"ready"`
+			}
+			if err := session.Call(ctx, methodVideoState, nil, &state); err != nil {
+				return err
+			}
+			if state.Ready != nil && !*state.Ready {
+				return ErrNoSignal
+			}
+			var err error
+			annexB, capturedAt, err = session.CaptureH264(ctx)
 			return err
-		}
-		if state.Ready != nil && !*state.Ready {
-			return ErrNoSignal
-		}
-		var err error
-		annexB, capturedAt, err = session.CaptureH264(ctx)
-		return err
+		})
 	})
 	if err != nil {
 		return mcpserver.CaptureResult{}, classifyReadFailure(err)

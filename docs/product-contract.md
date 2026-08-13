@@ -105,7 +105,7 @@ or point-in-time protocol observations.
 | Native OS/architecture | Declared binary targets: `linux/amd64`, `linux/arm64`, `darwin/amd64`, `darwin/arm64` | CI cross-builds all four. Runtime qualification for every target is not recorded. Windows and all unlisted combinations are unsupported. |
 | FFmpeg | External prerequisite: an executable named `ffmpeg` on `PATH` for normal serving and capture | Startup and decoder tests exercise executable discovery and bounded invocation. No implementation or version range is qualified; compatibility is unknown beyond successful checks in a specific environment. |
 | JetKVM model/firmware | No model or firmware version is currently qualified or supported by a positive compatibility claim | Upstream source observations, fake-device tests, and validator runs are evidence, not guarantees. Claim requirements are defined below. |
-| YAML configuration | Declared: the current strict, unversioned grammar; no schema-version field or migration engine | Loader tests cover the grammar. The exact example is [`config.example.yaml`](../config.example.yaml); unknown fields, empty or over-1 MiB input, multiple YAML documents, and device-URL user information/query/fragment components are rejected. Device URL path prefixes remain supported. |
+| YAML configuration | Declared: the current strict, unversioned grammar; no schema-version field or migration engine | Loader tests cover the grammar. The exact example is [`config.example.yaml`](../config.example.yaml); unknown fields, empty or over-1 MiB input, multiple YAML documents, unsafe admission limits, and device-URL user information/query/fragment components are rejected. Device URL path prefixes remain supported. |
 | Server CLI | Declared: help, `--config`, optional `--http`, `--version`, offline `config validate`, and `debug rpc` with its documented flags, streams, and JSON result | Parser and integration tests exercise these entry points. `debug rpc` permits only `ping`, `getLocalVersion`, and `getActiveExtension` by default; every other method requires per-invocation `--unsafe-acknowledge-risk`. Free-form diagnostic wording is not stable unless documented as structured output. |
 | Validator CLI | Declared source-run interface: required `--binary`, `--config`, and `--device`; sanitized JSON and exit status | Unit tests exercise argument and report shape. Physical qualification is absent until retained evidence satisfies the policy below. No validator binary is distributed. |
 | MCP tools, results, errors, and annotations | Declared: the 18 current tools, their schemas, structured results/content, tool-result error semantics, and annotations | [`server.go`](../internal/mcpserver/server.go), [`controls.go`](../internal/mcpserver/controls.go), and their tests are the executable source of truth. Execution failures use tool results with `IsError`, not protocol errors. `jetkvm_list_devices` returns sorted configured aliases and configuration-derived availability flags; it does not open a device session or qualify firmware capabilities. `jetkvm_virtual_media` is retained as a deprecated compatibility surface; clients should migrate each operation to the corresponding one-purpose `jetkvm_*_virtual_media*` tool. |
@@ -192,6 +192,15 @@ semantics, and defaults. Additive optional fields are normally minor. Removal,
 rename, newly required fields, or incompatible semantic/default changes are
 major. Compatible validation fixes are patch unless they invalidate previously
 accepted meaningful configurations, in which case they are major.
+
+The optional `limits` mapping controls process-wide admission with defaults of
+16 operations, 4 operations per device, 8 sessions, 2 captures, and 2 decoders.
+Every limit is an integer from 1 through 1024. Per-device/session capacity may
+not exceed global operations, and capture capacity may not exceed sessions.
+Exhaustion returns the existing
+non-retryable `busy`/`not_sent` tool error without device/provider dispatch and
+does not queue work. Mutating HID, power, and virtual-media operations serialize
+per device; waiting for that one bounded mutation slot observes cancellation.
 
 A deprecation must identify the affected field or value and the replacement,
 show a safe migration, retain the old form for the normal deprecation period,

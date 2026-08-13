@@ -9,7 +9,6 @@ import (
 	"net/url"
 	"sort"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/BenDManning/jetkvm-mcp/internal/mcpserver"
@@ -25,6 +24,73 @@ const (
 	methodATXState          = "getATXState"
 	methodDCPowerState      = "getDCPowerState"
 )
+
+const (
+	defaultMaxOperations          = 16
+	defaultMaxOperationsPerDevice = 4
+	defaultMaxSessions            = 8
+	defaultMaxCaptures            = 2
+	defaultMaxDecoders            = 2
+	maxAdmissionLimit             = 1024
+)
+
+// Limits bounds in-flight work. Every value must be positive and no greater
+// than 1024. Omitted values use conservative defaults.
+type Limits struct {
+	MaxOperations          int
+	MaxOperationsPerDevice int
+	MaxSessions            int
+	MaxCaptures            int
+	MaxDecoders            int
+}
+
+func DefaultLimits() Limits {
+	return Limits{
+		MaxOperations: defaultMaxOperations, MaxOperationsPerDevice: defaultMaxOperationsPerDevice,
+		MaxSessions: defaultMaxSessions, MaxCaptures: defaultMaxCaptures, MaxDecoders: defaultMaxDecoders,
+	}
+}
+
+func (limits Limits) normalized() (Limits, error) {
+	defaults := DefaultLimits()
+	if limits.MaxOperations == 0 {
+		limits.MaxOperations = defaults.MaxOperations
+	}
+	if limits.MaxOperationsPerDevice == 0 {
+		limits.MaxOperationsPerDevice = defaults.MaxOperationsPerDevice
+	}
+	if limits.MaxSessions == 0 {
+		limits.MaxSessions = defaults.MaxSessions
+	}
+	if limits.MaxCaptures == 0 {
+		limits.MaxCaptures = defaults.MaxCaptures
+	}
+	if limits.MaxDecoders == 0 {
+		limits.MaxDecoders = defaults.MaxDecoders
+	}
+	for _, value := range []int{limits.MaxOperations, limits.MaxOperationsPerDevice, limits.MaxSessions, limits.MaxCaptures, limits.MaxDecoders} {
+		if value < 1 || value > maxAdmissionLimit {
+			return Limits{}, errors.New("admission limits must be between 1 and 1024")
+		}
+	}
+	if limits.MaxOperationsPerDevice > limits.MaxOperations || limits.MaxSessions > limits.MaxOperations || limits.MaxCaptures > limits.MaxSessions {
+		return Limits{}, errors.New("admission limits exceed their parent capacity")
+	}
+	return limits, nil
+}
+
+// ValidateLimits rejects unsafe capacity combinations without changing values.
+func ValidateLimits(limits Limits) (Limits, error) {
+	for _, value := range []int{limits.MaxOperations, limits.MaxOperationsPerDevice, limits.MaxSessions, limits.MaxCaptures, limits.MaxDecoders} {
+		if value < 1 || value > maxAdmissionLimit {
+			return Limits{}, errors.New("admission limits must be between 1 and 1024")
+		}
+	}
+	if limits.MaxOperationsPerDevice > limits.MaxOperations || limits.MaxSessions > limits.MaxOperations || limits.MaxCaptures > limits.MaxSessions {
+		return Limits{}, errors.New("admission limits exceed their parent capacity")
+	}
+	return limits, nil
+}
 
 type WakeOnLANTarget struct {
 	MACAddress  string
@@ -60,9 +126,14 @@ type SessionProvider interface {
 
 type Manager struct {
 	devices    map[string]DeviceConfig
-	mediaLocks map[string]*sync.Mutex
 	provider   SessionProvider
 	decoder    Decoder
+	operations chan struct{}
+	deviceOps  map[string]chan struct{}
+	sessions   chan struct{}
+	captures   chan struct{}
+	decoders   chan struct{}
+	mutations  map[string]chan struct{}
 }
 
 func NewManager(devices []DeviceConfig, provider SessionProvider, options ...ManagerOption) (*Manager, error) {
@@ -70,9 +141,10 @@ func NewManager(devices []DeviceConfig, provider SessionProvider, options ...Man
 		return nil, errors.New("session provider is required")
 	}
 	manager := &Manager{
-		devices:    make(map[string]DeviceConfig, len(devices)),
-		mediaLocks: make(map[string]*sync.Mutex, len(devices)),
-		provider:   provider,
+		devices:   make(map[string]DeviceConfig, len(devices)),
+		provider:  provider,
+		deviceOps: make(map[string]chan struct{}, len(devices)),
+		mutations: make(map[string]chan struct{}, len(devices)),
 	}
 	for _, candidate := range devices {
 		name := strings.TrimSpace(candidate.Name)
@@ -106,7 +178,6 @@ func NewManager(devices []DeviceConfig, provider SessionProvider, options ...Man
 			}
 		}
 		manager.devices[name] = candidate
-		manager.mediaLocks[name] = &sync.Mutex{}
 	}
 	if len(manager.devices) == 0 {
 		return nil, errors.New("at least one device is required")
@@ -119,7 +190,33 @@ func NewManager(devices []DeviceConfig, provider SessionProvider, options ...Man
 			return nil, err
 		}
 	}
+	if manager.operations == nil {
+		if err := WithLimits(DefaultLimits())(manager); err != nil {
+			return nil, err
+		}
+	}
 	return manager, nil
+}
+
+// WithLimits configures bounded, process-wide admission. Capacity exhaustion
+// rejects immediately; mutation sequencing waits only while the caller context
+// remains active.
+func WithLimits(limits Limits) ManagerOption {
+	return func(manager *Manager) error {
+		validated, err := limits.normalized()
+		if err != nil {
+			return err
+		}
+		manager.operations = make(chan struct{}, validated.MaxOperations)
+		manager.sessions = make(chan struct{}, validated.MaxSessions)
+		manager.captures = make(chan struct{}, validated.MaxCaptures)
+		manager.decoders = make(chan struct{}, validated.MaxDecoders)
+		for name := range manager.devices {
+			manager.deviceOps[name] = make(chan struct{}, validated.MaxOperationsPerDevice)
+			manager.mutations[name] = make(chan struct{}, 1)
+		}
+		return nil
+	}
 }
 
 func (manager *Manager) ListDevices(context.Context) (mcpserver.DeviceList, error) {
@@ -151,80 +248,82 @@ func (manager *Manager) Status(ctx context.Context, name string) (mcpserver.Stat
 		return mcpserver.Status{}, err
 	}
 	status := mcpserver.Status{Device: device.Name}
-	err = manager.withSession(ctx, device, SessionProfileData, func(session Session) error {
-		var pong string
-		if err := session.Call(ctx, methodPing, nil, &pong); err != nil {
-			return err
-		}
-		if pong != "pong" {
-			return fmt.Errorf("%w: ping result", ErrInvalidResponse)
-		}
-		status.Connected = true
-
-		var version struct {
-			Application string `json:"appVersion"`
-			System      string `json:"systemVersion"`
-		}
-		if err := session.Call(ctx, methodLocalVersion, nil, &version); err != nil {
-			status.Warnings = append(status.Warnings, "version unavailable")
-		} else {
-			status.Application, status.System = version.Application, version.System
-		}
-
-		if err := session.Call(ctx, methodActiveExtension, nil, &status.Extension); err != nil {
-			status.Warnings = append(status.Warnings, "active extension unavailable")
-		}
-
-		var media *firmwareVirtualMediaState
-		if err := session.Call(ctx, methodVirtualMediaState, nil, &media); err != nil {
-			status.Warnings = append(status.Warnings, "virtual media unavailable")
-		} else if projected, projectErr := publicVirtualMediaState(media); projectErr != nil {
-			status.Warnings = append(status.Warnings, "virtual media unavailable")
-		} else {
-			status.VirtualMedia = projected
-		}
-
-		var video struct {
-			Ready  *bool `json:"ready"`
-			Width  int   `json:"width"`
-			Height int   `json:"height"`
-			FPS    int   `json:"fps"`
-		}
-		if err := session.Call(ctx, methodVideoState, nil, &video); err != nil {
-			status.Warnings = append(status.Warnings, "video unavailable")
-		} else {
-			status.VideoReady, status.VideoWidth, status.VideoHeight, status.VideoFPS = video.Ready, video.Width, video.Height, video.FPS
-		}
-
-		if err := session.Call(ctx, methodUSBState, nil, &status.USBState); err != nil {
-			status.Warnings = append(status.Warnings, "USB unavailable")
-		} else {
-			attached := status.USBState != "not attached" && status.USBState != ""
-			status.USBWakeAttached = &attached
-		}
-
-		switch status.Extension {
-		case "atx-power":
-			var atx struct {
-				Power *bool `json:"power"`
+	err = manager.withOperation(ctx, device, false, false, func() error {
+		return manager.withSession(ctx, device, SessionProfileData, func(session Session) error {
+			var pong string
+			if err := session.Call(ctx, methodPing, nil, &pong); err != nil {
+				return err
 			}
-			if err := session.Call(ctx, methodATXState, nil, &atx); err != nil {
-				status.Warnings = append(status.Warnings, "ATX state unavailable")
+			if pong != "pong" {
+				return fmt.Errorf("%w: ping result", ErrInvalidResponse)
+			}
+			status.Connected = true
+
+			var version struct {
+				Application string `json:"appVersion"`
+				System      string `json:"systemVersion"`
+			}
+			if err := session.Call(ctx, methodLocalVersion, nil, &version); err != nil {
+				status.Warnings = append(status.Warnings, "version unavailable")
 			} else {
-				status.ATXPowerOn = atx.Power
+				status.Application, status.System = version.Application, version.System
 			}
-		case "dc-power":
-			var dc struct {
-				On      *bool   `json:"isOn"`
-				Voltage float64 `json:"voltage"`
+
+			if err := session.Call(ctx, methodActiveExtension, nil, &status.Extension); err != nil {
+				status.Warnings = append(status.Warnings, "active extension unavailable")
 			}
-			if err := session.Call(ctx, methodDCPowerState, nil, &dc); err != nil {
-				status.Warnings = append(status.Warnings, "DC state unavailable")
+
+			var media *firmwareVirtualMediaState
+			if err := session.Call(ctx, methodVirtualMediaState, nil, &media); err != nil {
+				status.Warnings = append(status.Warnings, "virtual media unavailable")
+			} else if projected, projectErr := publicVirtualMediaState(media); projectErr != nil {
+				status.Warnings = append(status.Warnings, "virtual media unavailable")
 			} else {
-				status.DCPowerOn, status.DCVoltage = dc.On, dc.Voltage
+				status.VirtualMedia = projected
 			}
-		}
-		return nil
+
+			var video struct {
+				Ready  *bool `json:"ready"`
+				Width  int   `json:"width"`
+				Height int   `json:"height"`
+				FPS    int   `json:"fps"`
+			}
+			if err := session.Call(ctx, methodVideoState, nil, &video); err != nil {
+				status.Warnings = append(status.Warnings, "video unavailable")
+			} else {
+				status.VideoReady, status.VideoWidth, status.VideoHeight, status.VideoFPS = video.Ready, video.Width, video.Height, video.FPS
+			}
+
+			if err := session.Call(ctx, methodUSBState, nil, &status.USBState); err != nil {
+				status.Warnings = append(status.Warnings, "USB unavailable")
+			} else {
+				attached := status.USBState != "not attached" && status.USBState != ""
+				status.USBWakeAttached = &attached
+			}
+
+			switch status.Extension {
+			case "atx-power":
+				var atx struct {
+					Power *bool `json:"power"`
+				}
+				if err := session.Call(ctx, methodATXState, nil, &atx); err != nil {
+					status.Warnings = append(status.Warnings, "ATX state unavailable")
+				} else {
+					status.ATXPowerOn = atx.Power
+				}
+			case "dc-power":
+				var dc struct {
+					On      *bool   `json:"isOn"`
+					Voltage float64 `json:"voltage"`
+				}
+				if err := session.Call(ctx, methodDCPowerState, nil, &dc); err != nil {
+					status.Warnings = append(status.Warnings, "DC state unavailable")
+				} else {
+					status.DCPowerOn, status.DCVoltage = dc.On, dc.Voltage
+				}
+			}
+			return nil
+		})
 	})
 	if err != nil {
 		return mcpserver.Status{}, classifyReadFailure(err)
@@ -241,8 +340,10 @@ func (manager *Manager) Power(ctx context.Context, name string, action mcpserver
 	if err != nil {
 		return mcpserver.PowerResult{}, err
 	}
-	if err := manager.withSession(ctx, device, SessionProfileData, func(session Session) error {
-		return session.Call(ctx, method, params, nil)
+	if err := manager.withOperation(ctx, device, true, false, func() error {
+		return manager.withSession(ctx, device, SessionProfileData, func(session Session) error {
+			return session.Call(ctx, method, params, nil)
+		})
 	}); err != nil {
 		return mcpserver.PowerResult{}, err
 	}
@@ -250,6 +351,10 @@ func (manager *Manager) Power(ctx context.Context, name string, action mcpserver
 }
 
 func (manager *Manager) withSession(ctx context.Context, device DeviceConfig, profile SessionProfile, operation func(Session) error) error {
+	if !tryAcquire(manager.sessions) {
+		return busyNotSent()
+	}
+	defer release(manager.sessions)
 	invoked := false
 	err := manager.provider.WithSession(ctx, device, profile, func(session Session) error {
 		invoked = true
@@ -265,7 +370,70 @@ func (manager *Manager) withSession(ctx context.Context, device DeviceConfig, pr
 	return err
 }
 
+func (manager *Manager) withOperation(ctx context.Context, device DeviceConfig, mutation, capture bool, operation func() error) error {
+	if !tryAcquire(manager.operations) {
+		return busyNotSent()
+	}
+	if !tryAcquire(manager.deviceOps[device.Name]) {
+		release(manager.operations)
+		return busyNotSent()
+	}
+	return manager.runOperation(ctx, device, mutation, capture, operation)
+}
+
+func (manager *Manager) runOperation(ctx context.Context, device DeviceConfig, mutation, capture bool, operation func() error) error {
+	defer release(manager.operations)
+	defer release(manager.deviceOps[device.Name])
+	if capture {
+		if !tryAcquire(manager.captures) {
+			return busyNotSent()
+		}
+		defer release(manager.captures)
+	}
+	if mutation {
+		if err := acquireContext(ctx, manager.mutations[device.Name]); err != nil {
+			return classifyOperationError(err, ToolOutcomeNotSent)
+		}
+		defer release(manager.mutations[device.Name])
+	}
+	return operation()
+}
+
+func (manager *Manager) withDecoder(ctx context.Context, operation func() error) error {
+	if !tryAcquire(manager.decoders) {
+		return busyNotSent()
+	}
+	defer release(manager.decoders)
+	return operation()
+}
+
+func tryAcquire(permits chan struct{}) bool {
+	select {
+	case permits <- struct{}{}:
+		return true
+	default:
+		return false
+	}
+}
+
+func acquireContext(ctx context.Context, permits chan struct{}) error {
+	select {
+	case permits <- struct{}{}:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func release(permits chan struct{}) { <-permits }
+
+func busyNotSent() error { return classifyOperationError(ErrBusy, ToolOutcomeNotSent) }
+
 func classifyReadFailure(err error) error {
+	var classified *OperationError
+	if errors.As(err, &classified) {
+		return err
+	}
 	return classifyOperationError(err, ToolOutcomeFailed)
 }
 

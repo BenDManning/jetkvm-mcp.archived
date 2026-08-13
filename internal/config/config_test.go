@@ -92,6 +92,45 @@ http:
 	}
 }
 
+func TestLoadAdmissionLimitsDefaultsOverridesAndRejectsUnsafeValues(t *testing.T) {
+	path := writeConfig(t, `
+devices:
+  lab:
+    url: https://lab.invalid
+`)
+	loaded, err := Load(path, func(string) (string, bool) { return "", false })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Limits.MaxOperations != 16 || loaded.Limits.MaxOperationsPerDevice != 4 || loaded.Limits.MaxSessions != 8 || loaded.Limits.MaxCaptures != 2 || loaded.Limits.MaxDecoders != 2 {
+		t.Fatalf("default limits = %#v", loaded.Limits)
+	}
+
+	loaded, err = Load(writeConfig(t, `
+limits:
+  max_operations: 12
+  max_operations_per_device: 3
+  max_sessions: 6
+  max_captures: 2
+  max_decoders: 1
+devices:
+  lab:
+    url: https://lab.invalid
+`), func(string) (string, bool) { return "", false })
+	if err != nil || loaded.Limits.MaxOperations != 12 || loaded.Limits.MaxOperationsPerDevice != 3 || loaded.Limits.MaxSessions != 6 || loaded.Limits.MaxCaptures != 2 || loaded.Limits.MaxDecoders != 1 {
+		t.Fatalf("override limits = %#v, error = %v", loaded.Limits, err)
+	}
+
+	for _, source := range []string{
+		"max_operations: 0", "max_operations_per_device: -1", "max_sessions: 1025", "unknown: 1",
+	} {
+		_, err := Load(writeConfig(t, "limits:\n  "+source+"\ndevices:\n  lab:\n    url: https://lab.invalid\n"), func(string) (string, bool) { return "", false })
+		if err == nil {
+			t.Fatalf("limits %q accepted", source)
+		}
+	}
+}
+
 func TestLoadRejectsUnknownInlineCredentialAndMissingEnvironment(t *testing.T) {
 	for _, test := range []struct {
 		name    string
