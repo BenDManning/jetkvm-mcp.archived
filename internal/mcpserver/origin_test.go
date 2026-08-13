@@ -296,6 +296,33 @@ func TestHTTPHandlerRejectsConfiguredPublicOriginMismatches(t *testing.T) {
 	}
 }
 
+func TestHTTPHandlerMatchesEffectivePublicOrigins(t *testing.T) {
+	for _, test := range []struct {
+		name       string
+		configured string
+		host       string
+		origin     string
+	}{
+		{name: "configured explicit HTTPS default request implicit", configured: "https://mcp.example.invalid:443", host: "mcp.example.invalid", origin: "https://mcp.example.invalid"},
+		{name: "configured implicit HTTPS default request explicit", configured: "https://mcp.example.invalid", host: "mcp.example.invalid:443", origin: "https://mcp.example.invalid:443"},
+		{name: "configured explicit HTTP default request implicit", configured: "http://mcp.example.invalid:80", host: "mcp.example.invalid", origin: "http://mcp.example.invalid"},
+		{name: "configured implicit HTTP default request explicit", configured: "http://mcp.example.invalid", host: "mcp.example.invalid:80", origin: "http://mcp.example.invalid:80"},
+		{name: "equivalent IPv6 spelling", configured: "https://[2001:0db8:0:0:0:0:0:1]:8443", host: "[2001:db8::1]:8443", origin: "https://[2001:db8::1]:8443"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			handler := NewHTTPHandler(New(&recordingDevice{}, "test"), "", test.configured)
+			request := httptest.NewRequest(http.MethodOptions, "http://backend.invalid"+MCPPath, nil)
+			request.Host = test.host
+			request.Header.Set("Origin", test.origin)
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, request)
+			if response.Code != http.StatusMethodNotAllowed || response.Header().Get("Allow") != http.MethodPost {
+				t.Fatalf("status=%d Allow=%q; want 405 POST", response.Code, response.Header().Get("Allow"))
+			}
+		})
+	}
+}
+
 func TestHTTPHandlerRejectsMalformedConfiguredOrigins(t *testing.T) {
 	for _, test := range []struct {
 		name       string

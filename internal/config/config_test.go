@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -60,6 +61,34 @@ http:
 	}
 	if len(loaded.HTTPAllowedOrigins) != 1 || loaded.HTTPAllowedOrigins[0] != "https://mcp.example.invalid" {
 		t.Fatalf("HTTP allowed origins = %#v", loaded.HTTPAllowedOrigins)
+	}
+}
+
+func TestLoadNormalizesHTTPAdmissionOriginsByEffectivePort(t *testing.T) {
+	path := writeConfig(t, `
+devices:
+  lab:
+    url: https://lab.invalid
+http:
+  allowed_origins:
+    - https://MCP.EXAMPLE.INVALID
+    - https://mcp.example.invalid:443
+    - http://mcp.example.invalid
+    - http://mcp.example.invalid:080
+    - https://[2001:0db8:0:0:0:0:0:1]:8443
+    - https://[2001:db8::1]:8443
+`)
+	loaded, err := Load(path, func(string) (string, bool) { return "", false })
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{
+		"https://mcp.example.invalid",
+		"http://mcp.example.invalid",
+		"https://[2001:db8::1]:8443",
+	}
+	if !reflect.DeepEqual(loaded.HTTPAllowedOrigins, want) {
+		t.Fatalf("HTTP allowed origins = %#v, want %#v", loaded.HTTPAllowedOrigins, want)
 	}
 }
 

@@ -247,6 +247,10 @@ supported exact public endpoint. Rejecting those values, and rejecting present
 empty or duplicate Origin headers before authentication, are compatible security
 validation corrections within the documented exact-Origin contract rather than
 the removal of meaningful supported configuration or a new CORS surface.
+Likewise, canonicalizing equivalent IP literals and treating explicit HTTP port
+80 or HTTPS port 443 as the corresponding omitted effective port makes endpoint
+admission match browser-origin semantics; scheme and non-default ports remain
+distinct.
 
 `jetkvm_mount_virtual_media_url` reports `openWorldHint=true` because it asks the
 appliance to retrieve a caller-selected HTTP(S) URL from a configured exact

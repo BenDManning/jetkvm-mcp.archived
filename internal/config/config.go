@@ -155,7 +155,7 @@ func Load(path string, lookup LookupEnvironment) (Runtime, error) {
 }
 
 func normalizeHTTPOrigin(value string) (string, error) {
-	origin, err := httporigin.Parse(value)
+	origin, err := httporigin.ParseEffective(value)
 	if errors.Is(err, httporigin.ErrCredentials) {
 		return "", errors.New("HTTP allowed origin must not include credentials")
 	}

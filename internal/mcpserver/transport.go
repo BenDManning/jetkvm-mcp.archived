@@ -63,14 +63,17 @@ func postOnly(next http.Handler) http.Handler {
 
 func trustedHostAndOrigin(next http.Handler, configured []string) http.Handler {
 	allowedOrigins := make(map[string]struct{}, len(configured))
-	allowedHosts := make(map[string]struct{}, len(configured))
+	configuredOrigins := make([]httporigin.Origin, 0, len(configured))
 	for _, value := range configured {
-		origin, err := httporigin.Parse(value)
+		origin, err := httporigin.ParseEffective(value)
 		if err != nil || strings.Contains(origin.Host, "*") {
 			continue
 		}
+		if _, duplicate := allowedOrigins[origin.Value]; duplicate {
+			continue
+		}
 		allowedOrigins[origin.Value] = struct{}{}
-		allowedHosts[origin.Host] = struct{}{}
+		configuredOrigins = append(configuredOrigins, origin)
 	}
 	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		requestHost, err := httporigin.ParseAuthority(request.Host)
@@ -79,7 +82,17 @@ func trustedHostAndOrigin(next http.Handler, configured []string) http.Handler {
 			return
 		}
 		loopback := loopbackHTTPHost(requestHost)
-		if _, allowed := allowedHosts[requestHost]; !loopback && !allowed {
+		hostAllowed := loopback
+		if !hostAllowed {
+			for _, configuredOrigin := range configuredOrigins {
+				requestOrigin, parseErr := httporigin.ParseEffective(configuredOrigin.Scheme + "://" + requestHost)
+				if parseErr == nil && requestOrigin.Host == configuredOrigin.Host {
+					hostAllowed = true
+					break
+				}
+			}
+		}
+		if !hostAllowed {
 			http.Error(response, "forbidden host", http.StatusForbidden)
 			return
 		}
@@ -93,8 +106,9 @@ func trustedHostAndOrigin(next http.Handler, configured []string) http.Handler {
 			return
 		}
 		origin := strings.TrimSpace(originHeaders[0])
-		parsedOrigin, err := httporigin.Parse(origin)
-		if err != nil || parsedOrigin.Host != requestHost {
+		parsedOrigin, err := httporigin.ParseEffective(origin)
+		requestOrigin, requestOriginErr := httporigin.ParseEffective(parsedOrigin.Scheme + "://" + requestHost)
+		if err != nil || requestOriginErr != nil || parsedOrigin.Host != requestOrigin.Host {
 			http.Error(response, "forbidden origin", http.StatusForbidden)
 			return
 		}
