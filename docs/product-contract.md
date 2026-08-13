@@ -3,7 +3,7 @@
 Status: maintained.
 
 Ownership: this document owns JetKVM MCP product scope, versioning,
-compatibility, and support policy. Changes require an accepted Forgejo objective
+compatibility, and support policy. Changes require an accepted GitHub issue
 and repository review. Review is required for every release and whenever a
 public surface, prerequisite, support matrix, exclusion, or compatibility claim
 changes. The [README](../README.md) owns setup and operation; the
