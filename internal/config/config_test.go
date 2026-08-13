@@ -56,7 +56,7 @@ func TestLoadRejectsUnknownInlineCredentialAndMissingEnvironment(t *testing.T) {
 		yaml    string
 		wantErr string
 	}{
-		{name: "inline password", yaml: "devices:\n  lab:\n    url: https://lab.invalid\n    password: secret\n", wantErr: "field password not found"},
+		{name: "inline password", yaml: "devices:\n  lab:\n    url: https://lab.invalid\n    password: secret\n", wantErr: "decode config"},
 		{name: "URL credentials", yaml: "devices:\n  lab:\n    url: https://admin:secret@lab.invalid\n", wantErr: "URL must not include credentials"},
 		{name: "missing password environment", yaml: "devices:\n  lab:\n    url: https://lab.invalid\n    password_env: MISSING_PASSWORD\n", wantErr: "MISSING_PASSWORD"},
 		{name: "missing bearer environment", yaml: "devices:\n  lab:\n    url: https://lab.invalid\nhttp:\n  bearer_token_env: MISSING_TOKEN\n", wantErr: "MISSING_TOKEN"},
@@ -85,6 +85,17 @@ func TestLoadRejectsTrailingYAMLDocument(t *testing.T) {
 	_, err := Load(writeConfig(t, "devices:\n  lab:\n    url: https://lab.invalid\n---\ndevices: {}\n"), os.LookupEnv)
 	if err == nil {
 		t.Fatal("trailing YAML document accepted")
+	}
+}
+
+func TestLoadOpenErrorDoesNotExposeConfigPath(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "PRIVATE-CONFIG-PATH-SENTINEL.yaml")
+	_, err := Load(path, os.LookupEnv)
+	if err == nil {
+		t.Fatal("missing configuration was accepted")
+	}
+	if strings.Contains(err.Error(), "PRIVATE-CONFIG-PATH-SENTINEL") {
+		t.Fatalf("error leaked configuration path: %v", err)
 	}
 }
 

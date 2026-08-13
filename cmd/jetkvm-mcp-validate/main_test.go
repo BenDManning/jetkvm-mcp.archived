@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"image"
 	"image/color"
@@ -107,5 +108,24 @@ func TestReportContainsOnlySanitizedMetadata(t *testing.T) {
 		if bytes.Contains(data, []byte(private)) {
 			t.Fatalf("report contains private/runtime value %q: %s", private, data)
 		}
+	}
+}
+
+func TestValidationFailureReportExcludesPrivateInputSentinel(t *testing.T) {
+	const sentinel = "JETKVM-PRIVATE-SENTINEL-7eea7c9f"
+	report := runValidation(context.Background(), options{
+		binary: "/missing/" + sentinel,
+		config: "/private/" + sentinel + ".yaml",
+		device: sentinel,
+	})
+	data, err := json.Marshal(report)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Result != "fail" || report.Failed != "connect" {
+		t.Fatalf("report = %#v", report)
+	}
+	if bytes.Contains(data, []byte(sentinel)) {
+		t.Fatalf("validation report exposed private input: %s", data)
 	}
 }
