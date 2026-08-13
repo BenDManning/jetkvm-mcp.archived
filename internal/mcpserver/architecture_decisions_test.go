@@ -19,6 +19,7 @@ var architectureDecisions = []expectedADR{
 	{file: "0003-ffmpeg-screenshot-decoding.md", title: "FFmpeg subprocess screenshot decoding"},
 	{file: "0004-virtual-media-integrity-and-cleanup.md", title: "Virtual-media integrity and cleanup"},
 	{file: "0005-local-only-raw-rpc.md", title: "Keep raw RPC local and outside MCP"},
+	{file: "0006-virtual-media-url-origin-boundary.md", title: "Deny virtual-media URL mounts outside configured origins"},
 }
 
 func TestArchitectureDecisionIndexAndStatuses(t *testing.T) {

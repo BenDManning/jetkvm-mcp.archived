@@ -18,6 +18,14 @@ devices:
     password_env: JETKVM_RACK_A_PASSWORD
     insecure_skip_verify: true
     media_directory: /media
+    media_url_allowed_origins:
+      - https://MEDIA.EXAMPLE.INVALID:8443
+      - https://media.example.invalid:8443
+      - https://default.example.invalid
+      - https://default.example.invalid:443
+      - https://default.example.invalid:0443
+      - http://127.0.0.1:8080
+      - http://[::1]:8080
     wake_on_lan:
       server:
         mac_address: "02:00:00:00:00:01"
@@ -41,6 +49,9 @@ http:
 	first := loaded.Devices[0]
 	if first.Password != "a-secret" || !first.InsecureSkipVerify || first.MediaDirectory != "/media" || first.WakeOnLAN["server"].MACAddress != "02:00:00:00:00:01" {
 		t.Fatalf("first device = %#v", first)
+	}
+	if len(first.MediaURLAllowedOrigins) != 4 || first.MediaURLAllowedOrigins[0] != "https://media.example.invalid:8443" || first.MediaURLAllowedOrigins[1] != "https://default.example.invalid" || first.MediaURLAllowedOrigins[2] != "http://127.0.0.1:8080" || first.MediaURLAllowedOrigins[3] != "http://[::1]:8080" {
+		t.Fatalf("media URL allowed origins = %#v", first.MediaURLAllowedOrigins)
 	}
 	if loaded.HTTPBearerToken != "http-secret" {
 		t.Fatalf("HTTP token was not resolved")
@@ -67,6 +78,15 @@ func TestLoadRejectsUnknownInlineCredentialAndMissingEnvironment(t *testing.T) {
 		{name: "allowed origin invalid port", yaml: "devices:\n  lab:\n    url: https://lab.invalid\nhttp:\n  allowed_origins:\n    - https://mcp.invalid:99999\n", wantErr: "valid port"},
 		{name: "allowed origin empty port", yaml: "devices:\n  lab:\n    url: https://lab.invalid\nhttp:\n  allowed_origins:\n    - 'https://mcp.invalid:'\n", wantErr: "valid port"},
 		{name: "allowed origin unbracketed IPv6", yaml: "devices:\n  lab:\n    url: https://lab.invalid\nhttp:\n  allowed_origins:\n    - 'http://::1'\n", wantErr: "valid port"},
+		{name: "media origin credentials", yaml: "devices:\n  lab:\n    url: https://lab.invalid\n    media_url_allowed_origins:\n      - https://admin:secret@media.invalid\n", wantErr: "exact HTTP(S) origins"},
+		{name: "media origin wildcard", yaml: "devices:\n  lab:\n    url: https://lab.invalid\n    media_url_allowed_origins:\n      - https://*.media.invalid\n", wantErr: "exact HTTP(S) origins"},
+		{name: "media origin path", yaml: "devices:\n  lab:\n    url: https://lab.invalid\n    media_url_allowed_origins:\n      - https://media.invalid/images\n", wantErr: "exact HTTP(S) origins"},
+		{name: "media origin query", yaml: "devices:\n  lab:\n    url: https://lab.invalid\n    media_url_allowed_origins:\n      - https://media.invalid?token=secret\n", wantErr: "exact HTTP(S) origins"},
+		{name: "media origin fragment", yaml: "devices:\n  lab:\n    url: https://lab.invalid\n    media_url_allowed_origins:\n      - https://media.invalid#private\n", wantErr: "exact HTTP(S) origins"},
+		{name: "media origin non-HTTP scheme", yaml: "devices:\n  lab:\n    url: https://lab.invalid\n    media_url_allowed_origins:\n      - ftp://media.invalid\n", wantErr: "exact HTTP(S) origins"},
+		{name: "media origin empty port", yaml: "devices:\n  lab:\n    url: https://lab.invalid\n    media_url_allowed_origins:\n      - 'https://media.invalid:'\n", wantErr: "exact HTTP(S) origins"},
+		{name: "media origin unbracketed IPv6", yaml: "devices:\n  lab:\n    url: https://lab.invalid\n    media_url_allowed_origins:\n      - 'http://::1'\n", wantErr: "exact HTTP(S) origins"},
+		{name: "media origin invalid port", yaml: "devices:\n  lab:\n    url: https://lab.invalid\n    media_url_allowed_origins:\n      - https://media.invalid:99999\n", wantErr: "exact HTTP(S) origins"},
 		{name: "empty devices", yaml: "devices: {}\n", wantErr: "at least one device"},
 	} {
 		t.Run(test.name, func(t *testing.T) {

@@ -65,6 +65,8 @@ devices:
     url: https://jetkvm.example.invalid
     password_env: JETKVM_LAB_PASSWORD
     media_directory: /media
+    media_url_allowed_origins:
+      - https://media.example.invalid
     wake_on_lan:
       server:
         mac_address: "02:00:00:00:00:01"
@@ -76,7 +78,11 @@ http:
     - https://mcp.example.invalid
 ```
 
-`media_directory` is optional. Without it, URL-based media remains available, while local upload/mount operations are rejected. Local sources must be relative paths that resolve inside the configured directory. URL-based media sources must use HTTP(S) and must not contain inline user information; use an appliance-reachable URL whose access controls do not embed credentials in the URL.
+`media_directory` is optional. Without it, local upload/mount operations are rejected. Local sources must be relative paths that resolve inside the configured directory.
+
+URL mounting is deny-by-default per device. `media_url_allowed_origins` must list each permitted exact HTTP(S) origin; when it is absent or empty, URL mounts are rejected before a device session is opened. An origin contains only scheme, host or IP literal, and effective port. Hostnames and schemes are case-insensitive, omitted HTTP port 80 and HTTPS port 443 equal their explicit forms, and other ports must be listed explicitly. Wildcards, URL credentials, paths, queries, and fragments are invalid in configured origins. A mount URL may contain a path, query, or fragment after its origin matches, but do not put credentials or secrets in any URL component.
+
+The configured origin is an authorization boundary, not proof of the appliance's final network destination. The JetKVM firmware performs the fetch; this process does not resolve or pin DNS, inspect or prevent firmware redirects, classify the resolved address, or enforce appliance routing. DNS names and loopback, private, link-local, or other IP literals work only when their exact origin is deliberately configured. Keep the appliance network segmented and restrict media-fetch egress to the intended service.
 
 JetKVM firmware exposes partial-upload resumption by byte count but provides no prefix hash. To prevent a replaced local file from being combined with stale appliance data, `jetkvm-mcp` serializes virtual-media operations per device, deletes a matching `.incomplete` artifact before upload, and accepts only a fresh offset-zero upload. It hashes the confined source before upload, hashes the exact bytes consumed by the upload, and reopens and hashes the configured path before mounting or reporting completion. Interrupted, ambiguous, or locally changed uploads are cleaned up rather than resumed.
 

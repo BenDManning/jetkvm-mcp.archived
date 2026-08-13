@@ -66,6 +66,10 @@ func TestConfigDiagnosticsExcludeInlineSecretValues(t *testing.T) {
 			yaml: "devices:\n  lab:\n    url: https://lab.invalid\nhttp:\n  allowed_origins:\n    - https://admin:" + privacySentinel + "@mcp.invalid\n",
 		},
 		{
+			name: "media origin user information",
+			yaml: "devices:\n  lab:\n    url: https://lab.invalid\n    media_url_allowed_origins:\n      - https://admin:" + privacySentinel + "@media.invalid\n",
+		},
+		{
 			name: "invalid typed value",
 			yaml: "devices:\n  lab:\n    url: https://lab.invalid\n    insecure_skip_verify: " + privacySentinel + "\n",
 		},

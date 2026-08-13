@@ -31,12 +31,13 @@ type WakeOnLANTarget struct {
 }
 
 type DeviceConfig struct {
-	Name               string
-	BaseURL            url.URL
-	Password           string
-	InsecureSkipVerify bool
-	MediaDirectory     string
-	WakeOnLAN          map[string]WakeOnLANTarget
+	Name                   string
+	BaseURL                url.URL
+	Password               string
+	InsecureSkipVerify     bool
+	MediaDirectory         string
+	MediaURLAllowedOrigins []string
+	WakeOnLAN              map[string]WakeOnLANTarget
 }
 
 type Session interface {
@@ -83,6 +84,11 @@ func NewManager(devices []DeviceConfig, provider SessionProvider, options ...Man
 		candidate.Name = name
 		candidate.BaseURL.RawQuery = ""
 		candidate.BaseURL.Fragment = ""
+		mediaOrigins, err := normalizeMediaURLAllowedOrigins(candidate.MediaURLAllowedOrigins)
+		if err != nil {
+			return nil, fmt.Errorf("device %q media URL allowed origins are invalid", name)
+		}
+		candidate.MediaURLAllowedOrigins = mediaOrigins
 		for targetName, target := range candidate.WakeOnLAN {
 			if strings.TrimSpace(targetName) == "" {
 				return nil, errors.New("Wake-on-LAN target name is required")

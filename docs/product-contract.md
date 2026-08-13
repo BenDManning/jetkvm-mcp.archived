@@ -140,6 +140,13 @@ intentional breaking output-contract change relative to v0.1.0 and therefore
 requires the next release carrying it to use the major version `v1.0.0` or
 later under this contract's pre-1.0 SemVer rules.
 
+Virtual-media URL mounting is also intentionally deny-by-default. Each device
+must configure one or more `media_url_allowed_origins`; omitting the field makes
+URL mounting unavailable while leaving status and local-file operations subject
+to their existing preconditions. Because prior releases accepted unrestricted
+HTTP(S) mount URLs without this field, the first release carrying this boundary
+must likewise be `v1.0.0` or later.
+
 ### MCP tool-manifest review
 
 [`internal/mcpserver/testdata/tool-manifest.json`](../internal/mcpserver/testdata/tool-manifest.json)
@@ -214,20 +221,25 @@ Credentials are resolved through named environment variables; device and media
 URLs reject inline user information. Appliance HTTP bypasses environment proxy
 settings, rejects redirects, and verifies TLS with a minimum of TLS 1.2 unless
 `insecure_skip_verify` is explicitly enabled for a device. A configured media
-directory is the local-file boundary. Exact deployment and media behavior is
-documented in the [README](../README.md).
+directory is the local-file boundary. URL mounting additionally requires the
+mount URL's normalized scheme, host, and effective port to match one exact
+per-device `media_url_allowed_origins` entry before provider dispatch. Paths,
+queries, and fragments do not select an origin. Exact deployment and media
+behavior is documented in the [README](../README.md).
 
 Non-loopback Streamable HTTP requires a bearer token. Public reverse-proxy Hosts
 and browser origins require explicit configuration. These controls do not add
 OAuth, user identity, authorization grants, or a general trust/control plane.
 
 `jetkvm_mount_virtual_media_url` reports `openWorldHint=true` because it asks the
-appliance to retrieve a caller-selected HTTP(S) URL. Every other current MCP tool
-reports `openWorldHint=false`. These annotations describe the tools' intended
-interaction boundaries; they are not proof that firmware, network, or hardware
-effects are contained. The allowed URL forms, fetching actor, credential
-prohibition, result/error behavior, and annotations are separately versioned
-public behavior.
+appliance to retrieve a caller-selected HTTP(S) URL from a configured exact
+origin. Every other current MCP tool reports `openWorldHint=false`. Origin
+authorization does not resolve or pin DNS, inspect firmware redirects, classify
+the resolved address, or enforce appliance routing. These annotations describe
+the tools' intended interaction boundaries; they are not proof that firmware,
+network, or hardware effects are contained. The allowed URL forms, fetching
+actor, credential prohibition, result/error behavior, and annotations are
+separately versioned public behavior.
 
 Tool execution failures use a versioned caller-visible JSON object with
 `version`, `code`, `message`, `outcome`, and `retryable`. Stable codes include
