@@ -11,14 +11,23 @@ import (
 
 var debugRPCMethodPattern = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_]{0,127}$`)
 
-func (manager *Manager) DebugRPC(ctx context.Context, name, method string, params json.RawMessage) (json.RawMessage, error) {
-	device, err := manager.device(name)
-	if err != nil {
-		return nil, err
-	}
+var debugRPCReadOnlyMethods = map[string]struct{}{
+	methodPing:            {},
+	methodLocalVersion:    {},
+	methodActiveExtension: {},
+}
+
+func (manager *Manager) DebugRPC(ctx context.Context, name, method string, params json.RawMessage, unsafeAcknowledged bool) (json.RawMessage, error) {
 	method = strings.TrimSpace(method)
 	if !debugRPCMethodPattern.MatchString(method) {
 		return nil, fmt.Errorf("%w: RPC method", ErrUnsupportedInput)
+	}
+	if _, reviewed := debugRPCReadOnlyMethods[method]; !reviewed && !unsafeAcknowledged {
+		return nil, fmt.Errorf("%w: unreviewed RPC method requires unsafe acknowledgement", ErrUnsupportedInput)
+	}
+	device, err := manager.device(name)
+	if err != nil {
+		return nil, err
 	}
 	trimmed := bytes.TrimSpace(params)
 	if len(trimmed) == 0 {

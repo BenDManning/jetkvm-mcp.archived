@@ -83,8 +83,9 @@ func NewManager(devices []DeviceConfig, provider SessionProvider, options ...Man
 			return nil, fmt.Errorf("duplicate device %q", name)
 		}
 		candidate.Name = name
-		candidate.BaseURL.RawQuery = ""
-		candidate.BaseURL.Fragment = ""
+		if candidate.BaseURL.RawQuery != "" || candidate.BaseURL.ForceQuery || candidate.BaseURL.Fragment != "" {
+			return nil, fmt.Errorf("device %q URL must not include a query or fragment", name)
+		}
 		mediaOrigins, err := normalizeMediaURLAllowedOrigins(candidate.MediaURLAllowedOrigins)
 		if err != nil {
 			return nil, fmt.Errorf("device %q media URL allowed origins are invalid", name)

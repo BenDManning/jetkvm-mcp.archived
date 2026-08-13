@@ -91,12 +91,16 @@ func Load(path string, lookup LookupEnvironment) (Runtime, error) {
 	runtime := Runtime{Devices: make([]jetkvm.DeviceConfig, 0, len(names))}
 	for _, name := range names {
 		configured := source.Devices[name]
-		parsed, err := url.Parse(strings.TrimSpace(configured.URL))
+		rawURL := strings.TrimSpace(configured.URL)
+		parsed, err := url.Parse(rawURL)
 		if err != nil || parsed.Host == "" || parsed.Scheme != "http" && parsed.Scheme != "https" {
 			return Runtime{}, fmt.Errorf("device %q requires an HTTP(S) URL", name)
 		}
 		if parsed.User != nil {
 			return Runtime{}, fmt.Errorf("device %q URL must not include credentials", name)
+		}
+		if parsed.RawQuery != "" || parsed.ForceQuery || parsed.Fragment != "" || strings.Contains(rawURL, "#") {
+			return Runtime{}, fmt.Errorf("device %q URL must not include a query or fragment", name)
 		}
 		password, err := resolveEnvironment(configured.PasswordEnvironment, lookup)
 		if err != nil {

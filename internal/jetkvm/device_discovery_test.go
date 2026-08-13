@@ -27,7 +27,7 @@ func TestManagerListsSortedConfiguredDevicesWithoutPrivateConfiguration(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	zetaURL, err := url.Parse("https://" + strings.ToLower(private) + ".invalid/private?token=" + private + "#" + private)
+	zetaURL, err := url.Parse("https://" + strings.ToLower(private) + ".invalid/private/" + private)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -50,7 +50,7 @@ func TestThreatModelInputOutputFieldWalkThrough(t *testing.T) {
 	}
 
 	for _, field := range []string{
-		"--config", "--http", "--version", "--binary", "--device", "--method", "--params",
+		"--config", "--http", "--version", "--binary", "--device", "--method", "--params", "--unsafe-acknowledge-risk",
 	} {
 		if !strings.Contains(document, "`"+field+"`") {
 			t.Errorf("threat model does not classify configuration or CLI field %q", field)

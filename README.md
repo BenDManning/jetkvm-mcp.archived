@@ -26,6 +26,12 @@ Requires Go 1.25 or newer and `ffmpeg` on `PATH`:
 go install github.com/BenDManning/jetkvm-mcp/cmd/jetkvm-mcp@latest
 ```
 
+`jetkvm-mcp --version` reports the installed module version for a versioned
+`go install`. Local source builds without an injected release version report
+`devel+<12-character vcs.revision>` and append `.dirty` when Go embeds that VCS
+metadata; metadata-poor builds report `devel`. GoReleaser and container builds
+keep their explicitly injected version.
+
 ### Option B: Download Binary
 
 Download the archive for your platform from the Forgejo **Releases** page, verify it against `checksums.txt`, extract `jetkvm-mcp`, and place it on `PATH`. FFmpeg must also be installed on the host.
@@ -57,7 +63,7 @@ Container targets are Linux amd64 and Linux arm64.
 
 ## Configuration
 
-Copy [`config.example.yaml`](config.example.yaml). Credentials are never stored inline; the YAML names environment variables that contain them. Device URLs must not contain user information, and appliance connections are direct rather than routed through `HTTP_PROXY` or `HTTPS_PROXY`.
+Copy [`config.example.yaml`](config.example.yaml). Credentials are never stored inline; the YAML names environment variables that contain them. Device URLs may retain an HTTP(S) path prefix but must not contain user information, a query, or a fragment. Appliance connections are direct rather than routed through `HTTP_PROXY` or `HTTPS_PROXY`.
 
 ```yaml
 devices:
@@ -77,6 +83,17 @@ http:
   allowed_origins:
     - https://mcp.example.invalid
 ```
+
+Validate the complete strict configuration without starting FFmpeg, a listener,
+or a device/network session:
+
+```sh
+jetkvm-mcp config validate --config config.yaml
+```
+
+Success writes `configuration valid` to stdout. Required environment variables
+must be present, but their values, the private configuration path, and URL
+contents are not included in validation errors.
 
 `media_directory` is optional. Without it, local upload/mount operations are rejected. Local sources must be relative paths that resolve inside the configured directory.
 
@@ -154,9 +171,28 @@ Raw RPC is deliberately outside MCP `tools/list` and only available as a local C
 jetkvm-mcp debug rpc \
   --config config.yaml \
   --device lab \
-  --method getVideoState \
+  --method getLocalVersion \
   --params '{}'
 ```
+
+The source-reviewed read-only default set is exactly `ping`,
+`getLocalVersion`, and `getActiveExtension`. Every other method fails before a
+device session unless that invocation includes `--unsafe-acknowledge-risk`:
+
+```sh
+jetkvm-mcp debug rpc \
+  --config config.yaml \
+  --device lab \
+  --method getVideoState \
+  --params '{}' \
+  --unsafe-acknowledge-risk
+```
+
+The acknowledgement is not a safety classification or confirmation prompt. An
+unreviewed method may mutate hardware or boot/storage state and may return
+sensitive raw firmware data. Parameters may appear in shell history and the raw
+result is written only to the explicitly invoked command's stdout; do not put
+secrets in either or retain the streams unsafely.
 
 ## Development
 

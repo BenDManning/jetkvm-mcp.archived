@@ -153,6 +153,23 @@ func TestLoadOpenErrorDoesNotExposeConfigPath(t *testing.T) {
 	}
 }
 
+func TestLoadRejectsDiscardedDeviceURLComponentsWithoutValues(t *testing.T) {
+	const sentinel = "PRIVATE-URL-SENTINEL-93f0"
+	for _, rawURL := range []string{
+		"https://lab.invalid/base?token=" + sentinel,
+		"https://lab.invalid/base#" + sentinel,
+		"https://lab.invalid/base#",
+	} {
+		_, err := Load(writeConfig(t, "devices:\n  lab:\n    url: "+rawURL+"\n"), func(string) (string, bool) { return "", false })
+		if err == nil || !strings.Contains(err.Error(), `device "lab" URL must not include a query or fragment`) {
+			t.Fatalf("url=%q error=%v", rawURL, err)
+		}
+		if strings.Contains(err.Error(), sentinel) || strings.Contains(err.Error(), "lab.invalid") {
+			t.Fatalf("error leaked URL content: %v", err)
+		}
+	}
+}
+
 func writeConfig(t *testing.T, content string) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "config.yaml")
