@@ -21,12 +21,15 @@ server for operating configured JetKVM devices. It is an integration product,
 not a policy or device-qualification system.
 
 The shipped server entry point supports MCP over stdio by default and stateless
-Streamable HTTP only when `--http` is supplied. It also supplies `--version` and
-the local-only `debug rpc` diagnostic; raw JetKVM RPC is not an MCP tool. Normal
-serving requires an `ffmpeg` executable on `PATH`, including when only
-non-capture tools are intended. `--version` and `debug rpc` do not initialize
-FFmpeg. Logs and diagnostics use stderr; stdio-server stdout is reserved for MCP
-traffic. Operational details are in the [README](../README.md).
+Streamable HTTP only when `--http` is supplied. It also supplies conventional
+help, `--version`, offline `config validate`, and the local-only `debug rpc`
+diagnostic; raw JetKVM RPC is not an MCP tool. Normal serving requires an
+`ffmpeg` executable on `PATH`, including when only non-capture tools are
+intended. Help, version, configuration validation, and `debug rpc` do not
+initialize FFmpeg. Configuration validation performs the same strict load and
+environment resolution as startup but opens no listener or device/network
+session. Logs and diagnostics use stderr; stdio-server stdout is reserved for
+MCP traffic. Operational details are in the [README](../README.md).
 
 The separately maintained `jetkvm-mcp-validate` command is source-run,
 read-only qualification tooling. Its documented flags, exit behavior, and
@@ -39,8 +42,11 @@ Normal server diagnostics, serving notices, and errors use stderr. While
 serving over stdio, stdout contains MCP traffic only. `--version` writes exactly
 `jetkvm-mcp <version>` followed by a newline to stdout and exits 0. A successful
 `debug rpc` writes one JSON object with a top-level `result` member to stdout and
-exits 0. Command, argument, and runtime failures returned through the main CLI
-write a `jetkvm-mcp:` diagnostic to stderr and exit 1.
+exits 0. Help writes usage to stdout and exits 0. Successful `config validate`
+writes exactly `configuration valid` followed by a newline to stdout and exits
+0. Command, argument, validation, and runtime failures returned through the main
+CLI write a `jetkvm-mcp:` diagnostic to stderr and exit 1. Flag errors preserve
+the safe flag name without echoing its supplied value.
 
 The validator writes one sanitized JSON report to stdout; stderr is reserved for
 any validator diagnostics, and child-server stderr is deliberately discarded.
@@ -55,11 +61,15 @@ the current `v0.<minor>.x` line. Only the latest non-prerelease release in that
 minor line is supported. This document does not duplicate a current release
 number. There is no SLA, blanket backport promise, or EOL service.
 
-GoReleaser-built binaries receive GoReleaser's version value. Containers report
-the explicitly supplied `VERSION` build argument and otherwise default to
-`dev`. Ordinary source, `make build`, and current `go install` builds also
-report `dev`. In each case the reported value is used by `--version` and as the
-MCP implementation version. MCP revision dates are protocol-compatibility
+GoReleaser-built binaries receive GoReleaser's explicit version value.
+Containers report the explicitly supplied `VERSION` build argument and
+otherwise explicitly inject `dev`; any nonempty injected value remains
+authoritative. Without an injected value, a versioned `go install` reports the
+main module version from `debug.ReadBuildInfo`. Local source and `make build`
+outputs report `devel+` plus the first 12 hexadecimal characters of
+`vcs.revision`, with `.dirty` when `vcs.modified=true`; metadata-poor builds fall
+back to `devel` or `dev`. The same resolved value is used by `--version` and as
+the MCP implementation version. MCP revision dates are protocol-compatibility
 metadata, not product versions. The Go SDK version is an implementation
 dependency, not a second product version.
 
@@ -95,8 +105,8 @@ or point-in-time protocol observations.
 | Native OS/architecture | Declared binary targets: `linux/amd64`, `linux/arm64`, `darwin/amd64`, `darwin/arm64` | CI cross-builds all four. Runtime qualification for every target is not recorded. Windows and all unlisted combinations are unsupported. |
 | FFmpeg | External prerequisite: an executable named `ffmpeg` on `PATH` for normal serving and capture | Startup and decoder tests exercise executable discovery and bounded invocation. No implementation or version range is qualified; compatibility is unknown beyond successful checks in a specific environment. |
 | JetKVM model/firmware | No model or firmware version is currently qualified or supported by a positive compatibility claim | Upstream source observations, fake-device tests, and validator runs are evidence, not guarantees. Claim requirements are defined below. |
-| YAML configuration | Declared: the current strict, unversioned grammar; no schema-version field or migration engine | Loader tests cover the grammar. The exact example is [`config.example.yaml`](../config.example.yaml); unknown fields, empty or over-1 MiB input, and multiple YAML documents are rejected. |
-| Server CLI | Declared: `--config`, optional `--http`, `--version`, and `debug rpc` with its documented flags, streams, and JSON result | Parser and integration tests exercise these entry points. Free-form diagnostic wording is not stable unless documented as structured output. |
+| YAML configuration | Declared: the current strict, unversioned grammar; no schema-version field or migration engine | Loader tests cover the grammar. The exact example is [`config.example.yaml`](../config.example.yaml); unknown fields, empty or over-1 MiB input, multiple YAML documents, and device-URL user information/query/fragment components are rejected. Device URL path prefixes remain supported. |
+| Server CLI | Declared: help, `--config`, optional `--http`, `--version`, offline `config validate`, and `debug rpc` with its documented flags, streams, and JSON result | Parser and integration tests exercise these entry points. `debug rpc` permits only `ping`, `getLocalVersion`, and `getActiveExtension` by default; every other method requires per-invocation `--unsafe-acknowledge-risk`. Free-form diagnostic wording is not stable unless documented as structured output. |
 | Validator CLI | Declared source-run interface: required `--binary`, `--config`, and `--device`; sanitized JSON and exit status | Unit tests exercise argument and report shape. Physical qualification is absent until retained evidence satisfies the policy below. No validator binary is distributed. |
 | MCP tools, results, errors, and annotations | Declared: the 18 current tools, their schemas, structured results/content, tool-result error semantics, and annotations | [`server.go`](../internal/mcpserver/server.go), [`controls.go`](../internal/mcpserver/controls.go), and their tests are the executable source of truth. Execution failures use tool results with `IsError`, not protocol errors. `jetkvm_list_devices` returns sorted configured aliases and configuration-derived availability flags; it does not open a device session or qualify firmware capabilities. `jetkvm_virtual_media` is retained as a deprecated compatibility surface; clients should migrate each operation to the corresponding one-purpose `jetkvm_*_virtual_media*` tool. |
 | Binary artifacts | Intended: one `jetkvm-mcp` binary in `jetkvm-mcp_<version>_<os>_<arch>.tar.gz` for each declared native target, plus `checksums.txt` | [GoReleaser configuration](../.goreleaser.yaml) and CI establish naming and cross-build evidence, not publication or runtime qualification. |
@@ -218,7 +228,9 @@ support matrix.
 
 Configured device endpoints and credentials are trusted administration inputs.
 Credentials are resolved through named environment variables; device and media
-URLs reject inline user information. Appliance HTTP bypasses environment proxy
+URLs reject inline user information. Device URL path prefixes are retained,
+while query and fragment components are rejected because runtime endpoints
+would otherwise discard them. Appliance HTTP bypasses environment proxy
 settings, rejects redirects, and verifies TLS with a minimum of TLS 1.2 unless
 `insecure_skip_verify` is explicitly enabled for a device. A configured media
 directory is the local-file boundary. URL mounting additionally requires the
@@ -226,6 +238,14 @@ mount URL's normalized scheme, host, and effective port to match one exact
 per-device `media_url_allowed_origins` entry before provider dispatch. Paths,
 queries, and fragments do not select an origin. Exact deployment and media
 behavior is documented in the [README](../README.md).
+
+Raw RPC remains a local CLI escape hatch and is absent from MCP. The exact
+source-reviewed read-only default set is `ping`, `getLocalVersion`, and
+`getActiveExtension`. Unknown, unreviewed, and known mutating methods fail before
+session dispatch unless that invocation includes `--unsafe-acknowledge-risk`.
+The flag cannot be persisted through configuration or environment and does not
+classify a method as safe: acknowledged calls may mutate hardware or
+boot/storage state and may return sensitive raw firmware data to stdout.
 
 Non-loopback Streamable HTTP requires a bearer token. Native clients may omit
 `Origin`, subject to Host and authentication policy. Browser use is same-origin:
@@ -251,6 +271,15 @@ Likewise, canonicalizing equivalent IP literals and treating explicit HTTP port
 80 or HTTPS port 443 as the corresponding omitted effective port makes endpoint
 admission match browser-origin semantics; scheme and non-default ports remain
 distinct.
+
+Rejecting device URL query and fragment components is a compatible validation
+correction because those components were silently discarded rather than used as
+meaningful endpoint semantics. In contrast, requiring
+`--unsafe-acknowledge-risk` for previously accepted unreviewed raw RPC methods is
+an intentional incompatible CLI safety boundary; the first release carrying it
+must be `v1.0.0` or later under this contract's pre-1.0 SemVer rules. The same
+release floor is already required by the typed-result and virtual-media URL
+boundaries above.
 
 `jetkvm_mount_virtual_media_url` reports `openWorldHint=true` because it asks the
 appliance to retrieve a caller-selected HTTP(S) URL from a configured exact

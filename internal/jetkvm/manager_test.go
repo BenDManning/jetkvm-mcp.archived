@@ -220,6 +220,19 @@ func TestNewManagerRejectsIPv6WakeOnLANBroadcast(t *testing.T) {
 	}
 }
 
+func TestNewManagerRejectsDiscardedDeviceURLComponents(t *testing.T) {
+	for _, rawURL := range []string{"https://jetkvm.invalid/base?token=private", "https://jetkvm.invalid/base#private"} {
+		base, err := url.Parse(rawURL)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = NewManager([]DeviceConfig{{Name: "lab", BaseURL: *base}}, &fakeProvider{session: &fakeSession{}})
+		if err == nil || !strings.Contains(err.Error(), "query or fragment") {
+			t.Fatalf("url=%q error=%v", rawURL, err)
+		}
+	}
+}
+
 func testManager(t *testing.T, session *fakeSession) *Manager {
 	t.Helper()
 	base, err := url.Parse("https://jetkvm.invalid")

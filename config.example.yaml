@@ -1,5 +1,6 @@
 devices:
   lab:
+    # Path prefixes are retained; user information, queries, and fragments fail validation.
     url: https://jetkvm.example.invalid
     password_env: JETKVM_LAB_PASSWORD
     # insecure_skip_verify: false

@@ -9,11 +9,20 @@ The browser-to-appliance JetKVM protocol is observed behavior rather than a prom
 - Relevant surfaces:
   - `web.go` and `ui/src/routes/devices.$id.tsx`: local authentication and WebSocket signaling
   - `jsonrpc.go`: RPC method registration and parameter names
+  - `jsonrpc.go`: `ping` returns the constant `pong`, and `getActiveExtension` reads the current configured extension without mutation
+  - `ota.go`: `getLocalVersion` reads local application/system version metadata without mutation
   - `usb.go`: keyboard, mouse, wheel, and USB wake RPC methods
   - `usb_mass_storage.go` and `ui/src/routes/devices.$id.mount.tsx`: virtual-media state, mount, unmount, resumable upload, and authenticated upload endpoint
   - `video.go`: video state behavior
 
 JetKVM upstream is GPLv2. This project uses upstream source as protocol evidence and does not copy upstream implementation.
+
+The local debug CLI permits exactly `ping`, `getLocalVersion`, and
+`getActiveExtension` without an unsafe acknowledgement because those handlers
+were source-reviewed at the pinned commit as read-only. Method names alone are
+not treated as evidence: every other raw RPC remains unreviewed or mutating and
+requires the per-invocation consequence acknowledgement documented by the
+product contract and ADR 0005.
 
 The inspected firmware can resume `filename.incomplete` using only its current byte count. Because that does not prove the remote prefix belongs to the currently opened local file, this client deliberately discards stale partials and requires a fresh offset-zero upload.
 

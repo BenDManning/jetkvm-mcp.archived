@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"runtime/debug"
 	"strings"
 	"syscall"
 	"time"
@@ -21,7 +22,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-var version = "dev"
+var version string
 
 type commandKind uint8
 
@@ -29,15 +30,42 @@ const (
 	commandServe commandKind = iota
 	commandDebugRPC
 	commandVersion
+	commandHelp
+	commandConfigValidate
+	commandConfigHelp
+	commandDebugHelp
 )
 
+const rootHelp = `Usage:
+  jetkvm-mcp --config FILE [--http HOST:PORT]
+  jetkvm-mcp --version
+  jetkvm-mcp config validate --config FILE
+  jetkvm-mcp debug rpc --config FILE --device NAME --method METHOD [--params JSON] [--unsafe-acknowledge-risk]
+
+Unreviewed RPC methods require --unsafe-acknowledge-risk and may mutate hardware
+or boot/storage state and may return sensitive raw firmware data.
+`
+
+const configHelp = `Usage:
+  jetkvm-mcp config validate --config FILE
+`
+
+const debugHelp = `Usage:
+  jetkvm-mcp debug rpc --config FILE --device NAME --method METHOD [--params JSON] [--unsafe-acknowledge-risk]
+
+Safe by default: ping, getLocalVersion, getActiveExtension.
+All other methods require --unsafe-acknowledge-risk and may mutate hardware or
+boot/storage state and may return sensitive raw firmware data.
+`
+
 type commandOptions struct {
-	kind        commandKind
-	configPath  string
-	httpAddress string
-	debugDevice string
-	debugMethod string
-	debugParams json.RawMessage
+	kind                    commandKind
+	configPath              string
+	httpAddress             string
+	debugDevice             string
+	debugMethod             string
+	debugParams             json.RawMessage
+	debugUnsafeAcknowledged bool
 }
 
 func main() {
@@ -55,11 +83,27 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		return err
 	}
 	if options.kind == commandVersion {
-		_, err := fmt.Fprintf(stdout, "jetkvm-mcp %s\n", version)
+		_, err := fmt.Fprintf(stdout, "jetkvm-mcp %s\n", reportedVersion())
+		return err
+	}
+	if options.kind == commandHelp {
+		_, err := io.WriteString(stdout, rootHelp)
+		return err
+	}
+	if options.kind == commandConfigHelp {
+		_, err := io.WriteString(stdout, configHelp)
+		return err
+	}
+	if options.kind == commandDebugHelp {
+		_, err := io.WriteString(stdout, debugHelp)
 		return err
 	}
 	loaded, err := config.Load(options.configPath, lookup)
 	if err != nil {
+		return err
+	}
+	if options.kind == commandConfigValidate {
+		_, err := io.WriteString(stdout, "configuration valid\n")
 		return err
 	}
 	provider := jetkvm.NewWebRTCProvider(jetkvm.WebRTCProviderOptions{})
@@ -68,7 +112,7 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		if err != nil {
 			return err
 		}
-		result, err := manager.DebugRPC(ctx, options.debugDevice, options.debugMethod, options.debugParams)
+		result, err := manager.DebugRPC(ctx, options.debugDevice, options.debugMethod, options.debugParams, options.debugUnsafeAcknowledged)
 		if err != nil {
 			return err
 		}
@@ -85,7 +129,7 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	if err != nil {
 		return err
 	}
-	server := mcpserver.New(manager, version)
+	server := mcpserver.New(manager, reportedVersion())
 	if options.httpAddress == "" {
 		fmt.Fprintln(stderr, "jetkvm-mcp: serving MCP over stdio")
 		return server.Run(ctx, &mcp.IOTransport{Reader: io.NopCloser(stdin), Writer: nopWriteCloser{stdout}})
@@ -94,9 +138,32 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 }
 
 func parseArgs(args []string) (commandOptions, error) {
+	if len(args) >= 1 && args[0] == "config" {
+		if len(args) == 2 && (args[1] == "--help" || args[1] == "-h") {
+			return commandOptions{kind: commandConfigHelp}, nil
+		}
+		if len(args) < 2 || args[1] != "validate" {
+			return commandOptions{}, errors.New("usage: jetkvm-mcp config validate --config FILE")
+		}
+		flags := flag.NewFlagSet("config validate", flag.ContinueOnError)
+		flags.SetOutput(io.Discard)
+		configPath := flags.String("config", "", "configuration file")
+		if err := flags.Parse(args[2:]); errors.Is(err, flag.ErrHelp) {
+			return commandOptions{kind: commandConfigHelp}, nil
+		} else if err != nil {
+			return commandOptions{}, actionableFlagError(err)
+		}
+		if flags.NArg() != 0 || *configPath == "" {
+			return commandOptions{}, errors.New("usage: jetkvm-mcp config validate --config FILE")
+		}
+		return commandOptions{kind: commandConfigValidate, configPath: *configPath}, nil
+	}
 	if len(args) >= 1 && args[0] == "debug" {
+		if len(args) == 2 && (args[1] == "--help" || args[1] == "-h") {
+			return commandOptions{kind: commandDebugHelp}, nil
+		}
 		if len(args) < 2 || args[1] != "rpc" {
-			return commandOptions{}, errors.New("usage: jetkvm-mcp debug rpc --config FILE --device NAME --method METHOD [--params JSON]")
+			return commandOptions{}, errors.New("usage: jetkvm-mcp debug rpc --config FILE --device NAME --method METHOD [--params JSON] [--unsafe-acknowledge-risk]")
 		}
 		flags := flag.NewFlagSet("debug rpc", flag.ContinueOnError)
 		flags.SetOutput(io.Discard)
@@ -104,10 +171,16 @@ func parseArgs(args []string) (commandOptions, error) {
 		device := flags.String("device", "", "configured device name")
 		method := flags.String("method", "", "JetKVM RPC method")
 		params := flags.String("params", "{}", "JSON object parameters")
-		if err := flags.Parse(args[2:]); err != nil || flags.NArg() != 0 || *configPath == "" || *device == "" || *method == "" {
-			return commandOptions{}, errors.New("usage: jetkvm-mcp debug rpc --config FILE --device NAME --method METHOD [--params JSON]")
+		unsafeAcknowledged := flags.Bool("unsafe-acknowledge-risk", false, "acknowledge mutation and sensitive-output risk for an unreviewed method")
+		if err := flags.Parse(args[2:]); errors.Is(err, flag.ErrHelp) {
+			return commandOptions{kind: commandDebugHelp}, nil
+		} else if err != nil {
+			return commandOptions{}, actionableFlagError(err)
 		}
-		return commandOptions{kind: commandDebugRPC, configPath: *configPath, debugDevice: *device, debugMethod: *method, debugParams: json.RawMessage(*params)}, nil
+		if flags.NArg() != 0 || *configPath == "" || *device == "" || *method == "" {
+			return commandOptions{}, errors.New("usage: jetkvm-mcp debug rpc --config FILE --device NAME --method METHOD [--params JSON] [--unsafe-acknowledge-risk]")
+		}
+		return commandOptions{kind: commandDebugRPC, configPath: *configPath, debugDevice: *device, debugMethod: *method, debugParams: json.RawMessage(*params), debugUnsafeAcknowledged: *unsafeAcknowledged}, nil
 	}
 
 	flags := flag.NewFlagSet("jetkvm-mcp", flag.ContinueOnError)
@@ -115,7 +188,11 @@ func parseArgs(args []string) (commandOptions, error) {
 	configPath := flags.String("config", "", "configuration file")
 	httpAddress := flags.String("http", "", "Streamable HTTP listen address")
 	showVersion := flags.Bool("version", false, "print version")
-	if err := flags.Parse(args); err != nil || flags.NArg() != 0 {
+	if err := flags.Parse(args); errors.Is(err, flag.ErrHelp) {
+		return commandOptions{kind: commandHelp}, nil
+	} else if err != nil {
+		return commandOptions{}, actionableFlagError(err)
+	} else if flags.NArg() != 0 {
 		return commandOptions{}, errors.New("usage: jetkvm-mcp --config FILE [--http 127.0.0.1:8080]")
 	}
 	if *showVersion {
@@ -166,6 +243,85 @@ func serveHTTP(ctx context.Context, mcpServer *mcp.Server, address, bearerToken 
 		<-done
 		return nil
 	}
+}
+
+func reportedVersion() string {
+	info, ok := debug.ReadBuildInfo()
+	return resolveVersion(version, info, ok)
+}
+
+func resolveVersion(explicit string, info *debug.BuildInfo, ok bool) string {
+	explicit = strings.TrimSpace(explicit)
+	if explicit != "" {
+		return explicit
+	}
+	if !ok || info == nil {
+		return "dev"
+	}
+	settings := make(map[string]string, len(info.Settings))
+	for _, setting := range info.Settings {
+		settings[setting.Key] = strings.TrimSpace(setting.Value)
+	}
+	revision := settings["vcs.revision"]
+	if len(revision) >= 12 && isHex(revision) {
+		value := "devel+" + revision[:12]
+		if settings["vcs.modified"] == "true" {
+			value += ".dirty"
+		}
+		return value
+	}
+	if moduleVersion := strings.TrimSpace(info.Main.Version); moduleVersion != "" && moduleVersion != "(devel)" {
+		return moduleVersion
+	}
+	return "devel"
+}
+
+func actionableFlagError(err error) error {
+	message := err.Error()
+	if name, ok := safeFlagName(strings.TrimPrefix(message, "flag provided but not defined: -")); ok && strings.HasPrefix(message, "flag provided but not defined: -") {
+		return fmt.Errorf("unknown flag --%s", name)
+	}
+	if name, ok := safeFlagName(strings.TrimPrefix(message, "flag needs an argument: -")); ok && strings.HasPrefix(message, "flag needs an argument: -") {
+		return fmt.Errorf("flag --%s needs an argument", name)
+	}
+	for _, marker := range []string{" for flag -", " for -"} {
+		if index := strings.LastIndex(message, marker); index >= 0 {
+			if name, ok := safeFlagName(message[index+len(marker):]); ok {
+				return fmt.Errorf("invalid value for flag --%s", name)
+			}
+		}
+	}
+	return errors.New("invalid command-line flag")
+}
+
+func safeFlagName(value string) (string, bool) {
+	if index := strings.IndexByte(value, ':'); index >= 0 {
+		value = value[:index]
+	}
+	name := strings.TrimSpace(value)
+	for _, character := range name {
+		if character >= 'a' && character <= 'z' || character >= 'A' && character <= 'Z' || character >= '0' && character <= '9' || character == '-' {
+			continue
+		}
+		return "", false
+	}
+	if name == "" {
+		return "", false
+	}
+	return name, true
+}
+
+func isHex(value string) bool {
+	for _, character := range value {
+		if character < '0' || character > '9' {
+			if character < 'a' || character > 'f' {
+				if character < 'A' || character > 'F' {
+					return false
+				}
+			}
+		}
+	}
+	return value != ""
 }
 
 func loopbackHost(host string) bool {
