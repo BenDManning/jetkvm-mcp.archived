@@ -9,8 +9,59 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
+
+func TestSplitVirtualMediaSchemasEnforcePublishedArguments(t *testing.T) {
+	tests := []struct {
+		name   string
+		schema *jsonschema.Schema
+		input  map[string]any
+		valid  bool
+	}{
+		{name: "status accepts device", schema: virtualMediaStatusSchema(t), input: map[string]any{"device": "lab"}, valid: true},
+		{name: "status requires device", schema: virtualMediaStatusSchema(t), input: map[string]any{}},
+		{name: "status rejects extra", schema: virtualMediaStatusSchema(t), input: map[string]any{"device": "lab", "path": "media.iso"}},
+		{name: "mount url accepts mode", schema: virtualMediaURLSchema(), input: map[string]any{"device": "lab", "url": "https://example.invalid/media.iso", "mode": "read_write"}, valid: true},
+		{name: "mount url requires url", schema: virtualMediaURLSchema(), input: map[string]any{"device": "lab"}},
+		{name: "mount url rejects invalid mode", schema: virtualMediaURLSchema(), input: map[string]any{"device": "lab", "url": "https://example.invalid/media.iso", "mode": "unsafe"}},
+		{name: "mount url rejects extra", schema: virtualMediaURLSchema(), input: map[string]any{"device": "lab", "url": "https://example.invalid/media.iso", "path": "media.iso"}},
+		{name: "mount file accepts mode", schema: virtualMediaFileSchema(), input: map[string]any{"device": "lab", "path": "media.iso", "mode": "read_only"}, valid: true},
+		{name: "mount file requires path", schema: virtualMediaFileSchema(), input: map[string]any{"device": "lab"}},
+		{name: "mount file rejects empty path", schema: virtualMediaFileSchema(), input: map[string]any{"device": "lab", "path": ""}},
+		{name: "mount file rejects extra", schema: virtualMediaFileSchema(), input: map[string]any{"device": "lab", "path": "media.iso", "url": "https://example.invalid/media.iso"}},
+		{name: "unmount accepts device", schema: virtualMediaStatusSchema(t), input: map[string]any{"device": "lab"}, valid: true},
+		{name: "upload accepts path", schema: virtualMediaUploadSchema(), input: map[string]any{"device": "lab", "path": "media.iso"}, valid: true},
+		{name: "upload requires path", schema: virtualMediaUploadSchema(), input: map[string]any{"device": "lab"}},
+		{name: "upload rejects extra", schema: virtualMediaUploadSchema(), input: map[string]any{"device": "lab", "path": "media.iso", "mode": "read_only"}},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			resolved, err := test.schema.Resolve(nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			err = resolved.Validate(test.input)
+			if test.valid && err != nil {
+				t.Fatalf("Validate(%v) = %v", test.input, err)
+			}
+			if !test.valid && err == nil {
+				t.Fatalf("Validate(%v) succeeded", test.input)
+			}
+		})
+	}
+}
+
+func virtualMediaStatusSchema(t *testing.T) *jsonschema.Schema {
+	t.Helper()
+	schema, err := jsonschema.For[virtualMediaStatusInput](nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return schema
+}
 
 func TestServerPublishesConsequenceCorrectVirtualMediaTools(t *testing.T) {
 	clientSession, cleanup := connectVirtualMediaTestClient(t, &recordingDevice{})

@@ -360,6 +360,55 @@
       "icons": null,
       "inputSchema": {
         "additionalProperties": false,
+        "anyOf": [
+          {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "key"
+                  ]
+                },
+                {
+                  "required": [
+                    "modifiers"
+                  ]
+                }
+              ]
+            },
+            "properties": {
+              "operation": {
+                "const": "type_text"
+              }
+            },
+            "required": [
+              "device",
+              "operation",
+              "text"
+            ]
+          },
+          {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "text"
+                  ]
+                }
+              ]
+            },
+            "properties": {
+              "operation": {
+                "const": "press_key"
+              }
+            },
+            "required": [
+              "device",
+              "operation",
+              "key"
+            ]
+          }
+        ],
         "properties": {
           "device": {
             "description": "JetKVM device name from the server configuration",
@@ -367,11 +416,19 @@
           },
           "key": {
             "description": "named key or one printable character for press_key",
+            "minLength": 1,
+            "pattern": "[!-~]",
             "type": "string"
           },
           "modifiers": {
             "description": "optional ctrl, alt, shift, meta modifiers",
             "items": {
+              "enum": [
+                "ctrl",
+                "alt",
+                "shift",
+                "meta"
+              ],
               "type": "string"
             },
             "type": [
@@ -389,6 +446,9 @@
           },
           "text": {
             "description": "text to type for type_text",
+            "maxLength": 4096,
+            "minLength": 1,
+            "pattern": "^[\t\\n\\r\\x20-\\x7E]+$",
             "type": "string"
           }
         },
@@ -682,9 +742,212 @@
       "icons": null,
       "inputSchema": {
         "additionalProperties": false,
+        "anyOf": [
+          {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "dx"
+                  ]
+                },
+                {
+                  "required": [
+                    "dy"
+                  ]
+                },
+                {
+                  "required": [
+                    "button"
+                  ]
+                },
+                {
+                  "required": [
+                    "wheel_x"
+                  ]
+                },
+                {
+                  "required": [
+                    "wheel_y"
+                  ]
+                }
+              ]
+            },
+            "properties": {
+              "operation": {
+                "const": "move_absolute"
+              }
+            },
+            "required": [
+              "device",
+              "operation",
+              "x",
+              "y"
+            ]
+          },
+          {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "x"
+                  ]
+                },
+                {
+                  "required": [
+                    "y"
+                  ]
+                },
+                {
+                  "required": [
+                    "button"
+                  ]
+                },
+                {
+                  "required": [
+                    "wheel_x"
+                  ]
+                },
+                {
+                  "required": [
+                    "wheel_y"
+                  ]
+                }
+              ]
+            },
+            "properties": {
+              "operation": {
+                "const": "move_relative"
+              }
+            },
+            "required": [
+              "device",
+              "operation",
+              "dx",
+              "dy"
+            ]
+          },
+          {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "x"
+                  ]
+                },
+                {
+                  "required": [
+                    "y"
+                  ]
+                },
+                {
+                  "required": [
+                    "dx"
+                  ]
+                },
+                {
+                  "required": [
+                    "dy"
+                  ]
+                },
+                {
+                  "required": [
+                    "wheel_x"
+                  ]
+                },
+                {
+                  "required": [
+                    "wheel_y"
+                  ]
+                }
+              ]
+            },
+            "properties": {
+              "operation": {
+                "const": "click"
+              }
+            },
+            "required": [
+              "device",
+              "operation",
+              "button"
+            ]
+          },
+          {
+            "anyOf": [
+              {
+                "properties": {
+                  "wheel_x": {
+                    "not": {
+                      "const": 0
+                    }
+                  }
+                },
+                "required": [
+                  "wheel_x"
+                ]
+              },
+              {
+                "properties": {
+                  "wheel_y": {
+                    "not": {
+                      "const": 0
+                    }
+                  }
+                },
+                "required": [
+                  "wheel_y"
+                ]
+              }
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "x"
+                  ]
+                },
+                {
+                  "required": [
+                    "y"
+                  ]
+                },
+                {
+                  "required": [
+                    "dx"
+                  ]
+                },
+                {
+                  "required": [
+                    "dy"
+                  ]
+                },
+                {
+                  "required": [
+                    "button"
+                  ]
+                }
+              ]
+            },
+            "properties": {
+              "operation": {
+                "const": "scroll"
+              }
+            },
+            "required": [
+              "device",
+              "operation"
+            ]
+          }
+        ],
         "properties": {
           "button": {
             "description": "left, middle, or right button for click",
+            "enum": [
+              "left",
+              "middle",
+              "right"
+            ],
             "type": "string"
           },
           "device": {
@@ -695,19 +958,13 @@
             "description": "relative horizontal movement",
             "maximum": 127,
             "minimum": -128,
-            "type": [
-              "null",
-              "integer"
-            ]
+            "type": "integer"
           },
           "dy": {
             "description": "relative vertical movement",
             "maximum": 127,
             "minimum": -128,
-            "type": [
-              "null",
-              "integer"
-            ]
+            "type": "integer"
           },
           "operation": {
             "description": "typed mouse operation",
@@ -733,17 +990,15 @@
           },
           "x": {
             "description": "absolute x coordinate from 0 through 32767",
-            "type": [
-              "null",
-              "integer"
-            ]
+            "maximum": 32767,
+            "minimum": 0,
+            "type": "integer"
           },
           "y": {
             "description": "absolute y coordinate from 0 through 32767",
-            "type": [
-              "null",
-              "integer"
-            ]
+            "maximum": 32767,
+            "minimum": 0,
+            "type": "integer"
           }
         },
         "required": [
