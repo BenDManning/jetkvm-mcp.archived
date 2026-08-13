@@ -1,9 +1,7 @@
 package jetkvm
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -146,11 +144,13 @@ func (manager *Manager) Status(ctx context.Context, name string) (mcpserver.Stat
 			status.Warnings = append(status.Warnings, "active extension unavailable")
 		}
 
-		var media json.RawMessage
+		var media *firmwareVirtualMediaState
 		if err := session.Call(ctx, methodVirtualMediaState, nil, &media); err != nil {
 			status.Warnings = append(status.Warnings, "virtual media unavailable")
-		} else if trimmed := bytes.TrimSpace(media); len(trimmed) != 0 && !bytes.Equal(trimmed, []byte("null")) {
-			status.VirtualMedia = string(trimmed)
+		} else if projected, projectErr := publicVirtualMediaState(media); projectErr != nil {
+			status.Warnings = append(status.Warnings, "virtual media unavailable")
+		} else {
+			status.VirtualMedia = projected
 		}
 
 		var video struct {

@@ -74,7 +74,7 @@ func (manager *Manager) VirtualMedia(ctx context.Context, name string, request m
 		if err != nil {
 			return mcpserver.VirtualMediaResult{}, err
 		}
-		return mcpserver.VirtualMediaResult{Device: device.Name, Operation: request.Operation, Mounted: true, Source: source.String(), Mode: publicMode, Status: "completed"}, nil
+		return mcpserver.VirtualMediaResult{Device: device.Name, Operation: request.Operation, Mounted: true, SourceType: mcpserver.VirtualMediaSourceHTTP, Mode: publicMode, Status: "completed"}, nil
 	case mcpserver.VirtualMediaUnmount:
 		err = manager.withSession(ctx, device, SessionProfileData, func(session Session) error {
 			return session.Call(ctx, "unmountImage", nil, nil)
@@ -98,22 +98,33 @@ func (manager *Manager) virtualMediaStatus(ctx context.Context, device DeviceCon
 	if err != nil {
 		return mcpserver.VirtualMediaResult{}, classifyReadFailure(err)
 	}
-	result := mcpserver.VirtualMediaResult{Device: device.Name, Operation: mcpserver.VirtualMediaStatus, Status: "observed"}
-	if state == nil {
-		return result, nil
-	}
-	result.Mounted = true
-	result.Mode, err = requestMode(state.Mode)
+	projected, err := publicVirtualMediaState(state)
 	if err != nil {
 		return mcpserver.VirtualMediaResult{}, err
 	}
+	return mcpserver.VirtualMediaResult{
+		Device: device.Name, Operation: mcpserver.VirtualMediaStatus,
+		Mounted: projected.Mounted, SourceType: projected.SourceType,
+		Mode: projected.Mode, Status: "observed",
+	}, nil
+}
+
+func publicVirtualMediaState(state *firmwareVirtualMediaState) (*mcpserver.VirtualMediaState, error) {
+	if state == nil {
+		return &mcpserver.VirtualMediaState{Mounted: false}, nil
+	}
+	mode, err := requestMode(state.Mode)
+	if err != nil {
+		return nil, err
+	}
+	result := &mcpserver.VirtualMediaState{Mounted: true, Mode: mode}
 	switch state.Source {
 	case "Storage":
-		result.Source = state.Filename
+		result.SourceType = mcpserver.VirtualMediaSourceStorage
 	case "HTTP":
-		result.Source = state.URL
+		result.SourceType = mcpserver.VirtualMediaSourceHTTP
 	default:
-		return mcpserver.VirtualMediaResult{}, fmt.Errorf("%w: virtual media source", ErrInvalidResponse)
+		return nil, fmt.Errorf("%w: virtual media source", ErrInvalidResponse)
 	}
 	return result, nil
 }
@@ -179,7 +190,7 @@ func (manager *Manager) uploadLocalMedia(ctx context.Context, device DeviceConfi
 	}
 	return mcpserver.VirtualMediaResult{
 		Device: device.Name, Operation: request.Operation, Mounted: request.Operation == mcpserver.VirtualMediaMountFile,
-		Source: filename, Mode: publicMode, Status: "completed",
+		SourceType: mcpserver.VirtualMediaSourceStorage, Mode: publicMode, Status: "completed",
 	}, nil
 }
 

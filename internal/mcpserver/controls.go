@@ -108,13 +108,29 @@ type VirtualMediaRequest struct {
 	Mode      string                `json:"mode,omitempty"`
 }
 
+type VirtualMediaSourceType string
+
+const (
+	VirtualMediaSourceHTTP    VirtualMediaSourceType = "http"
+	VirtualMediaSourceStorage VirtualMediaSourceType = "storage"
+)
+
+// VirtualMediaState is the privacy-safe public projection of firmware media
+// state. It deliberately identifies only the source class, never a URL, path,
+// filename, or unknown firmware field.
+type VirtualMediaState struct {
+	Mounted    bool                   `json:"mounted"`
+	SourceType VirtualMediaSourceType `json:"sourceType,omitempty"`
+	Mode       string                 `json:"mode,omitempty"`
+}
+
 type VirtualMediaResult struct {
-	Device    string                `json:"device"`
-	Operation VirtualMediaOperation `json:"operation"`
-	Mounted   bool                  `json:"mounted"`
-	Source    string                `json:"source,omitempty"`
-	Mode      string                `json:"mode,omitempty"`
-	Status    string                `json:"status"`
+	Device     string                 `json:"device"`
+	Operation  VirtualMediaOperation  `json:"operation"`
+	Mounted    bool                   `json:"mounted"`
+	SourceType VirtualMediaSourceType `json:"sourceType,omitempty"`
+	Mode       string                 `json:"mode,omitempty"`
+	Status     string                 `json:"status"`
 }
 
 type captureInput struct {
@@ -230,9 +246,10 @@ func addControlTools(server *mcp.Server, device Device) {
 	})
 
 	addReadTool(server, &mcp.Tool{
-		Name:        GetVirtualMediaStatusToolName,
-		Description: "Read the current virtual-media mount state of a configured JetKVM without changing it. Requires only a configured device. Returns the firmware-reported mount state from this read; it does not prove that a later mutation is safe.",
-		Annotations: annotations(true, false, true),
+		Name:         GetVirtualMediaStatusToolName,
+		Description:  "Read the current virtual-media mount state of a configured JetKVM without changing it. Requires only a configured device. Returns the firmware-reported mount state from this read; it does not prove that a later mutation is safe.",
+		OutputSchema: virtualMediaResultSchema(),
+		Annotations:  annotations(true, false, true),
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, input virtualMediaStatusInput) (*mcp.CallToolResult, VirtualMediaResult, error) {
 		if err := validDevice(input.Device); err != nil {
 			return nil, VirtualMediaResult{}, invalidInput(err)
@@ -241,11 +258,12 @@ func addControlTools(server *mcp.Server, device Device) {
 		return nil, result, err
 	})
 
-	addMutationTool(server, &mcp.Tool{
-		Name:        MountVirtualMediaURLToolName,
-		Description: "Ask the configured JetKVM to fetch an HTTP(S) URL and replace its current virtual-media mount. Requires a configured device and a non-empty HTTP(S) URL. Success acknowledges the firmware RPC but does not independently verify the resulting mount; inspect status before deciding whether another mutation is safe.",
-		InputSchema: virtualMediaURLSchema(),
-		Annotations: annotationsWithOpenWorld(false, true, false, true),
+	addSanitizedInputMutationTool(server, &mcp.Tool{
+		Name:         MountVirtualMediaURLToolName,
+		Description:  "Ask the configured JetKVM to fetch an HTTP(S) URL and replace its current virtual-media mount. Requires a configured device and a non-empty HTTP(S) URL. Success acknowledges the firmware RPC but does not independently verify the resulting mount; inspect status before deciding whether another mutation is safe.",
+		InputSchema:  virtualMediaURLSchema(),
+		OutputSchema: virtualMediaResultSchema(),
+		Annotations:  annotationsWithOpenWorld(false, true, false, true),
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, input virtualMediaURLInput) (*mcp.CallToolResult, VirtualMediaResult, error) {
 		request := VirtualMediaRequest{Operation: VirtualMediaMountURL, Source: input.URL, Mode: input.Mode}
 		if err := validateVirtualMediaInput(input.Device, request); err != nil {
@@ -255,11 +273,12 @@ func addControlTools(server *mcp.Server, device Device) {
 		return nil, result, err
 	})
 
-	addMutationTool(server, &mcp.Tool{
-		Name:        MountVirtualMediaFileToolName,
-		Description: "Upload one confined local media file and replace the configured JetKVM's current mount. Requires a configured media directory and a non-empty relative path confined beneath it. Success means upload and mount RPCs completed, not that an external observer verified the mount; inspect status before another mutation.",
-		InputSchema: virtualMediaFileSchema(),
-		Annotations: annotations(false, true, false),
+	addSanitizedInputMutationTool(server, &mcp.Tool{
+		Name:         MountVirtualMediaFileToolName,
+		Description:  "Upload one confined local media file and replace the configured JetKVM's current mount. Requires a configured media directory and a non-empty relative path confined beneath it. Success means upload and mount RPCs completed, not that an external observer verified the mount; inspect status before another mutation.",
+		InputSchema:  virtualMediaFileSchema(),
+		OutputSchema: virtualMediaResultSchema(),
+		Annotations:  annotations(false, true, false),
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, input virtualMediaFileInput) (*mcp.CallToolResult, VirtualMediaResult, error) {
 		request := VirtualMediaRequest{Operation: VirtualMediaMountFile, Source: input.Path, Mode: input.Mode}
 		if err := validateVirtualMediaInput(input.Device, request); err != nil {
@@ -270,9 +289,10 @@ func addControlTools(server *mcp.Server, device Device) {
 	})
 
 	addMutationTool(server, &mcp.Tool{
-		Name:        UnmountVirtualMediaToolName,
-		Description: "Unmount the configured JetKVM's current virtual media. Requires only a configured device; the request is valid even when no media is mounted. Success acknowledges the firmware RPC but does not independently verify that media is absent; inspect status before another mutation.",
-		Annotations: annotations(false, true, true),
+		Name:         UnmountVirtualMediaToolName,
+		Description:  "Unmount the configured JetKVM's current virtual media. Requires only a configured device; the request is valid even when no media is mounted. Success acknowledges the firmware RPC but does not independently verify that media is absent; inspect status before another mutation.",
+		OutputSchema: virtualMediaResultSchema(),
+		Annotations:  annotations(false, true, true),
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, input virtualMediaStatusInput) (*mcp.CallToolResult, VirtualMediaResult, error) {
 		if err := validDevice(input.Device); err != nil {
 			return nil, VirtualMediaResult{}, invalidInput(err)
@@ -281,11 +301,12 @@ func addControlTools(server *mcp.Server, device Device) {
 		return nil, result, err
 	})
 
-	addMutationTool(server, &mcp.Tool{
-		Name:        UploadVirtualMediaFileToolName,
-		Description: "Upload one confined local media file to the configured JetKVM without mounting it. Requires a configured media directory and a non-empty relative path confined beneath it. Success means the upload completed without a mount request; the appliance retains the stored file outside this process.",
-		InputSchema: virtualMediaUploadSchema(),
-		Annotations: annotations(false, true, false),
+	addSanitizedInputMutationTool(server, &mcp.Tool{
+		Name:         UploadVirtualMediaFileToolName,
+		Description:  "Upload one confined local media file to the configured JetKVM without mounting it. Requires a configured media directory and a non-empty relative path confined beneath it. Success means the upload completed without a mount request; the appliance retains the stored file outside this process.",
+		InputSchema:  virtualMediaUploadSchema(),
+		OutputSchema: virtualMediaResultSchema(),
+		Annotations:  annotations(false, true, false),
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, input virtualMediaUploadInput) (*mcp.CallToolResult, VirtualMediaResult, error) {
 		request := VirtualMediaRequest{Operation: VirtualMediaUpload, Source: input.Path}
 		if err := validateVirtualMediaInput(input.Device, request); err != nil {
@@ -295,11 +316,12 @@ func addControlTools(server *mcp.Server, device Device) {
 		return nil, result, err
 	})
 
-	addConditionalMutationTool(server, &mcp.Tool{
-		Name:        VirtualMediaToolName,
-		Description: "Deprecated compatibility tool for virtual-media status, mount, unmount, and upload operations; use the one-purpose jetkvm_*_virtual_media* tools instead.",
-		InputSchema: operationSchema[virtualMediaInput]([]string{string(VirtualMediaStatus), string(VirtualMediaMountURL), string(VirtualMediaMountFile), string(VirtualMediaUnmount), string(VirtualMediaUpload)}),
-		Annotations: annotations(false, true, false),
+	addSanitizedConditionalMutationTool(server, &mcp.Tool{
+		Name:         VirtualMediaToolName,
+		Description:  "Deprecated compatibility tool for virtual-media status, mount, unmount, and upload operations; use the one-purpose jetkvm_*_virtual_media* tools instead.",
+		InputSchema:  operationSchema[virtualMediaInput]([]string{string(VirtualMediaStatus), string(VirtualMediaMountURL), string(VirtualMediaMountFile), string(VirtualMediaUnmount), string(VirtualMediaUpload)}),
+		OutputSchema: virtualMediaResultSchema(),
+		Annotations:  annotations(false, true, false),
 	}, func(input virtualMediaInput) bool {
 		return input.Operation != VirtualMediaStatus
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, input virtualMediaInput) (*mcp.CallToolResult, VirtualMediaResult, error) {
@@ -319,6 +341,34 @@ func captureSchema() *jsonschema.Schema {
 	}
 	setIntegerRange(schema.Properties["max_width"], 1, 3840)
 	setIntegerRange(schema.Properties["max_height"], 1, 2160)
+	return schema
+}
+
+func statusOutputSchema() *jsonschema.Schema {
+	schema, err := jsonschema.For[Status](nil)
+	if err != nil {
+		panic(fmt.Sprintf("status output schema: %v", err))
+	}
+	media := schema.Properties["virtualMedia"]
+	media.Type = "object"
+	media.Types = nil
+	setStringEnum(media.Properties["sourceType"], []string{string(VirtualMediaSourceHTTP), string(VirtualMediaSourceStorage)})
+	setStringEnum(media.Properties["mode"], []string{"read_only", "read_write"})
+	return schema
+}
+
+func virtualMediaResultSchema() *jsonschema.Schema {
+	schema, err := jsonschema.For[VirtualMediaResult](nil)
+	if err != nil {
+		panic(fmt.Sprintf("virtual media output schema: %v", err))
+	}
+	setStringEnum(schema.Properties["operation"], []string{
+		string(VirtualMediaStatus), string(VirtualMediaMountURL), string(VirtualMediaMountFile),
+		string(VirtualMediaUnmount), string(VirtualMediaUpload),
+	})
+	setStringEnum(schema.Properties["sourceType"], []string{string(VirtualMediaSourceHTTP), string(VirtualMediaSourceStorage)})
+	setStringEnum(schema.Properties["mode"], []string{"read_only", "read_write"})
+	setStringEnum(schema.Properties["status"], []string{"observed", "completed"})
 	return schema
 }
 

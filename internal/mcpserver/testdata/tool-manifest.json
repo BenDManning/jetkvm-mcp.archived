@@ -229,7 +229,30 @@
             "type": "integer"
           },
           "virtualMedia": {
-            "type": "string"
+            "additionalProperties": false,
+            "properties": {
+              "mode": {
+                "enum": [
+                  "read_only",
+                  "read_write"
+                ],
+                "type": "string"
+              },
+              "mounted": {
+                "type": "boolean"
+              },
+              "sourceType": {
+                "enum": [
+                  "http",
+                  "storage"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "mounted"
+            ],
+            "type": "object"
           },
           "warnings": {
             "items": {
@@ -280,18 +303,37 @@
             "type": "string"
           },
           "mode": {
+            "enum": [
+              "read_only",
+              "read_write"
+            ],
             "type": "string"
           },
           "mounted": {
             "type": "boolean"
           },
           "operation": {
+            "enum": [
+              "status",
+              "mount_url",
+              "mount_file",
+              "unmount",
+              "upload"
+            ],
             "type": "string"
           },
-          "source": {
+          "sourceType": {
+            "enum": [
+              "http",
+              "storage"
+            ],
             "type": "string"
           },
           "status": {
+            "enum": [
+              "observed",
+              "completed"
+            ],
             "type": "string"
           }
         },
@@ -424,18 +466,37 @@
             "type": "string"
           },
           "mode": {
+            "enum": [
+              "read_only",
+              "read_write"
+            ],
             "type": "string"
           },
           "mounted": {
             "type": "boolean"
           },
           "operation": {
+            "enum": [
+              "status",
+              "mount_url",
+              "mount_file",
+              "unmount",
+              "upload"
+            ],
             "type": "string"
           },
-          "source": {
+          "sourceType": {
+            "enum": [
+              "http",
+              "storage"
+            ],
             "type": "string"
           },
           "status": {
+            "enum": [
+              "observed",
+              "completed"
+            ],
             "type": "string"
           }
         },
@@ -495,18 +556,37 @@
             "type": "string"
           },
           "mode": {
+            "enum": [
+              "read_only",
+              "read_write"
+            ],
             "type": "string"
           },
           "mounted": {
             "type": "boolean"
           },
           "operation": {
+            "enum": [
+              "status",
+              "mount_url",
+              "mount_file",
+              "unmount",
+              "upload"
+            ],
             "type": "string"
           },
-          "source": {
+          "sourceType": {
+            "enum": [
+              "http",
+              "storage"
+            ],
             "type": "string"
           },
           "status": {
+            "enum": [
+              "observed",
+              "completed"
+            ],
             "type": "string"
           }
         },
@@ -852,18 +932,37 @@
             "type": "string"
           },
           "mode": {
+            "enum": [
+              "read_only",
+              "read_write"
+            ],
             "type": "string"
           },
           "mounted": {
             "type": "boolean"
           },
           "operation": {
+            "enum": [
+              "status",
+              "mount_url",
+              "mount_file",
+              "unmount",
+              "upload"
+            ],
             "type": "string"
           },
-          "source": {
+          "sourceType": {
+            "enum": [
+              "http",
+              "storage"
+            ],
             "type": "string"
           },
           "status": {
+            "enum": [
+              "observed",
+              "completed"
+            ],
             "type": "string"
           }
         },
@@ -915,18 +1014,37 @@
             "type": "string"
           },
           "mode": {
+            "enum": [
+              "read_only",
+              "read_write"
+            ],
             "type": "string"
           },
           "mounted": {
             "type": "boolean"
           },
           "operation": {
+            "enum": [
+              "status",
+              "mount_url",
+              "mount_file",
+              "unmount",
+              "upload"
+            ],
             "type": "string"
           },
-          "source": {
+          "sourceType": {
+            "enum": [
+              "http",
+              "storage"
+            ],
             "type": "string"
           },
           "status": {
+            "enum": [
+              "observed",
+              "completed"
+            ],
             "type": "string"
           }
         },
@@ -991,18 +1109,37 @@
             "type": "string"
           },
           "mode": {
+            "enum": [
+              "read_only",
+              "read_write"
+            ],
             "type": "string"
           },
           "mounted": {
             "type": "boolean"
           },
           "operation": {
+            "enum": [
+              "status",
+              "mount_url",
+              "mount_file",
+              "unmount",
+              "upload"
+            ],
             "type": "string"
           },
-          "source": {
+          "sourceType": {
+            "enum": [
+              "http",
+              "storage"
+            ],
             "type": "string"
           },
           "status": {
+            "enum": [
+              "observed",
+              "completed"
+            ],
             "type": "string"
           }
         },
@@ -1201,7 +1338,9 @@
             "videoHeight": 480,
             "videoReady": true,
             "videoWidth": 640,
-            "virtualMedia": "{\"mounted\":false}",
+            "virtualMedia": {
+              "mounted": false
+            },
             "warnings": [
               "fixture warning"
             ]
@@ -1233,7 +1372,9 @@
         "videoHeight": 480,
         "videoReady": true,
         "videoWidth": 640,
-        "virtualMedia": "{\"mounted\":false}",
+        "virtualMedia": {
+          "mounted": false
+        },
         "warnings": [
           "fixture warning"
         ]
@@ -1307,7 +1448,7 @@
             "device": "fixture-device",
             "mounted": false,
             "operation": "mount_file",
-            "source": "fixture.iso",
+            "sourceType": "storage",
             "status": "completed"
           },
           "meta": null,
@@ -1328,7 +1469,7 @@
         "device": "fixture-device",
         "mounted": false,
         "operation": "mount_file",
-        "source": "fixture.iso",
+        "sourceType": "storage",
         "status": "completed"
       }
     },
@@ -1340,7 +1481,7 @@
             "device": "fixture-device",
             "mounted": false,
             "operation": "mount_url",
-            "source": "https://example.invalid/media.iso",
+            "sourceType": "http",
             "status": "completed"
           },
           "meta": null,
@@ -1361,7 +1502,7 @@
         "device": "fixture-device",
         "mounted": false,
         "operation": "mount_url",
-        "source": "https://example.invalid/media.iso",
+        "sourceType": "http",
         "status": "completed"
       }
     },
@@ -1549,7 +1690,7 @@
             "device": "fixture-device",
             "mounted": false,
             "operation": "upload",
-            "source": "fixture.iso",
+            "sourceType": "storage",
             "status": "completed"
           },
           "meta": null,
@@ -1570,7 +1711,7 @@
         "device": "fixture-device",
         "mounted": false,
         "operation": "upload",
-        "source": "fixture.iso",
+        "sourceType": "storage",
         "status": "completed"
       }
     },

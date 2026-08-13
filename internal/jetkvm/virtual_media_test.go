@@ -136,6 +136,24 @@ func TestManagerVirtualMediaRejectsUnknownFirmwareMode(t *testing.T) {
 	}
 }
 
+func TestManagerVirtualMediaStatusRejectsUnknownFirmwareSourceWithoutLeak(t *testing.T) {
+	const sentinel = "JETKVM-PRIVATE-FIRMWARE-SENTINEL-36bf27"
+	session := &fakeSession{results: map[string]any{
+		"getVirtualMediaState": map[string]any{
+			"source": sentinel, "mode": "CDROM", "filename": sentinel + ".iso",
+			"url": "https://media.invalid/" + sentinel + ".iso?token=" + sentinel,
+		},
+	}}
+	manager := testManager(t, session)
+	_, err := manager.VirtualMedia(context.Background(), "lab", mcpserver.VirtualMediaRequest{Operation: mcpserver.VirtualMediaStatus})
+	if !errors.Is(err, ErrInvalidResponse) {
+		t.Fatalf("error = %v, want invalid firmware response", err)
+	}
+	if strings.Contains(err.Error(), sentinel) || strings.Contains(err.Error(), "media.invalid") {
+		t.Fatalf("error leaked private firmware state: %v", err)
+	}
+}
+
 func TestManagerVirtualMediaUploadsAndMountsConfiguredFile(t *testing.T) {
 	mediaDirectory := t.TempDir()
 	contents := []byte("small ISO fixture")

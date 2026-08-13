@@ -50,7 +50,7 @@ func TestValidateReadOnlyTools(t *testing.T) {
 }
 
 func TestValidateStatusStructure(t *testing.T) {
-	valid := map[string]any{"device": "lab", "connected": true, "videoWidth": float64(1920), "warnings": []any{"signal settling"}}
+	valid := map[string]any{"device": "lab", "connected": true, "videoWidth": float64(1920), "warnings": []any{"signal settling"}, "virtualMedia": map[string]any{"mounted": true, "sourceType": "http", "mode": "read_only"}}
 	if err := validateStatus(valid, "lab"); err != nil {
 		t.Fatal(err)
 	}
@@ -61,6 +61,9 @@ func TestValidateStatusStructure(t *testing.T) {
 		{"device": "lab", "connected": "yes"},
 		{"device": "lab", "connected": true, "videoWidth": "1920"},
 		{"device": "lab", "connected": true, "warnings": []any{"ok", float64(1)}},
+		{"device": "lab", "connected": true, "virtualMedia": `{"source":"private"}`},
+		{"device": "lab", "connected": true, "virtualMedia": map[string]any{"mounted": true, "source": "private.iso", "sourceType": "storage", "mode": "read_only"}},
+		{"device": "lab", "connected": true, "virtualMedia": map[string]any{"mounted": true, "sourceType": "future", "mode": "read_only"}},
 	} {
 		if err := validateStatus(value, "lab"); err == nil {
 			t.Fatalf("accepted status %#v", value)
