@@ -153,6 +153,27 @@ func TestCaptureScreenServerDeadlineExpiresNoFrameAndCleansWaiter(t *testing.T) 
 	}
 }
 
+func TestCaptureScreenAppliesServerOwnedDefaultDeadline(t *testing.T) {
+	var remaining time.Duration
+	provider := &captureTestProvider{setup: func(ctx context.Context) error {
+		deadline, ok := ctx.Deadline()
+		if !ok {
+			return errors.New("capture context has no deadline")
+		}
+		remaining = time.Until(deadline)
+		return context.Canceled
+	}}
+	manager := newCaptureTestManagerWithProvider(t, provider, &fakeDecoder{})
+
+	_, err := manager.CaptureScreen(context.Background(), "lab", mcpserver.CaptureRequest{})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("error = %v, want probe cancellation", err)
+	}
+	if remaining <= 0 || remaining > defaultCaptureTimeout {
+		t.Fatalf("default deadline remaining = %v, want within (0, %v]", remaining, defaultCaptureTimeout)
+	}
+}
+
 func TestCaptureScreenServerDeadlineDuringSessionSetupUsesReadTimeout(t *testing.T) {
 	provider := &captureTestProvider{setup: func(ctx context.Context) error {
 		<-ctx.Done()
