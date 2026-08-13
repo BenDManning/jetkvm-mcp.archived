@@ -1191,8 +1191,14 @@
       "content": [
         {
           "annotations": null,
+          "json": {
+            "code": "operation_failed",
+            "message": "JetKVM operation failed",
+            "outcome": "failed",
+            "retryable": false,
+            "version": "1"
+          },
           "meta": null,
-          "text": "fixture device unavailable",
           "type": "text"
         }
       ],

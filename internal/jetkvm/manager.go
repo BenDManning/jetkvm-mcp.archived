@@ -122,7 +122,7 @@ func (manager *Manager) Status(ctx context.Context, name string) (mcpserver.Stat
 		return mcpserver.Status{}, err
 	}
 	status := mcpserver.Status{Device: device.Name}
-	err = manager.provider.WithSession(ctx, device, SessionProfileData, func(session Session) error {
+	err = manager.withSession(ctx, device, SessionProfileData, func(session Session) error {
 		var pong string
 		if err := session.Call(ctx, methodPing, nil, &pong); err != nil {
 			return err
@@ -196,7 +196,7 @@ func (manager *Manager) Status(ctx context.Context, name string) (mcpserver.Stat
 		return nil
 	})
 	if err != nil {
-		return mcpserver.Status{}, err
+		return mcpserver.Status{}, classifyReadFailure(err)
 	}
 	return status, nil
 }
@@ -210,7 +210,7 @@ func (manager *Manager) Power(ctx context.Context, name string, action mcpserver
 	if err != nil {
 		return mcpserver.PowerResult{}, err
 	}
-	if err := manager.provider.WithSession(ctx, device, SessionProfileData, func(session Session) error {
+	if err := manager.withSession(ctx, device, SessionProfileData, func(session Session) error {
 		return session.Call(ctx, method, params, nil)
 	}); err != nil {
 		return mcpserver.PowerResult{}, err
@@ -218,10 +218,30 @@ func (manager *Manager) Power(ctx context.Context, name string, action mcpserver
 	return mcpserver.PowerResult{Device: device.Name, Action: action, Target: targetName, Status: "completed"}, nil
 }
 
+func (manager *Manager) withSession(ctx context.Context, device DeviceConfig, profile SessionProfile, operation func(Session) error) error {
+	invoked := false
+	err := manager.provider.WithSession(ctx, device, profile, func(session Session) error {
+		invoked = true
+		return operation(session)
+	})
+	if err != nil && !invoked {
+		var classified interface{ ToolErrorOutcome() string }
+		if errors.As(err, &classified) {
+			return err
+		}
+		return classifyOperationError(err, ToolOutcomeNotSent)
+	}
+	return err
+}
+
+func classifyReadFailure(err error) error {
+	return classifyOperationError(err, ToolOutcomeFailed)
+}
+
 func (manager *Manager) device(name string) (DeviceConfig, error) {
 	device, exists := manager.devices[strings.TrimSpace(name)]
 	if !exists {
-		return DeviceConfig{}, fmt.Errorf("%w: %s", ErrUnknownDevice, strings.TrimSpace(name))
+		return DeviceConfig{}, classifyOperationError(fmt.Errorf("%w: %s", ErrUnknownDevice, strings.TrimSpace(name)), ToolOutcomeNotSent)
 	}
 	return device, nil
 }
@@ -243,7 +263,7 @@ func powerRequest(device DeviceConfig, action mcpserver.PowerAction, targetName 
 	case mcpserver.PowerActionWakeHostLAN:
 		target, exists := device.WakeOnLAN[strings.TrimSpace(targetName)]
 		if !exists {
-			return "", nil, fmt.Errorf("%w: %s", ErrUnknownWakeTarget, strings.TrimSpace(targetName))
+			return "", nil, classifyOperationError(fmt.Errorf("%w: %s", ErrUnknownWakeTarget, strings.TrimSpace(targetName)), ToolOutcomeNotSent)
 		}
 		params := map[string]any{"macAddress": target.MACAddress}
 		if target.BroadcastIP != "" {
@@ -251,6 +271,6 @@ func powerRequest(device DeviceConfig, action mcpserver.PowerAction, targetName 
 		}
 		return "sendWOLMagicPacket", params, nil
 	default:
-		return "", nil, errors.New("unsupported power action")
+		return "", nil, classifyOperationError(errors.New("unsupported power action"), ToolOutcomeNotSent)
 	}
 }

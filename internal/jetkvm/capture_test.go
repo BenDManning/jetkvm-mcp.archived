@@ -112,6 +112,24 @@ func TestManagerCaptureScreenRequiresDecoder(t *testing.T) {
 	}
 }
 
+func TestManagerCaptureScreenDistinguishesEstablishedNoSignal(t *testing.T) {
+	session := &fakeSession{results: map[string]any{
+		methodVideoState: map[string]any{"ready": false},
+	}}
+	base, _ := url.Parse("https://jetkvm.invalid")
+	manager, err := NewManager([]DeviceConfig{{Name: "lab", BaseURL: *base}}, &fakeProvider{session: session}, WithDecoder(&fakeDecoder{}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = manager.CaptureScreen(context.Background(), "lab", mcpserver.CaptureRequest{})
+	if !errors.Is(err, ErrNoSignal) {
+		t.Fatalf("error = %v, want no-signal distinction", err)
+	}
+	if got := calledMethods(session.calls); len(got) != 1 || got[0] != methodVideoState {
+		t.Fatalf("methods = %v, want state probe without capture", got)
+	}
+}
+
 type fakeDecoder struct {
 	png                 []byte
 	width, height       int

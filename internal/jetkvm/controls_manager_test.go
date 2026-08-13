@@ -161,3 +161,22 @@ func TestManagerRejectsUnsupportedKeyboardAndMouseInput(t *testing.T) {
 		t.Fatalf("calls = %#v", session.calls)
 	}
 }
+
+func TestManagerKeyboardLocalValidationIsDefinitelyNotSent(t *testing.T) {
+	manager := testManager(t, &fakeSession{results: map[string]any{}})
+	_, err := manager.Keyboard(context.Background(), "lab", mcpserver.KeyboardRequest{Operation: mcpserver.KeyboardTypeText, Text: "é"})
+	assertToolOutcome(t, err, ToolOutcomeNotSent)
+}
+
+func TestManagerKeyboardPartialSequenceHasUnknownOutcome(t *testing.T) {
+	session := &fakeSession{results: map[string]any{}}
+	session.callHook = func(_ context.Context, method string, _ any) error {
+		if method == "keyboardReport" && len(session.calls) == 3 {
+			return classifyOperationError(context.Canceled, ToolOutcomeNotSent)
+		}
+		return nil
+	}
+	manager := testManager(t, session)
+	_, err := manager.Keyboard(context.Background(), "lab", mcpserver.KeyboardRequest{Operation: mcpserver.KeyboardTypeText, Text: "ab"})
+	assertToolOutcome(t, err, ToolOutcomeUnknown)
+}

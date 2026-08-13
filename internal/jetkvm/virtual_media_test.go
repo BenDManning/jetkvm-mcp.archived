@@ -63,6 +63,21 @@ func TestManagerVirtualMediaStatusURLMountAndUnmount(t *testing.T) {
 	}
 }
 
+func TestManagerVirtualMediaMountClassifiesConnectionFailureAsNotSent(t *testing.T) {
+	base, err := url.Parse("https://jetkvm.invalid")
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager, err := NewManager([]DeviceConfig{{Name: "lab", BaseURL: *base}}, &failingBeforeSessionProvider{err: ErrDeviceUnreachable})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = manager.VirtualMedia(context.Background(), "lab", mcpserver.VirtualMediaRequest{
+		Operation: mcpserver.VirtualMediaMountURL, Source: "https://media.invalid/install.iso",
+	})
+	assertToolOutcome(t, err, ToolOutcomeNotSent)
+}
+
 func TestManagerVirtualMediaRejectsURLCredentialsWithoutLeak(t *testing.T) {
 	session := &fakeSession{results: map[string]any{}}
 	manager := testManager(t, session)
@@ -79,6 +94,35 @@ func TestManagerVirtualMediaRejectsURLCredentialsWithoutLeak(t *testing.T) {
 	if len(session.calls) != 0 {
 		t.Fatalf("device calls = %#v, want none", session.calls)
 	}
+}
+
+func TestManagerVirtualMediaLocalPathFailureIsDefinitelyNotSent(t *testing.T) {
+	manager := testManager(t, &fakeSession{results: map[string]any{}})
+	_, err := manager.VirtualMedia(context.Background(), "lab", mcpserver.VirtualMediaRequest{
+		Operation: mcpserver.VirtualMediaUpload, Source: "missing.iso",
+	})
+	assertToolOutcome(t, err, ToolOutcomeNotSent)
+}
+
+func TestManagerVirtualMediaPriorCleanupMakesLaterNotSentUnknown(t *testing.T) {
+	mediaDirectory := t.TempDir()
+	if err := os.WriteFile(filepath.Join(mediaDirectory, "install.iso"), []byte("fixture"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	session := &fakeSession{results: map[string]any{
+		"listStorageFiles": map[string]any{"files": []map[string]any{{"filename": "install.iso.incomplete"}}},
+	}}
+	session.callHook = func(_ context.Context, method string, _ any) error {
+		if method == "startStorageFileUpload" {
+			return classifyOperationError(context.Canceled, ToolOutcomeNotSent)
+		}
+		return nil
+	}
+	manager := mediaManager(t, session, mediaDirectory)
+	_, err := manager.VirtualMedia(context.Background(), "lab", mcpserver.VirtualMediaRequest{
+		Operation: mcpserver.VirtualMediaUpload, Source: "install.iso",
+	})
+	assertToolOutcome(t, err, ToolOutcomeUnknown)
 }
 
 func TestManagerVirtualMediaRejectsUnknownFirmwareMode(t *testing.T) {
