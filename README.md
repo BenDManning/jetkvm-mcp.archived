@@ -104,11 +104,15 @@ The recommended direct default is loopback without authentication:
 jetkvm-mcp --config config.yaml --http 127.0.0.1:8080
 ```
 
-The MCP endpoint is `/mcp`; liveness is `/healthz`. The server is stateless and exposes no legacy SSE session endpoint. Binding to a non-loopback address requires `http.bearer_token_env` to resolve to a non-empty token.
+The MCP endpoint is `/mcp`; liveness is `/healthz`. The server is stateless and exposes no legacy SSE session endpoint. Binding to a non-loopback address requires `http.bearer_token_env` to resolve to a non-empty bearer token.
 
-For remote access, keep the server on loopback and place it behind a TLS reverse proxy, or configure a bearer token and explicitly bind a protected interface. Initial releases do not implement the MCP OAuth extension.
+For remote access, keep the server on loopback and place it behind a TLS reverse proxy, or configure a bearer token and explicitly bind a protected interface. The server does not implement MCP OAuth.
 
-The proxy must preserve the public `Host` header, and every accepted public origin must be listed exactly under `http.allowed_origins` (including scheme and optional port). Public Hosts that do not match a configured origin are rejected even when `Host` and `Origin` match, preventing DNS rebinding to the default loopback listener. Browser requests must have a configured origin whose host and port match `Host`; native MCP clients may omit `Origin` but their public `Host` must still be configured. Loopback and `localhost` Hosts remain trusted without an allowlist.
+Streamable HTTP supports native MCP clients and same-origin browser deployments. Native MCP clients may omit `Origin`, but their public `Host` must still be configured. Browser requests must use the MCP endpoint's external origin; a separately hosted browser origin is unsupported. The proxy must preserve that public `Host` header.
+
+Every admitted public endpoint origin must be listed exactly under `http.allowed_origins`, including its scheme and any non-default port. The setting is Host/origin admission for supported deployments, not a CORS grant, and wildcard entries are rejected. Public Hosts that are not configured are rejected even when `Host` and `Origin` match. A present browser `Origin` must exactly match the request's admitted external scheme and authority. Invalid, foreign, duplicate, empty, and opaque `null` origins are rejected before bearer authentication or MCP handling.
+
+The server does not emit CORS response headers. An admitted same-origin `OPTIONS` request remains subject to any configured bearer and then receives the endpoint's normal `405 Method Not Allowed`; an invalid or foreign preflight receives `403 Forbidden` before bearer authentication. Loopback and `localhost` Hosts remain trusted without an allowlist, but a present Origin must still use the same loopback scheme and authority.
 
 ## MCP tools
 

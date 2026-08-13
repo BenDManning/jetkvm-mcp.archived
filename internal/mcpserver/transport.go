@@ -66,7 +66,7 @@ func trustedHostAndOrigin(next http.Handler, configured []string) http.Handler {
 	allowedHosts := make(map[string]struct{}, len(configured))
 	for _, value := range configured {
 		origin, err := httporigin.Parse(value)
-		if err != nil {
+		if err != nil || strings.Contains(origin.Host, "*") {
 			continue
 		}
 		allowedOrigins[origin.Value] = struct{}{}
@@ -83,11 +83,16 @@ func trustedHostAndOrigin(next http.Handler, configured []string) http.Handler {
 			http.Error(response, "forbidden host", http.StatusForbidden)
 			return
 		}
-		origin := strings.TrimSpace(request.Header.Get("Origin"))
-		if origin == "" {
+		originHeaders := request.Header.Values("Origin")
+		if len(originHeaders) == 0 {
 			next.ServeHTTP(response, request)
 			return
 		}
+		if len(originHeaders) != 1 {
+			http.Error(response, "forbidden origin", http.StatusForbidden)
+			return
+		}
+		origin := strings.TrimSpace(originHeaders[0])
 		parsedOrigin, err := httporigin.Parse(origin)
 		if err != nil || parsedOrigin.Host != requestHost {
 			http.Error(response, "forbidden origin", http.StatusForbidden)

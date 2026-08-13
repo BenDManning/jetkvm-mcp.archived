@@ -227,9 +227,26 @@ per-device `media_url_allowed_origins` entry before provider dispatch. Paths,
 queries, and fragments do not select an origin. Exact deployment and media
 behavior is documented in the [README](../README.md).
 
-Non-loopback Streamable HTTP requires a bearer token. Public reverse-proxy Hosts
-and browser origins require explicit configuration. These controls do not add
-OAuth, user identity, authorization grants, or a general trust/control plane.
+Non-loopback Streamable HTTP requires a bearer token. Native clients may omit
+`Origin`, subject to Host and authentication policy. Browser use is same-origin:
+a separately hosted browser origin is unsupported. Every public reverse-proxy
+endpoint requires exact `http.allowed_origins` configuration, including scheme,
+authority, and any non-default port. This is Host/origin admission, not a CORS
+grant; wildcard entries are invalid and the server emits no CORS response
+headers. A present invalid, foreign, duplicate, empty, or opaque `null` Origin is
+rejected with HTTP 403 before bearer authentication, method handling, or MCP
+dispatch. An admitted same-origin OPTIONS request remains subject to any
+configured bearer and receives HTTP 405 after authentication because the
+supported mode needs no cross-origin preflight. TLS termination remains a
+deployment/reverse-proxy responsibility. These controls do not add OAuth, user
+identity, authorization grants, or a general trust/control plane.
+
+Wildcard `http.allowed_origins` values were previously parsed as literal Host
+authorities, but they never implemented wildcard matching and cannot identify a
+supported exact public endpoint. Rejecting those values, and rejecting present
+empty or duplicate Origin headers before authentication, are compatible security
+validation corrections within the documented exact-Origin contract rather than
+the removal of meaningful supported configuration or a new CORS surface.
 
 `jetkvm_mount_virtual_media_url` reports `openWorldHint=true` because it asks the
 appliance to retrieve a caller-selected HTTP(S) URL from a configured exact

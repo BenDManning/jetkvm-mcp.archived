@@ -33,6 +33,7 @@ corrections do not change status.
 | [0004](0004-virtual-media-integrity-and-cleanup.md) | Virtual-media integrity and cleanup | accepted |
 | [0005](0005-local-only-raw-rpc.md) | Keep raw RPC local and outside MCP | accepted |
 | [0006](0006-virtual-media-url-origin-boundary.md) | Deny virtual-media URL mounts outside configured origins | accepted |
+| [0007](0007-same-origin-browser-http.md) | Keep browser Streamable HTTP same-origin | accepted |
 
 ## Adding or replacing a decision
 

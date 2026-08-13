@@ -162,6 +162,9 @@ func normalizeHTTPOrigin(value string) (string, error) {
 	if err != nil {
 		return "", errors.New("HTTP allowed origin must be an HTTP(S) origin without a path, query, or fragment and with a valid port")
 	}
+	if strings.Contains(origin.Host, "*") {
+		return "", errors.New("HTTP allowed origin must use an exact authority without wildcard hosts")
+	}
 	return origin.Value, nil
 }
 

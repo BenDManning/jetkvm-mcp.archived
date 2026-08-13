@@ -3,6 +3,7 @@ package mcpserver
 import (
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -45,6 +46,183 @@ func TestHTTPHandlerRejectsForeignOrigins(t *testing.T) {
 	response.Body.Close()
 	if response.StatusCode != http.StatusOK {
 		t.Fatalf("same Origin status = %d, want 200", response.StatusCode)
+	}
+}
+
+func TestHTTPHandlerRejectsPresentInvalidOriginsBeforeAuthentication(t *testing.T) {
+	handler := NewHTTPHandler(New(&recordingDevice{}, "test"), "test-only-token", "https://mcp.example.invalid")
+	for _, test := range []struct {
+		name    string
+		origins []string
+	}{
+		{name: "empty", origins: []string{""}},
+		{name: "duplicate", origins: []string{"https://mcp.example.invalid", "https://foreign.example.invalid"}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodPost, "http://backend.invalid"+MCPPath, strings.NewReader(`{}`))
+			request.Host = "mcp.example.invalid"
+			for _, origin := range test.origins {
+				request.Header.Add("Origin", origin)
+			}
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, request)
+			if response.Code != http.StatusForbidden {
+				t.Fatalf("status = %d, want 403", response.Code)
+			}
+			if challenge := response.Header().Get("WWW-Authenticate"); challenge != "" {
+				t.Fatalf("Origin rejection exposed bearer challenge %q", challenge)
+			}
+		})
+	}
+}
+
+func TestHTTPHandlerRejectsInvalidOriginBeforeMCPHandling(t *testing.T) {
+	called := false
+	next := http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
+		called = true
+		response.WriteHeader(http.StatusNoContent)
+	})
+	handler := trustedHostAndOrigin(next, []string{"https://mcp.example.invalid"})
+	request := httptest.NewRequest(http.MethodPost, "http://backend.invalid"+MCPPath, nil)
+	request.Host = "mcp.example.invalid"
+	request.Header.Set("Origin", "null")
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusForbidden || called {
+		t.Fatalf("status=%d downstream-called=%v; want 403 false", response.Code, called)
+	}
+}
+
+func TestHTTPHandlerOriginBearerAndMethodOrdering(t *testing.T) {
+	handler := NewHTTPHandler(New(&recordingDevice{}, "test"), "test-only-token", "https://mcp.example.invalid")
+	tests := []struct {
+		name          string
+		origin        string
+		authorization string
+		wantStatus    int
+		wantChallenge string
+		wantAllow     string
+	}{
+		{name: "foreign Origin stops before bearer", origin: "https://browser.example.invalid", wantStatus: http.StatusForbidden},
+		{name: "same Origin remains subject to bearer", origin: "https://mcp.example.invalid", wantStatus: http.StatusUnauthorized, wantChallenge: "Bearer"},
+		{name: "authenticated same Origin reaches method handling", origin: "https://mcp.example.invalid", authorization: "Bearer test-only-token", wantStatus: http.StatusMethodNotAllowed, wantAllow: http.MethodPost},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodOptions, "http://backend.invalid"+MCPPath, nil)
+			request.Host = "mcp.example.invalid"
+			request.Header.Set("Origin", test.origin)
+			request.Header.Set("Access-Control-Request-Method", http.MethodPost)
+			if test.authorization != "" {
+				request.Header.Set("Authorization", test.authorization)
+			}
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, request)
+			if response.Code != test.wantStatus || response.Header().Get("WWW-Authenticate") != test.wantChallenge || response.Header().Get("Allow") != test.wantAllow {
+				t.Fatalf("status=%d challenge=%q Allow=%q; want %d %q %q", response.Code, response.Header().Get("WWW-Authenticate"), response.Header().Get("Allow"), test.wantStatus, test.wantChallenge, test.wantAllow)
+			}
+			for _, header := range []string{"Access-Control-Allow-Origin", "Access-Control-Allow-Credentials"} {
+				if value := response.Header().Get(header); value != "" {
+					t.Fatalf("%s = %q, want absent", header, value)
+				}
+			}
+		})
+	}
+}
+
+func TestHTTPHandlerOriginAndOPTIONSContract(t *testing.T) {
+	handler := NewHTTPHandler(New(&recordingDevice{}, "test"), "", "https://mcp.example.invalid")
+	discover := `{"jsonrpc":"2.0","id":1,"method":"server/discover","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{}}}}`
+	tests := []struct {
+		name       string
+		method     string
+		host       string
+		origin     string
+		wantStatus int
+		wantAllow  string
+	}{
+		{name: "native public request without Origin", method: http.MethodPost, host: "mcp.example.invalid", wantStatus: http.StatusOK},
+		{name: "public same-origin actual request", method: http.MethodPost, host: "mcp.example.invalid", origin: "https://mcp.example.invalid", wantStatus: http.StatusOK},
+		{name: "foreign actual request", method: http.MethodPost, host: "mcp.example.invalid", origin: "https://browser.example.invalid", wantStatus: http.StatusForbidden},
+		{name: "opaque null actual request", method: http.MethodPost, host: "mcp.example.invalid", origin: "null", wantStatus: http.StatusForbidden},
+		{name: "malformed actual request", method: http.MethodPost, host: "mcp.example.invalid", origin: "https://", wantStatus: http.StatusForbidden},
+		{name: "same-origin OPTIONS", method: http.MethodOptions, host: "mcp.example.invalid", origin: "https://mcp.example.invalid", wantStatus: http.StatusMethodNotAllowed, wantAllow: http.MethodPost},
+		{name: "foreign preflight", method: http.MethodOptions, host: "mcp.example.invalid", origin: "https://browser.example.invalid", wantStatus: http.StatusForbidden},
+		{name: "opaque null preflight", method: http.MethodOptions, host: "mcp.example.invalid", origin: "null", wantStatus: http.StatusForbidden},
+		{name: "loopback IPv4 actual request", method: http.MethodPost, host: "127.0.0.1:8080", origin: "http://127.0.0.1:8080", wantStatus: http.StatusOK},
+		{name: "loopback IPv6 actual request", method: http.MethodPost, host: "[::1]:8080", origin: "http://[::1]:8080", wantStatus: http.StatusOK},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			request := httptest.NewRequest(test.method, "http://backend.invalid"+MCPPath, strings.NewReader(discover))
+			request.Host = test.host
+			if test.origin != "" {
+				request.Header.Set("Origin", test.origin)
+			}
+			if test.method == http.MethodOptions {
+				request.Header.Set("Access-Control-Request-Method", http.MethodPost)
+				request.Header.Set("Access-Control-Request-Headers", "authorization,content-type")
+			} else {
+				request.Header.Set("Content-Type", "application/json")
+				request.Header.Set("Accept", "application/json, text/event-stream")
+				request.Header.Set("Mcp-Protocol-Version", "2026-07-28")
+				request.Header.Set("Mcp-Method", "server/discover")
+			}
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, request)
+			if response.Code != test.wantStatus || response.Header().Get("Allow") != test.wantAllow {
+				t.Fatalf("status = %d, Allow = %q; want %d, %q", response.Code, response.Header().Get("Allow"), test.wantStatus, test.wantAllow)
+			}
+			for _, header := range []string{
+				"Access-Control-Allow-Origin",
+				"Access-Control-Allow-Credentials",
+				"Access-Control-Allow-Methods",
+				"Access-Control-Allow-Headers",
+				"Access-Control-Expose-Headers",
+				"Access-Control-Max-Age",
+			} {
+				if value := response.Header().Get(header); value != "" {
+					t.Fatalf("%s = %q, want absent", header, value)
+				}
+			}
+		})
+	}
+}
+
+func TestSameOriginBrowserHTTPContractIsDocumented(t *testing.T) {
+	readme := readRepositoryDocument(t, "README.md")
+	configExample := readRepositoryDocument(t, "config.example.yaml")
+	productContract := readRepositoryDocument(t, filepath.Join("docs", "product-contract.md"))
+	threatModel := readRepositoryDocument(t, filepath.Join("docs", "threat-model.md"))
+
+	for name, document := range map[string]string{
+		"README":           readme,
+		"config example":   configExample,
+		"product contract": productContract,
+		"threat model":     threatModel,
+	} {
+		for _, required := range []string{"same-origin", "not a CORS", "wildcard"} {
+			if !strings.Contains(document, required) {
+				t.Errorf("%s does not document %q", name, required)
+			}
+		}
+	}
+	for _, required := range []string{
+		"Native MCP clients may omit `Origin`",
+		"separately hosted browser",
+		"does not emit CORS response headers",
+		"TLS reverse proxy",
+		"bearer token",
+		"does not implement MCP OAuth",
+	} {
+		if !strings.Contains(readme, required) {
+			t.Errorf("README does not document %q", required)
+		}
+	}
+	for _, required := range []string{"Host/origin admission", "OPTIONS", "HTTP 403", "HTTP 405"} {
+		if !strings.Contains(productContract, required) {
+			t.Errorf("product contract does not document %q", required)
+		}
 	}
 }
 
@@ -135,6 +313,22 @@ func TestHTTPHandlerRejectsMalformedConfiguredOrigins(t *testing.T) {
 			defer httpServer.Close()
 			if status := discoverRequestStatus(t, httpServer.URL, test.host, test.origin); status != http.StatusForbidden {
 				t.Fatalf("malformed configured Origin status = %d, want 403", status)
+			}
+		})
+	}
+}
+
+func TestHTTPHandlerRejectsWildcardConfiguredOrigins(t *testing.T) {
+	for _, configured := range []string{"https://*", "https://*.example.invalid", "https://mcp.*.invalid"} {
+		t.Run(configured, func(t *testing.T) {
+			handler := NewHTTPHandler(New(&recordingDevice{}, "test"), "", configured)
+			request := httptest.NewRequest(http.MethodPost, "http://backend.invalid"+MCPPath, strings.NewReader(`{}`))
+			request.Host = strings.TrimPrefix(configured, "https://")
+			request.Header.Set("Origin", configured)
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, request)
+			if response.Code != http.StatusForbidden {
+				t.Fatalf("wildcard configured Origin status = %d, want 403", response.Code)
 			}
 		})
 	}

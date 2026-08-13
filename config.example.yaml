@@ -16,6 +16,8 @@ devices:
 # Optional. Leave unset for loopback Streamable HTTP without authentication.
 # http:
 #   bearer_token_env: JETKVM_MCP_HTTP_TOKEN
-#   # Required for browser or native reverse-proxy requests using a public Host.
+#   # Exact Host/origin admission for native reverse-proxy and same-origin browser
+#   # requests using this public endpoint. This is not a CORS grant; wildcard
+#   # origins and separately hosted browser origins are unsupported.
 #   allowed_origins:
 #     - https://mcp.example.invalid
