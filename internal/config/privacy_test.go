@@ -82,24 +82,24 @@ func TestConfigDiagnosticsExcludeInlineSecretValues(t *testing.T) {
 
 func TestMalformedConfigDiagnosticsExcludeShortScalarValues(t *testing.T) {
 	for _, test := range []struct {
-		name    string
-		yaml    string
-		private string
+		name         string
+		yaml         string
+		privateValue string
 	}{
 		{
-			name:    "invalid boolean",
-			yaml:    "devices:\n  lab:\n    url: https://lab.invalid\n    insecure_skip_verify: s3cr3t\n",
-			private: "s3cr3t",
+			name:         "invalid boolean",
+			yaml:         "devices:\n  lab:\n    url: https://lab.invalid\n    insecure_skip_verify: s3cr3t\n",
+			privateValue: "s3cr3t",
 		},
 		{
-			name:    "invalid devices map",
-			yaml:    "devices: hunter2\n",
-			private: "hunter2",
+			name:         "invalid devices map",
+			yaml:         "devices: hunter2\n",
+			privateValue: "hunter2",
 		},
 		{
-			name:    "invalid origins sequence",
-			yaml:    "devices:\n  lab:\n    url: https://lab.invalid\nhttp:\n  allowed_origins: token123\n",
-			private: "token123",
+			name:         "invalid origins sequence",
+			yaml:         "devices:\n  lab:\n    url: https://lab.invalid\nhttp:\n  allowed_origins: token123\n",
+			privateValue: "token123",
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -107,8 +107,8 @@ func TestMalformedConfigDiagnosticsExcludeShortScalarValues(t *testing.T) {
 			if err == nil {
 				t.Fatal("malformed configuration was accepted")
 			}
-			if strings.Contains(err.Error(), test.private) {
-				t.Fatalf("config diagnostic exposed private scalar %q: %v", test.private, err)
+			if strings.Contains(err.Error(), test.privateValue) {
+				t.Fatalf("config diagnostic exposed private scalar %q: %v", test.privateValue, err)
 			}
 		})
 	}
