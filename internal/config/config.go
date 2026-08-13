@@ -72,7 +72,7 @@ func Load(path string, lookup LookupEnvironment) (Runtime, error) {
 	decoder.KnownFields(true)
 	var source fileConfig
 	if err := decoder.Decode(&source); err != nil {
-		return Runtime{}, fmt.Errorf("decode config: %w", err)
+		return Runtime{}, errors.New("decode config")
 	}
 	var trailing any
 	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {

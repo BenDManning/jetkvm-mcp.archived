@@ -80,6 +80,40 @@ func TestConfigDiagnosticsExcludeInlineSecretValues(t *testing.T) {
 	}
 }
 
+func TestMalformedConfigDiagnosticsExcludeShortScalarValues(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		yaml    string
+		private string
+	}{
+		{
+			name:    "invalid boolean",
+			yaml:    "devices:\n  lab:\n    url: https://lab.invalid\n    insecure_skip_verify: s3cr3t\n",
+			private: "s3cr3t",
+		},
+		{
+			name:    "invalid devices map",
+			yaml:    "devices: hunter2\n",
+			private: "hunter2",
+		},
+		{
+			name:    "invalid origins sequence",
+			yaml:    "devices:\n  lab:\n    url: https://lab.invalid\nhttp:\n  allowed_origins: token123\n",
+			private: "token123",
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := Load(writePrivacyConfig(t, test.yaml), os.LookupEnv)
+			if err == nil {
+				t.Fatal("malformed configuration was accepted")
+			}
+			if strings.Contains(err.Error(), test.private) {
+				t.Fatalf("config diagnostic exposed private scalar %q: %v", test.private, err)
+			}
+		})
+	}
+}
+
 func TestPrivacySentinelGuardRejectsLeakingDiagnostic(t *testing.T) {
 	t.Run("error", func(t *testing.T) {
 		err := errors.New("diagnostic contains " + privacySentinel)

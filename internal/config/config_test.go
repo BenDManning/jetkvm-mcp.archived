@@ -56,7 +56,7 @@ func TestLoadRejectsUnknownInlineCredentialAndMissingEnvironment(t *testing.T) {
 		yaml    string
 		wantErr string
 	}{
-		{name: "inline password", yaml: "devices:\n  lab:\n    url: https://lab.invalid\n    password: secret\n", wantErr: "field password not found"},
+		{name: "inline password", yaml: "devices:\n  lab:\n    url: https://lab.invalid\n    password: secret\n", wantErr: "decode config"},
 		{name: "URL credentials", yaml: "devices:\n  lab:\n    url: https://admin:secret@lab.invalid\n", wantErr: "URL must not include credentials"},
 		{name: "missing password environment", yaml: "devices:\n  lab:\n    url: https://lab.invalid\n    password_env: MISSING_PASSWORD\n", wantErr: "MISSING_PASSWORD"},
 		{name: "missing bearer environment", yaml: "devices:\n  lab:\n    url: https://lab.invalid\nhttp:\n  bearer_token_env: MISSING_TOKEN\n", wantErr: "MISSING_TOKEN"},

@@ -173,7 +173,7 @@ This walkthrough is checked against the committed MCP manifest by
 | `capturedAt`, `mimeType`, `width`, `height`, `sizeBytes` | Capture metadata. It accompanies an MCP `image` content block containing PNG bytes. Metadata is less sensitive than the image but may reveal host activity and display characteristics. |
 | PNG image content | Highly private transient output. The server does not write it to disk. The validator fully decodes then clears its byte slice; ordinary Go/server/client memory has no zeroization guarantee. |
 | `mounted`, `source`, `mode` | Virtual-media state. `source` can disclose a filename or full URL and therefore must not be logged or retained as diagnostic evidence. Appliance-side media/storage lifetime is outside this process. |
-| Tool error content | Caller-visible operational diagnostics. Typed paths use stable error categories and discard raw firmware messages/bodies. Tool errors are not an audit log and must not contain secrets, raw firmware, local paths, or raw RPC data. |
+| Tool error content | Caller-visible operational diagnostics. Typed execution paths use stable error categories and discard raw firmware messages/bodies. SDK input-schema failures can echo rejected client-supplied values to that same trusted caller, so all tool-error content must be treated as private MCP output rather than retained diagnostic evidence. The application does not separately log or persist it. |
 
 ### Configuration, environment, CLI, and validator fields
 
@@ -209,18 +209,20 @@ files, and other application-owned durable state must never contain:
 This rule does not prevent the transient transfer required by an explicit
 operation: credentials cross their authentication boundary, HID text reaches
 the appliance, media bytes are uploaded, a PNG is returned to the MCP caller,
-and `debug rpc` returns raw output to its invoking terminal. Those destinations
-can persist data independently; the caller/operator is responsible for client
-history, shell history, process inspection, proxy logs, terminal capture,
-crash/core dumps, appliance storage, media-origin logs, and MCP-host telemetry.
-There is no application request/payload/audit logger and no local database.
-That reduces disclosure but also means this single-principal product cannot
-provide user-attributed forensic audit records.
+SDK input-schema failures can echo rejected client-supplied values in the tool
+error returned to that caller, and `debug rpc` returns raw output to its invoking
+terminal. Those destinations can persist data independently; the caller/operator
+is responsible for client history, shell history, process inspection, proxy logs,
+terminal capture, crash/core dumps, appliance storage, media-origin logs, and
+MCP-host telemetry. There is no application request/payload/audit logger and no
+local database. That reduces disclosure but also means this single-principal
+product cannot provide user-attributed forensic audit records.
 
-The secret-sentinel verification covers strict-config errors, resolved secret
-handling, missing private configuration paths, top-level diagnostic wording,
-and the validator's sanitized report. It complements review; it cannot prove
-that every future dependency or client avoids retention.
+The secret-sentinel verification covers strict-config errors including short
+malformed scalar values, resolved secret handling, missing private configuration
+paths, top-level diagnostic wording, and the validator's sanitized report. It
+complements review; it cannot prove that every future dependency or client avoids
+retention.
 
 ## Threat-to-control traceability register
 
@@ -238,7 +240,7 @@ Labels have strict meanings:
 | T-02 | DNS rebinding or forged `Host`/browser `Origin` could reach a loopback or reverse-proxied server. | **Implemented control:** malformed/unconfigured public Hosts are rejected; browser Origin must match Host and configured scheme/authority; loopback requires same scheme. See [transport.go](../internal/mcpserver/transport.go), [origin.go](../internal/httporigin/origin.go), and [origin_test.go](../internal/mcpserver/origin_test.go). | **Deployment requirement:** preserve the public Host at the proxy and configure exact origins. Native clients may omit Origin, so Host and bearer remain decisive. **Not implemented:** trusted-forwarded-header interpretation or proxy discovery. Proxy/DNS compromise remains outside process control. |
 | T-03 | SSRF through virtual-media URLs can make the appliance reach internal services or attacker content. | **Implemented control:** `mount_url` accepts only HTTP(S), rejects URL user information, and clearly delegates the fetch to firmware; configured device HTTP separately disables redirects/proxies. See [virtual_media.go](../internal/jetkvm/virtual_media.go) and [virtual_media_test.go](../internal/jetkvm/virtual_media_test.go). | **Deployment requirement:** use a dedicated, trusted media origin reachable from a segmented appliance network and never put secrets in URL queries. **Not implemented:** destination allowlists, DNS/IP pinning, private/link-local address rejection, firmware redirect enforcement, content scanning, or egress filtering. `openWorldHint=false` does not remove this external fetch. |
 | T-04 | Credentials or session material can be disclosed, replayed, or intercepted. | **Implemented control:** YAML accepts environment-variable references, rejects inline fields/user information, bounds config and login bodies, stores cookies only in an in-memory jar, avoids raw response bodies in errors, and tests sentinel absence. See [config.go](../internal/config/config.go), [auth.go](../internal/jetkvm/auth.go), [privacy_test.go](../internal/config/privacy_test.go), and [auth_test.go](../internal/jetkvm/auth_test.go). | **Deployment requirement:** restrict config/environment/process access; use HTTPS with a trusted appliance certificate and TLS at the MCP proxy; protect shell/core/crash data. `insecure_skip_verify` and plain HTTP surrender appliance confidentiality/identity. **Not implemented:** external secret manager, memory locking/zeroization, automatic rotation, or mTLS. |
-| T-05 | Privacy disclosure through logs, diagnostics, MCP output, validation evidence, or client retention can expose typed text, screens, paths, firmware, URLs, or raw RPC. | **Implemented control:** stdout/stderr separation, no request logger/database, bounded typed outputs, discarded firmware error detail, sanitized validator JSON, discarded child stderr, image-buffer clearing in the validator, and private-path sentinel tests. See [main.go](../cmd/jetkvm-mcp/main.go), [main.go](../cmd/jetkvm-mcp-validate/main.go), [main_test.go](../cmd/jetkvm-mcp-validate/main_test.go), and [privacy_test.go](../internal/config/privacy_test.go). | **Deployment requirement:** configure MCP hosts, proxies, terminals, shells, and crash handling not to retain listed payloads; sanitize issue/support evidence. **Not implemented:** centralized redaction middleware, encrypted audit storage, client-side retention control, or full memory zeroization. Explicit MCP/debug outputs remain visible to their trusted caller. |
+| T-05 | Privacy disclosure through logs, diagnostics, MCP output, validation evidence, or client retention can expose typed text, screens, paths, firmware, URLs, or raw RPC. | **Implemented control:** stdout/stderr separation, no request logger/database, bounded typed outputs, value-free YAML decode errors, discarded firmware error detail, sanitized validator JSON, discarded child stderr, image-buffer clearing in the validator, and private-value/path regression tests. See [main.go](../cmd/jetkvm-mcp/main.go), [main.go](../cmd/jetkvm-mcp-validate/main.go), [main_test.go](../cmd/jetkvm-mcp-validate/main_test.go), [privacy_test.go](../internal/config/privacy_test.go), and [threat_model_test.go](../internal/mcpserver/threat_model_test.go). | **Deployment requirement:** configure MCP hosts, proxies, terminals, shells, and crash handling not to retain listed payloads; treat caller-visible tool errors as private and sanitize issue/support evidence. **Not implemented:** centralized redaction middleware, encrypted audit storage, client-side retention control, or full memory zeroization. SDK schema errors can echo rejected arguments, and explicit MCP/debug outputs remain visible to their trusted caller. |
 | T-06 | CPU, memory, file, subprocess, connection, or appliance exhaustion can deny service. | **Implemented control:** 1 MiB config/HTTP response limits, 16 KiB RPC frames, 64 KiB signaling frames, 64 pending RPCs, bounded H.264/PNG/FFmpeg buffers, decoder and network deadlines, fixed image dimensions, serialized per-device media operations, HTTP header/read-header/idle limits, and cancellation propagation. See [rpc_session.go](../internal/jetkvm/rpc_session.go), [rpc_codec.go](../internal/jetkvm/rpc_codec.go), [video.go](../internal/jetkvm/video.go), [decoder_ffmpeg.go](../internal/jetkvm/decoder_ffmpeg.go), and [cancellation_test.go](../internal/mcpserver/cancellation_test.go). | **Deployment requirement:** restrict client concurrency and process resources externally; size media roots deliberately. **Not implemented:** MCP request-body cap at this wrapper, rate limiting, global concurrency/CPU/memory quotas, per-principal quotas, circuit breakers, or backpressure across all stateless HTTP requests. Repeated capture and 64 GiB uploads remain expensive. |
 | T-07 | Malformed or malicious firmware/network data can exploit parsers, leak private error text, or corrupt state. | **Implemented control:** strict/duplicate-aware RPC decoding, generic firmware RPC errors, bounded HTTP/signaling/RPC/video data, H.264 reassembly limits, PNG full decode/geometry validation, and typed state validation. See [rpc_codec.go](../internal/jetkvm/rpc_codec.go), [session_protocol_test.go](../internal/jetkvm/session_protocol_test.go), [decoder_ffmpeg.go](../internal/jetkvm/decoder_ffmpeg.go), and [decoder_test.go](../internal/jetkvm/decoder_test.go). | **Deployment requirement:** treat the appliance/firmware as privileged and keep it updated/segmented. **Not implemented:** firmware attestation or a malicious-device sandbox. Bounded `virtualMedia` and local raw-RPC results can still contain attacker-controlled data returned to the trusted caller. |
 | T-08 | An uncertain mutation and retry can duplicate HID/power/media effects or misreport a lost acknowledgement. | **Implemented control:** annotations distinguish read-only/destructive/idempotent intent, MCP cancellation reaches handlers, RPC calls have deadlines, and media operations are serialized/cleaned conservatively. See [server.go](../internal/mcpserver/server.go), [controls.go](../internal/mcpserver/controls.go), [manifest_contract_test.go](../internal/mcpserver/manifest_contract_test.go), and [cancellation_test.go](../internal/mcpserver/cancellation_test.go). | **Deployment requirement:** obtain human authorization before destructive/non-idempotent calls, avoid automatic retries, and reconcile with independent status where possible. **Not implemented:** approval workflow, idempotency keys, durable operation journal, transaction protocol, or guaranteed read-after-write proof. Cancellation/lost response cannot undo a physical effect. |
@@ -313,10 +315,12 @@ Secondary industry context:
   were compared with strict YAML tags, CLI flags, and every current input/output
   property in the committed tool manifest. The automated walk-through fails if
   a manifest tool lacks a consequence row or a schema field lacks classification.
-- **Secret-sentinel redaction review:** sentinel values exercised resolved
-  credentials, rejected inline credentials, missing private config paths, and
-  validator/report output. The tests assert that the sentinel is absent from
-  application diagnostics/reports while proving the guard detects a leak.
+- **Secret-sentinel redaction review:** private values exercised resolved
+  credentials, rejected inline credentials, short malformed YAML scalars,
+  missing private config paths, and validator/report output. The tests assert
+  that these values are absent from application diagnostics/reports while
+  proving the guard detects a leak. A separate executable check records that
+  SDK input-schema errors can echo rejected values to the trusted MCP caller.
 - **Threat-to-control traceability check:** every T-01 through T-13 row names
   implemented code/test evidence, deployment obligations, and missing controls;
   the document test rejects missing rows or classification markers.
