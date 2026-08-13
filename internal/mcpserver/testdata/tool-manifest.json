@@ -427,6 +427,75 @@
     },
     {
       "meta": null,
+      "name": "jetkvm_list_devices",
+      "title": "",
+      "description": "List configured JetKVM aliases and configuration-derived tool availability flags without contacting a device. Flags report only whether required local configuration exists; they do not qualify firmware or prove hardware support.",
+      "icons": null,
+      "inputSchema": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "devices": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "capabilities": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "mountVirtualMediaFile": {
+                      "type": "boolean"
+                    },
+                    "mountVirtualMediaURL": {
+                      "type": "boolean"
+                    },
+                    "uploadVirtualMediaFile": {
+                      "type": "boolean"
+                    },
+                    "wakeHostLAN": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "mountVirtualMediaURL",
+                    "mountVirtualMediaFile",
+                    "uploadVirtualMediaFile",
+                    "wakeHostLAN"
+                  ],
+                  "type": "object"
+                },
+                "device": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "device",
+                "capabilities"
+              ],
+              "type": "object"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          }
+        },
+        "required": [
+          "devices"
+        ],
+        "type": "object"
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      }
+    },
+    {
+      "meta": null,
       "name": "jetkvm_mount_virtual_media_file",
       "title": "",
       "description": "Upload one confined local media file and replace the configured JetKVM's current mount. Requires a configured media directory and a non-empty relative path confined beneath it. Success means upload and mount RPCs completed, not that an external observer verified the mount; inspect status before another mutation.",
@@ -1438,6 +1507,51 @@
         "device": "fixture-device",
         "operation": "press_key",
         "status": "completed"
+      }
+    },
+    "jetkvm_list_devices": {
+      "content": [
+        {
+          "annotations": null,
+          "json": {
+            "devices": [
+              {
+                "capabilities": {
+                  "mountVirtualMediaFile": true,
+                  "mountVirtualMediaURL": true,
+                  "uploadVirtualMediaFile": true,
+                  "wakeHostLAN": true
+                },
+                "device": "fixture-device"
+              }
+            ]
+          },
+          "meta": null,
+          "type": "text"
+        }
+      ],
+      "inputRequests": null,
+      "isError": false,
+      "meta": {
+        "io.modelcontextprotocol/serverInfo": {
+          "name": "jetkvm-mcp",
+          "version": "contract-test"
+        }
+      },
+      "needsInput": false,
+      "requestState": "",
+      "structuredContent": {
+        "devices": [
+          {
+            "capabilities": {
+              "mountVirtualMediaFile": true,
+              "mountVirtualMediaURL": true,
+              "uploadVirtualMediaFile": true,
+              "wakeHostLAN": true
+            },
+            "device": "fixture-device"
+          }
+        ]
       }
     },
     "jetkvm_mount_virtual_media_file": {

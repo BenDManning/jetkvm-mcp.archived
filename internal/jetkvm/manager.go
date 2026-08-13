@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"net/url"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -118,6 +119,29 @@ func NewManager(devices []DeviceConfig, provider SessionProvider, options ...Man
 		}
 	}
 	return manager, nil
+}
+
+func (manager *Manager) ListDevices(context.Context) (mcpserver.DeviceList, error) {
+	names := make([]string, 0, len(manager.devices))
+	for name := range manager.devices {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	devices := make([]mcpserver.ConfiguredDevice, 0, len(names))
+	for _, name := range names {
+		device := manager.devices[name]
+		hasMediaDirectory := device.MediaDirectory != ""
+		devices = append(devices, mcpserver.ConfiguredDevice{
+			Device: name,
+			Capabilities: mcpserver.DeviceCapabilities{
+				MountVirtualMediaURL:   len(device.MediaURLAllowedOrigins) != 0,
+				MountVirtualMediaFile:  hasMediaDirectory,
+				UploadVirtualMediaFile: hasMediaDirectory,
+				WakeHostLAN:            len(device.WakeOnLAN) != 0,
+			},
+		})
+	}
+	return mcpserver.DeviceList{Devices: devices}, nil
 }
 
 func (manager *Manager) Status(ctx context.Context, name string) (mcpserver.Status, error) {

@@ -132,6 +132,7 @@ Consequence classes are cumulative:
 
 | Entry point | Class | Direct consequence and ambiguity |
 |---|---|---|
+| `jetkvm_list_devices` | O | Returns configured aliases in deterministic order with configuration-derived availability flags. It does not open a device session or probe hardware, and it omits device URLs, credentials, allowed origins, media directories, and Wake-on-LAN targets. The flags describe configured preconditions, not qualified firmware capabilities. |
 | `jetkvm_get_status` | O | Reads connectivity, firmware/application versions, power/video/USB/extension state, warnings, and typed redacted virtual-media state. Raw firmware fields, media URLs, paths, and filenames are not returned. It does not prove that a later mutation is safe. |
 | `jetkvm_capture_screen` | O (high confidentiality) | Creates a fresh video session, decodes one frame locally, and returns a PNG to the MCP caller. Any visible host secret can be captured. |
 | `jetkvm_keyboard` | H | `type_text` sends up to 4096 bytes; `press_key` sends one key plus modifiers. Either can enter credentials, execute commands, or alter host data. A failed response does not prove that no key reached the host. |
@@ -150,7 +151,7 @@ Consequence classes are cumulative:
 | `jetkvm_upload_virtual_media_file` | M (destructive hint) | Reads and stores a confined local file without mounting it. Appliance-side storage lifetime remains outside this process. |
 | `jetkvm_virtual_media` | O or M (deprecated, destructive hint) | Compatibility surface for `status`, `mount_url`, `mount_file`, `unmount`, and `upload`. Its whole-tool annotations cannot express per-operation consequences; clients must migrate to the one-purpose tools above. |
 | `debug rpc --method --params` | U | A local CLI caller can invoke any syntactically accepted JetKVM RPC method. It may read private firmware data or mutate hardware. It is intentionally absent from MCP discovery and must not be exposed to untrusted automation. |
-| `jetkvm-mcp-validate` | O (bounded) | Lists tools, reads status, and captures/fully decodes one PNG. It never calls keyboard, mouse, media, power, wake, or raw RPC and emits only a sanitized pass/fail report. |
+| `jetkvm-mcp-validate` | O (bounded) | Lists tools, validates that safe configured-device discovery contains the selected alias, reads status, and captures/fully decodes one PNG. It never calls keyboard, mouse, media, power, wake, or raw RPC and emits only a sanitized pass/fail report. |
 
 ## Input, output, and configuration field walkthrough
 
@@ -172,6 +173,7 @@ This walkthrough is checked against the committed MCP manifest by
 
 | Fields/content | Classification and flow |
 |---|---|
+| `devices`, `capabilities` | Configured aliases plus boolean, configuration-derived availability flags for URL mounting, local-file mounting/upload, and Wake-on-LAN. Results are sorted and omit URLs, credentials, allowed origins, media directories, and Wake-on-LAN target details. |
 | `device`, `action`, `target`, `operation`, `status` | Operational identifiers and outcome labels returned to the same trusted caller. `status: completed` means the RPC returned successfully, not that an external observer proved the physical state. |
 | `connected`, `applicationVersion`, `systemVersion`, `activeExtension`, `atxPowerOn`, `dcPowerOn`, `dcVoltage`, `videoReady`, `videoWidth`, `videoHeight`, `videoFPS`, `usbState`, `usbWakeAttached`, `warnings` | Private observed appliance/host state. Returned transiently to the MCP caller; not persisted or application-logged. |
 | `virtualMedia` | Optional typed object containing only `mounted`, `sourceType`, and `mode`. Unknown firmware fields and source values are discarded rather than forwarded. |

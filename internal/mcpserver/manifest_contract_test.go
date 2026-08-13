@@ -27,12 +27,23 @@ import (
 
 const (
 	updateToolManifestEnvironment = "JETKVM_UPDATE_TOOL_MANIFEST"
-	toolManifestCount             = 17
+	toolManifestCount             = 18
 )
 
 var toolManifestFixturePath = filepath.Join("testdata", "tool-manifest.json")
 
 type contractDevice struct{}
+
+func (*contractDevice) ListDevices(context.Context) (DeviceList, error) {
+	return DeviceList{Devices: []ConfiguredDevice{
+		{Device: "fixture-device", Capabilities: DeviceCapabilities{
+			MountVirtualMediaURL:   true,
+			MountVirtualMediaFile:  true,
+			UploadVirtualMediaFile: true,
+			WakeHostLAN:            true,
+		}},
+	}}, nil
+}
 
 func (*contractDevice) Status(context.Context, string) (Status, error) {
 	atxPowerOn, videoReady, usbWakeAttached := true, true, true
@@ -534,6 +545,7 @@ func jsonEqual(got, want any) bool {
 
 func representativeCalls() map[string]map[string]any {
 	return map[string]map[string]any{
+		ListDevicesToolName:            {},
 		GetStatusToolName:              {"device": "fixture"},
 		PressHostPowerButtonToolName:   {"device": "fixture"},
 		ForceHostPowerOffToolName:      {"device": "fixture"},

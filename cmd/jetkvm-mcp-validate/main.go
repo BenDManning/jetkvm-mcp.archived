@@ -22,6 +22,7 @@ import (
 )
 
 const (
+	deviceListTool  = "jetkvm_list_devices"
 	statusTool      = "jetkvm_get_status"
 	captureTool     = "jetkvm_capture_screen"
 	mediaStatusTool = "jetkvm_get_virtual_media_status"
@@ -45,6 +46,15 @@ type validationReport struct {
 	Checks  []string         `json:"checks,omitempty"`
 	Failed  string           `json:"failed,omitempty"`
 	Capture *captureMetadata `json:"capture,omitempty"`
+}
+
+type toolCaller interface {
+	CallTool(context.Context, *mcp.CallToolParams) (*mcp.CallToolResult, error)
+}
+
+type validationSession interface {
+	toolCaller
+	ListTools(context.Context, *mcp.ListToolsParams) (*mcp.ListToolsResult, error)
 }
 
 func main() {
@@ -87,11 +97,6 @@ func parseArgs(args []string) (options, error) {
 }
 
 func runValidation(ctx context.Context, opts options) validationReport {
-	checks := make([]string, 0, 3)
-	fail := func(stage string) validationReport {
-		return validationReport{Result: "fail", Checks: checks, Failed: stage}
-	}
-
 	command := exec.CommandContext(ctx, opts.binary, "--config", opts.config)
 	// A real device or server can put private diagnostic details on stderr.
 	// Leaving Stderr nil makes os/exec discard them rather than retaining or
@@ -99,33 +104,45 @@ func runValidation(ctx context.Context, opts options) validationReport {
 	client := mcp.NewClient(&mcp.Implementation{Name: "jetkvm-mcp-read-only-validator", Version: "1"}, nil)
 	session, err := client.Connect(ctx, &mcp.CommandTransport{Command: command}, nil)
 	if err != nil {
-		return fail("connect")
+		return validationReport{Result: "fail", Failed: "connect"}
 	}
 	defer session.Close()
+	return validateSession(ctx, session, opts.device)
+}
+
+func validateSession(ctx context.Context, session validationSession, device string) validationReport {
+	checks := make([]string, 0, 4)
+	fail := func(stage string) validationReport {
+		return validationReport{Result: "fail", Checks: checks, Failed: stage}
+	}
 
 	listed, err := session.ListTools(ctx, nil)
 	if err != nil || validateReadOnlyTools(listed.Tools) != nil {
 		return fail("tools_list")
 	}
 	checks = append(checks, "tools_list")
+	if err := validateConfiguredDeviceCall(ctx, session, device); err != nil {
+		return fail("devices")
+	}
+	checks = append(checks, "devices")
 
-	status, err := session.CallTool(ctx, &mcp.CallToolParams{Name: statusTool, Arguments: map[string]any{"device": opts.device}})
+	status, err := session.CallTool(ctx, &mcp.CallToolParams{Name: statusTool, Arguments: map[string]any{"device": device}})
 	if err != nil || status.IsError {
 		return fail("status")
 	}
 	statusObject, ok := status.StructuredContent.(map[string]any)
-	if !ok || validateStatus(statusObject, opts.device) != nil {
+	if !ok || validateStatus(statusObject, device) != nil {
 		return fail("status")
 	}
 	checks = append(checks, "status")
 
 	captureCtx, cancelCapture := context.WithTimeout(ctx, captureTimeout)
 	defer cancelCapture()
-	capture, err := session.CallTool(captureCtx, &mcp.CallToolParams{Name: captureTool, Arguments: map[string]any{"device": opts.device}})
+	capture, err := session.CallTool(captureCtx, &mcp.CallToolParams{Name: captureTool, Arguments: map[string]any{"device": device}})
 	if err != nil || capture.IsError {
 		return fail("capture")
 	}
-	metadata, err := decodeCapture(capture, opts.device)
+	metadata, err := decodeCapture(capture, device)
 	if err != nil {
 		return fail("capture")
 	}
@@ -138,13 +155,71 @@ func validateReadOnlyTools(tools []*mcp.Tool) error {
 	for _, tool := range tools {
 		byName[tool.Name] = tool
 	}
-	for _, name := range []string{statusTool, captureTool, mediaStatusTool} {
+	for _, name := range []string{deviceListTool, statusTool, captureTool, mediaStatusTool} {
 		tool := byName[name]
 		if tool == nil || tool.Annotations == nil || !tool.Annotations.ReadOnlyHint ||
 			tool.Annotations.DestructiveHint == nil || *tool.Annotations.DestructiveHint ||
 			!tool.Annotations.IdempotentHint || tool.Annotations.OpenWorldHint == nil || *tool.Annotations.OpenWorldHint {
 			return errors.New("required read-only tool or annotations missing")
 		}
+	}
+	return nil
+}
+
+func validateConfiguredDeviceCall(ctx context.Context, caller toolCaller, selected string) error {
+	result, err := caller.CallTool(ctx, &mcp.CallToolParams{
+		Name:      deviceListTool,
+		Arguments: map[string]any{},
+	})
+	if err != nil || result == nil || result.IsError {
+		return errors.New("configured-device discovery failed")
+	}
+	object, ok := result.StructuredContent.(map[string]any)
+	if !ok {
+		return errors.New("invalid configured-device discovery result")
+	}
+	return validateConfiguredDevices(object, selected)
+}
+
+func validateConfiguredDevices(result map[string]any, selected string) error {
+	if len(result) != 1 {
+		return errors.New("unexpected configured-device result field")
+	}
+	devices, ok := result["devices"].([]any)
+	if !ok || len(devices) == 0 {
+		return errors.New("invalid configured-device list")
+	}
+	foundSelected := false
+	previous := ""
+	capabilityNames := []string{
+		"mountVirtualMediaURL",
+		"mountVirtualMediaFile",
+		"uploadVirtualMediaFile",
+		"wakeHostLAN",
+	}
+	for _, value := range devices {
+		device, ok := value.(map[string]any)
+		if !ok || len(device) != 2 {
+			return errors.New("invalid configured-device entry")
+		}
+		name, ok := device["device"].(string)
+		if !ok || name == "" || previous != "" && name <= previous {
+			return errors.New("configured-device aliases are invalid or unsorted")
+		}
+		previous = name
+		foundSelected = foundSelected || name == selected
+		capabilities, ok := device["capabilities"].(map[string]any)
+		if !ok || len(capabilities) != len(capabilityNames) {
+			return errors.New("invalid configured-device capabilities")
+		}
+		for _, capability := range capabilityNames {
+			if _, ok := capabilities[capability].(bool); !ok {
+				return errors.New("invalid configured-device capability")
+			}
+		}
+	}
+	if !foundSelected {
+		return errors.New("selected device is not configured")
 	}
 	return nil
 }
