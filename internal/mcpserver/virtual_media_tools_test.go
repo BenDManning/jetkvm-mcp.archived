@@ -40,6 +40,9 @@ func TestServerPublishesConsequenceCorrectVirtualMediaTools(t *testing.T) {
 	assertStringBounds(t, tools[MountVirtualMediaURLToolName], "url", 1, 4096)
 	assertStringBounds(t, tools[MountVirtualMediaFileToolName], "path", 1, 4096)
 	assertStringBounds(t, tools[UploadVirtualMediaFileToolName], "path", 1, 4096)
+	if description := strings.ToLower(tools[MountVirtualMediaURLToolName].Description); !strings.Contains(description, "configured exact origin") || !strings.Contains(description, "appliance") {
+		t.Fatalf("%s description does not state its configured origin and fetching actor: %q", MountVirtualMediaURLToolName, description)
+	}
 
 	legacy := tools[VirtualMediaToolName]
 	if legacy == nil || !strings.Contains(strings.ToLower(legacy.Description), "deprecated") {

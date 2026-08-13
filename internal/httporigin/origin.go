@@ -2,6 +2,7 @@ package httporigin
 
 import (
 	"errors"
+	"net/netip"
 	"net/url"
 	"strconv"
 	"strings"
@@ -39,6 +40,56 @@ func Parse(value string) (Origin, error) {
 	}
 	host := strings.ToLower(parsed.Host)
 	return Origin{Value: scheme + "://" + host, Scheme: scheme, Host: host}, nil
+}
+
+// ParseEffective canonicalizes an HTTP(S) origin by effective port. It is used
+// for destination authorization where omitted and explicit default ports name
+// the same network endpoint. Parse remains available for transport policy that
+// treats the serialized authority literally.
+func ParseEffective(value string) (Origin, error) {
+	origin, err := Parse(value)
+	if err != nil {
+		return Origin{}, err
+	}
+	parsed, err := url.Parse(origin.Value)
+	if err != nil {
+		return Origin{}, ErrInvalid
+	}
+	port := parsed.Port()
+	if port == "" {
+		host := canonicalEffectiveHostname(parsed.Hostname())
+		if strings.Contains(host, ":") {
+			host = "[" + host + "]"
+		}
+		return Origin{Value: origin.Scheme + "://" + host, Scheme: origin.Scheme, Host: host}, nil
+	}
+	portNumber, err := strconv.Atoi(port)
+	if err != nil {
+		return Origin{}, ErrInvalid
+	}
+	if origin.Scheme != "http" || portNumber != 80 {
+		if origin.Scheme != "https" || portNumber != 443 {
+			host := canonicalEffectiveHostname(parsed.Hostname())
+			if strings.Contains(host, ":") {
+				host = "[" + host + "]"
+			}
+			host = host + ":" + strconv.Itoa(portNumber)
+			return Origin{Value: origin.Scheme + "://" + host, Scheme: origin.Scheme, Host: host}, nil
+		}
+	}
+	host := canonicalEffectiveHostname(parsed.Hostname())
+	if strings.Contains(host, ":") {
+		host = "[" + host + "]"
+	}
+	return Origin{Value: origin.Scheme + "://" + host, Scheme: origin.Scheme, Host: host}, nil
+}
+
+func canonicalEffectiveHostname(host string) string {
+	address, err := netip.ParseAddr(host)
+	if err != nil {
+		return host
+	}
+	return address.String()
 }
 
 // ParseAuthority validates and canonicalizes an HTTP Host authority without

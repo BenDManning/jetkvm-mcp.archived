@@ -4,6 +4,10 @@ devices:
     password_env: JETKVM_LAB_PASSWORD
     # insecure_skip_verify: false
     # media_directory: /media
+    # URL mounting is unavailable unless an exact HTTP(S) origin is listed.
+    # Origins contain only scheme, host/IP literal, and optional non-default port.
+    # media_url_allowed_origins:
+    #   - https://media.example.invalid
     # wake_on_lan:
     #   server:
     #     mac_address: "02:00:00:00:00:01"

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -225,6 +226,69 @@ func TestMCPMediaResultsAndErrorsRedactPrivateSources(t *testing.T) {
 			}
 			assertJSONExcludesPrivateMedia(t, result, sentinel)
 		})
+	}
+}
+
+func TestMCPVirtualMediaURLDefaultDenyIsAnUnsentToolError(t *testing.T) {
+	const source = "https://unconfigured-media.example.invalid/private.iso?token=private#fragment"
+	session := &fakeSession{results: map[string]any{}}
+	provider := &mediaURLPolicyProvider{session: session}
+	base, err := url.Parse("https://jetkvm.invalid")
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager, err := NewManager([]DeviceConfig{{Name: "lab", BaseURL: *base}}, provider)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	clientTransport, serverTransport := mcp.NewInMemoryTransports()
+	serverSession, err := mcpserver.New(manager, "test").Connect(context.Background(), serverTransport, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer serverSession.Close()
+	clientSession, err := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "test"}, nil).Connect(context.Background(), clientTransport, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer clientSession.Close()
+
+	for _, call := range []mcp.CallToolParams{
+		{Name: mcpserver.MountVirtualMediaURLToolName, Arguments: map[string]any{"device": "lab", "url": source}},
+		{Name: mcpserver.VirtualMediaToolName, Arguments: map[string]any{"device": "lab", "operation": "mount_url", "source": source}},
+	} {
+		result, err := clientSession.CallTool(context.Background(), &call)
+		if err != nil {
+			t.Fatalf("CallTool(%s) returned protocol error: %v", call.Name, err)
+		}
+		if result == nil || !result.IsError || len(result.Content) != 1 {
+			t.Fatalf("CallTool(%s) = %#v, want one tool-error content block", call.Name, result)
+		}
+		text, ok := result.Content[0].(*mcp.TextContent)
+		if !ok {
+			t.Fatalf("CallTool(%s) error content = %T, want text", call.Name, result.Content[0])
+		}
+		var failure struct {
+			Code      string `json:"code"`
+			Outcome   string `json:"outcome"`
+			Retryable bool   `json:"retryable"`
+		}
+		if err := json.Unmarshal([]byte(text.Text), &failure); err != nil {
+			t.Fatalf("CallTool(%s) error is not stable JSON: %q: %v", call.Name, text.Text, err)
+		}
+		if failure.Code != "invalid_input" || failure.Outcome != ToolOutcomeNotSent || failure.Retryable {
+			t.Fatalf("CallTool(%s) failure = %+v, want non-retryable invalid_input/not_sent", call.Name, failure)
+		}
+		if bytes.Contains([]byte(text.Text), []byte(source)) || bytes.Contains([]byte(text.Text), []byte("unconfigured-media.example.invalid")) {
+			t.Fatalf("CallTool(%s) error leaked rejected URL: %s", call.Name, text.Text)
+		}
+	}
+	if calls := provider.calls.Load(); calls != 0 {
+		t.Fatalf("provider calls = %d, want none", calls)
+	}
+	if len(session.calls) != 0 {
+		t.Fatalf("device calls = %#v, want none", session.calls)
 	}
 }
 

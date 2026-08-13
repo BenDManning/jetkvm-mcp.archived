@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/BenDManning/jetkvm-mcp/internal/httporigin"
 	"github.com/BenDManning/jetkvm-mcp/internal/mcpserver"
 )
 
@@ -64,9 +65,9 @@ func (manager *Manager) VirtualMedia(ctx context.Context, name string, request m
 	case mcpserver.VirtualMediaStatus:
 		return manager.virtualMediaStatus(ctx, device)
 	case mcpserver.VirtualMediaMountURL:
-		source, err := url.Parse(strings.TrimSpace(request.Source))
-		if err != nil || source.User != nil || source.Host == "" || source.Scheme != "http" && source.Scheme != "https" {
-			return mcpserver.VirtualMediaResult{}, classifyOperationError(fmt.Errorf("%w: media URL", ErrUnsupportedInput), ToolOutcomeNotSent)
+		source, err := parseAllowedMediaURL(request.Source, device.MediaURLAllowedOrigins)
+		if err != nil {
+			return mcpserver.VirtualMediaResult{}, classifyOperationError(err, ToolOutcomeNotSent)
 		}
 		err = manager.withSession(ctx, device, SessionProfileData, func(session Session) error {
 			return session.Call(ctx, "mountWithHTTP", map[string]any{"url": source.String(), "mode": mode}, nil)
@@ -355,4 +356,53 @@ func requestMode(value string) (string, error) {
 	default:
 		return "", fmt.Errorf("%w: virtual media mode", ErrInvalidResponse)
 	}
+}
+
+func normalizeMediaURLAllowedOrigins(values []string) ([]string, error) {
+	origins := make([]string, 0, len(values))
+	seen := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		origin, err := normalizeMediaURLOrigin(value)
+		if err != nil || strings.Contains(origin, "*") {
+			return nil, fmt.Errorf("invalid media URL origin")
+		}
+		if _, duplicate := seen[origin]; duplicate {
+			continue
+		}
+		seen[origin] = struct{}{}
+		origins = append(origins, origin)
+	}
+	return origins, nil
+}
+
+func mediaURLOriginAllowed(source *url.URL, allowed []string) bool {
+	if source == nil {
+		return false
+	}
+	origin, err := normalizeMediaURLOrigin(strings.ToLower(source.Scheme) + "://" + source.Host)
+	if err != nil {
+		return false
+	}
+	for _, candidate := range allowed {
+		if origin == candidate {
+			return true
+		}
+	}
+	return false
+}
+
+func normalizeMediaURLOrigin(value string) (string, error) {
+	origin, err := httporigin.ParseEffective(value)
+	return origin.Value, err
+}
+
+func parseAllowedMediaURL(value string, allowed []string) (*url.URL, error) {
+	if len(allowed) == 0 {
+		return nil, fmt.Errorf("%w: media URL origin", ErrUnsupportedInput)
+	}
+	source, err := url.Parse(strings.TrimSpace(value))
+	if err != nil || source == nil || source.Opaque != "" || source.User != nil || source.Host == "" || source.Hostname() == "" || source.Scheme != "http" && source.Scheme != "https" || !mediaURLOriginAllowed(source, allowed) {
+		return nil, fmt.Errorf("%w: media URL", ErrUnsupportedInput)
+	}
+	return source, nil
 }

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/url"
 	"os"
@@ -21,6 +22,16 @@ import (
 type concurrentMediaProvider struct {
 	active atomic.Int32
 	max    atomic.Int32
+}
+
+type mediaURLPolicyProvider struct {
+	session *fakeSession
+	calls   atomic.Int32
+}
+
+func (provider *mediaURLPolicyProvider) WithSession(_ context.Context, _ DeviceConfig, _ SessionProfile, operation func(Session) error) error {
+	provider.calls.Add(1)
+	return operation(provider.session)
 }
 
 func (provider *concurrentMediaProvider) WithSession(_ context.Context, _ DeviceConfig, _ SessionProfile, operation func(Session) error) error {
@@ -63,12 +74,197 @@ func TestManagerVirtualMediaStatusURLMountAndUnmount(t *testing.T) {
 	}
 }
 
+func TestManagerVirtualMediaURLMountIsUnavailableWithoutAllowedOrigins(t *testing.T) {
+	session := &fakeSession{results: map[string]any{}}
+	provider := &mediaURLPolicyProvider{session: session}
+	base, err := url.Parse("https://jetkvm.invalid")
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager, err := NewManager([]DeviceConfig{{Name: "lab", BaseURL: *base}}, provider)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = manager.VirtualMedia(context.Background(), "lab", mcpserver.VirtualMediaRequest{
+		Operation: mcpserver.VirtualMediaMountURL,
+		Source:    "https://media.example.invalid/install.iso",
+	})
+	if !errors.Is(err, ErrUnsupportedInput) {
+		t.Fatalf("error = %v, want unsupported input", err)
+	}
+	assertToolOutcome(t, err, ToolOutcomeNotSent)
+	if len(session.calls) != 0 {
+		t.Fatalf("device calls = %#v, want none", session.calls)
+	}
+	if calls := provider.calls.Load(); calls != 0 {
+		t.Fatalf("provider calls = %d, want none", calls)
+	}
+}
+
+func TestParseAllowedMediaURL(t *testing.T) {
+	tests := []struct {
+		name    string
+		allowed []string
+		source  string
+		want    string
+	}{
+		{name: "DNS path query and fragment", allowed: []string{"https://media.example.invalid:8443"}, source: "https://media.example.invalid:8443/images/install.iso?channel=stable#boot", want: "https://media.example.invalid:8443/images/install.iso?channel=stable#boot"},
+		{name: "localhost explicitly allowed", allowed: []string{"http://localhost:8080"}, source: "http://LOCALHOST:8080/install.iso", want: "http://LOCALHOST:8080/install.iso"},
+		{name: "private IPv4 explicitly allowed", allowed: []string{"http://10.0.0.8"}, source: "http://10.0.0.8/install.iso", want: "http://10.0.0.8/install.iso"},
+		{name: "loopback IPv6 explicitly allowed", allowed: []string{"http://[::1]:8080"}, source: "http://[::1]:8080/install.iso", want: "http://[::1]:8080/install.iso"},
+		{name: "empty allowlist", source: "https://media.example.invalid/install.iso"},
+		{name: "unconfigured localhost", allowed: []string{"https://media.example.invalid"}, source: "http://localhost/install.iso"},
+		{name: "unconfigured private IPv4", allowed: []string{"https://media.example.invalid"}, source: "http://10.0.0.8/install.iso"},
+		{name: "unconfigured link local IPv4", allowed: []string{"https://media.example.invalid"}, source: "http://169.254.169.254/latest/meta-data"},
+		{name: "unconfigured loopback IPv6", allowed: []string{"https://media.example.invalid"}, source: "http://[::1]/install.iso"},
+		{name: "unconfigured link local IPv6", allowed: []string{"https://media.example.invalid"}, source: "http://[fe80::1]/install.iso"},
+		{name: "DNS host mismatch", allowed: []string{"https://media.example.invalid"}, source: "https://other.example.invalid/install.iso"},
+		{name: "scheme mismatch", allowed: []string{"https://media.example.invalid"}, source: "http://media.example.invalid/install.iso"},
+		{name: "port mismatch", allowed: []string{"https://media.example.invalid:8443"}, source: "https://media.example.invalid:9443/install.iso"},
+		{name: "implicit HTTPS default port", allowed: []string{"https://media.example.invalid"}, source: "https://media.example.invalid:443/install.iso", want: "https://media.example.invalid:443/install.iso"},
+		{name: "explicit HTTPS default port", allowed: []string{"https://media.example.invalid:443"}, source: "https://media.example.invalid/install.iso", want: "https://media.example.invalid/install.iso"},
+		{name: "numeric HTTPS default port", allowed: []string{"https://media.example.invalid:0443"}, source: "https://media.example.invalid/install.iso", want: "https://media.example.invalid/install.iso"},
+		{name: "implicit HTTP default port", allowed: []string{"http://media.example.invalid"}, source: "http://media.example.invalid:80/install.iso", want: "http://media.example.invalid:80/install.iso"},
+		{name: "credentials", allowed: []string{"https://media.example.invalid"}, source: "https://private-user:private-password@media.example.invalid/install.iso"},
+		{name: "non HTTP scheme", allowed: []string{"https://media.example.invalid"}, source: "ftp://media.example.invalid/install.iso"},
+		{name: "missing host", allowed: []string{"https://media.example.invalid"}, source: "https:///install.iso"},
+		{name: "protocol relative", allowed: []string{"https://media.example.invalid"}, source: "//media.example.invalid/install.iso"},
+		{name: "malformed escape", allowed: []string{"https://media.example.invalid"}, source: "https://media.example.invalid/%zz"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			allowed, err := normalizeMediaURLAllowedOrigins(test.allowed)
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, err := parseAllowedMediaURL(test.source, allowed)
+			if test.want == "" {
+				if !errors.Is(err, ErrUnsupportedInput) {
+					t.Fatalf("error = %v, want unsupported input", err)
+				}
+				if strings.Contains(fmt.Sprint(err), test.source) {
+					t.Fatalf("error exposed rejected URL: %v", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got.String() != test.want {
+				t.Fatalf("URL = %q, want %q", got.String(), test.want)
+			}
+		})
+	}
+}
+
+func TestManagerVirtualMediaURLMountRequiresAnExactAllowedOrigin(t *testing.T) {
+	tests := []struct {
+		name    string
+		allowed []string
+		source  string
+		wantURL string
+	}{
+		{
+			name:    "DNS origin with path query and fragment",
+			allowed: []string{"https://MEDIA.EXAMPLE.INVALID:8443"},
+			source:  "https://media.example.invalid:8443/images/install.iso?channel=stable#boot",
+			wantURL: "https://media.example.invalid:8443/images/install.iso?channel=stable#boot",
+		},
+		{
+			name:    "scheme and DNS host are case insensitive",
+			allowed: []string{"https://media.example.invalid:8443"},
+			source:  "HTTPS://MEDIA.EXAMPLE.INVALID:8443/install.iso",
+			wantURL: "https://MEDIA.EXAMPLE.INVALID:8443/install.iso",
+		},
+		{
+			name:    "explicit private IPv4 origin",
+			allowed: []string{"http://10.0.0.8:8080"},
+			source:  "http://10.0.0.8:8080/install.iso",
+			wantURL: "http://10.0.0.8:8080/install.iso",
+		},
+		{
+			name:    "explicit link local IPv6 origin",
+			allowed: []string{"http://[fe80::1]:8080"},
+			source:  "http://[fe80::1]:8080/install.iso",
+			wantURL: "http://[fe80::1]:8080/install.iso",
+		},
+		{
+			name:    "equivalent IPv6 literal spellings",
+			allowed: []string{"https://[2001:0db8:0:0:0:0:0:1]:8443"},
+			source:  "https://[2001:db8::1]:8443/install.iso",
+			wantURL: "https://[2001:db8::1]:8443/install.iso",
+		},
+		{
+			name:    "equivalent IPv6 literal spellings without explicit port",
+			allowed: []string{"https://[2001:0db8:0:0:0:0:0:1]"},
+			source:  "https://[2001:db8::1]/install.iso",
+			wantURL: "https://[2001:db8::1]/install.iso",
+		},
+		{name: "scheme mismatch", allowed: []string{"https://media.example.invalid"}, source: "http://media.example.invalid/install.iso"},
+		{name: "host mismatch", allowed: []string{"https://media.example.invalid"}, source: "https://other.example.invalid/install.iso"},
+		{name: "port mismatch", allowed: []string{"https://media.example.invalid:8443"}, source: "https://media.example.invalid:9443/install.iso"},
+		{name: "implicit and explicit default ports have the same effective port", allowed: []string{"https://media.example.invalid"}, source: "https://media.example.invalid:443/install.iso", wantURL: "https://media.example.invalid:443/install.iso"},
+		{name: "unconfigured loopback", allowed: []string{"http://media.example.invalid"}, source: "http://127.0.0.1/install.iso"},
+		{name: "unconfigured private IPv4", allowed: []string{"http://media.example.invalid"}, source: "http://10.0.0.8/install.iso"},
+		{name: "unconfigured link local IPv4", allowed: []string{"http://media.example.invalid"}, source: "http://169.254.169.254/latest/meta-data"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			session := &fakeSession{results: map[string]any{}}
+			provider := &mediaURLPolicyProvider{session: session}
+			base, err := url.Parse("https://jetkvm.invalid")
+			if err != nil {
+				t.Fatal(err)
+			}
+			manager, err := NewManager([]DeviceConfig{{
+				Name: "lab", BaseURL: *base, MediaURLAllowedOrigins: test.allowed,
+			}}, provider)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			_, err = manager.VirtualMedia(context.Background(), "lab", mcpserver.VirtualMediaRequest{
+				Operation: mcpserver.VirtualMediaMountURL,
+				Source:    test.source,
+			})
+			if test.wantURL == "" {
+				if !errors.Is(err, ErrUnsupportedInput) {
+					t.Fatalf("error = %v, want unsupported input", err)
+				}
+				assertToolOutcome(t, err, ToolOutcomeNotSent)
+				if len(session.calls) != 0 {
+					t.Fatalf("device calls = %#v, want none", session.calls)
+				}
+				if calls := provider.calls.Load(); calls != 0 {
+					t.Fatalf("provider calls = %d, want none", calls)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			wantCalls := []recordedCall{{method: "mountWithHTTP", params: map[string]any{"url": test.wantURL, "mode": "CDROM"}}}
+			if !reflect.DeepEqual(session.calls, wantCalls) {
+				t.Fatalf("device calls = %#v, want %#v", session.calls, wantCalls)
+			}
+			if calls := provider.calls.Load(); calls != 1 {
+				t.Fatalf("provider calls = %d, want one", calls)
+			}
+		})
+	}
+}
+
 func TestManagerVirtualMediaMountClassifiesConnectionFailureAsNotSent(t *testing.T) {
 	base, err := url.Parse("https://jetkvm.invalid")
 	if err != nil {
 		t.Fatal(err)
 	}
-	manager, err := NewManager([]DeviceConfig{{Name: "lab", BaseURL: *base}}, &failingBeforeSessionProvider{err: ErrDeviceUnreachable})
+	manager, err := NewManager([]DeviceConfig{{
+		Name: "lab", BaseURL: *base, MediaURLAllowedOrigins: []string{"https://media.invalid"},
+	}}, &failingBeforeSessionProvider{err: ErrDeviceUnreachable})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -260,7 +260,7 @@ func addControlTools(server *mcp.Server, device Device) {
 
 	addSanitizedInputMutationTool(server, &mcp.Tool{
 		Name:         MountVirtualMediaURLToolName,
-		Description:  "Ask the configured JetKVM to fetch an HTTP(S) URL and replace its current virtual-media mount. Requires a configured device and a non-empty HTTP(S) URL. Success acknowledges the firmware RPC but does not independently verify the resulting mount; inspect status before deciding whether another mutation is safe.",
+		Description:  "Ask the configured JetKVM appliance to fetch an HTTP(S) URL whose scheme, host, and effective port match a configured exact origin, then replace its current virtual-media mount. URL mounting is unavailable without an allowed origin. Success acknowledges the firmware RPC but does not independently verify the resulting mount; inspect status before deciding whether another mutation is safe.",
 		InputSchema:  virtualMediaURLSchema(),
 		OutputSchema: virtualMediaResultSchema(),
 		Annotations:  annotationsWithOpenWorld(false, true, false, true),

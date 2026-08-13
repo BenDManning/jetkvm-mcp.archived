@@ -33,11 +33,12 @@ type fileConfig struct {
 }
 
 type fileDevice struct {
-	URL                 string                         `yaml:"url"`
-	PasswordEnvironment string                         `yaml:"password_env,omitempty"`
-	InsecureSkipVerify  bool                           `yaml:"insecure_skip_verify,omitempty"`
-	MediaDirectory      string                         `yaml:"media_directory,omitempty"`
-	WakeOnLAN           map[string]fileWakeOnLANTarget `yaml:"wake_on_lan,omitempty"`
+	URL                    string                         `yaml:"url"`
+	PasswordEnvironment    string                         `yaml:"password_env,omitempty"`
+	InsecureSkipVerify     bool                           `yaml:"insecure_skip_verify,omitempty"`
+	MediaDirectory         string                         `yaml:"media_directory,omitempty"`
+	MediaURLAllowedOrigins []string                       `yaml:"media_url_allowed_origins,omitempty"`
+	WakeOnLAN              map[string]fileWakeOnLANTarget `yaml:"wake_on_lan,omitempty"`
 }
 
 type fileWakeOnLANTarget struct {
@@ -108,6 +109,19 @@ func Load(path string, lookup LookupEnvironment) (Runtime, error) {
 			}
 			mediaDirectory = filepath.Clean(mediaDirectory)
 		}
+		mediaOrigins := make([]string, 0, len(configured.MediaURLAllowedOrigins))
+		seenMediaOrigins := make(map[string]struct{}, len(configured.MediaURLAllowedOrigins))
+		for _, value := range configured.MediaURLAllowedOrigins {
+			origin, err := normalizeMediaURLOrigin(value)
+			if err != nil || strings.Contains(origin, "*") {
+				return Runtime{}, fmt.Errorf("device %q media_url_allowed_origins must contain exact HTTP(S) origins without credentials, wildcard hosts, paths, queries, fragments, or invalid ports", name)
+			}
+			if _, duplicate := seenMediaOrigins[origin]; duplicate {
+				continue
+			}
+			seenMediaOrigins[origin] = struct{}{}
+			mediaOrigins = append(mediaOrigins, origin)
+		}
 		wakeTargets := make(map[string]jetkvm.WakeOnLANTarget, len(configured.WakeOnLAN))
 		for targetName, target := range configured.WakeOnLAN {
 			wakeTargets[targetName] = jetkvm.WakeOnLANTarget{
@@ -116,7 +130,8 @@ func Load(path string, lookup LookupEnvironment) (Runtime, error) {
 		}
 		runtime.Devices = append(runtime.Devices, jetkvm.DeviceConfig{
 			Name: strings.TrimSpace(name), BaseURL: *parsed, Password: password,
-			InsecureSkipVerify: configured.InsecureSkipVerify, MediaDirectory: mediaDirectory, WakeOnLAN: wakeTargets,
+			InsecureSkipVerify: configured.InsecureSkipVerify, MediaDirectory: mediaDirectory,
+			MediaURLAllowedOrigins: mediaOrigins, WakeOnLAN: wakeTargets,
 		})
 	}
 	token, err := resolveEnvironment(source.HTTP.BearerTokenEnvironment, lookup)
@@ -146,6 +161,14 @@ func normalizeHTTPOrigin(value string) (string, error) {
 	}
 	if err != nil {
 		return "", errors.New("HTTP allowed origin must be an HTTP(S) origin without a path, query, or fragment and with a valid port")
+	}
+	return origin.Value, nil
+}
+
+func normalizeMediaURLOrigin(value string) (string, error) {
+	origin, err := httporigin.ParseEffective(value)
+	if err != nil {
+		return "", err
 	}
 	return origin.Value, nil
 }

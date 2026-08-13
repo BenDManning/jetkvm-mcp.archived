@@ -228,6 +228,10 @@ func testManager(t *testing.T, session *fakeSession) *Manager {
 	}
 	manager, err := NewManager([]DeviceConfig{{
 		Name: "lab", BaseURL: *base,
+		MediaURLAllowedOrigins: []string{
+			"https://example.invalid",
+			"https://media.invalid",
+		},
 		WakeOnLAN: map[string]WakeOnLANTarget{
 			"server": {MACAddress: "02:00:00:00:00:01", BroadcastIP: "192.0.2.255"},
 		},
