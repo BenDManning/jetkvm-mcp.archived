@@ -38,13 +38,14 @@ func TestValidateReadOnlyTools(t *testing.T) {
 	tools := []*mcp.Tool{
 		{Name: statusTool, Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: &no, IdempotentHint: true, OpenWorldHint: &no}},
 		{Name: captureTool, Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: &no, IdempotentHint: true, OpenWorldHint: &no}},
+		{Name: mediaStatusTool, Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: &no, IdempotentHint: true, OpenWorldHint: &no}},
 	}
 	if err := validateReadOnlyTools(tools); err != nil {
 		t.Fatal(err)
 	}
-	tools[1].Annotations.ReadOnlyHint = false
+	tools[2].Annotations.ReadOnlyHint = false
 	if err := validateReadOnlyTools(tools); err == nil {
-		t.Fatal("accepted a mutating capture tool")
+		t.Fatal("accepted a mutating virtual-media status tool")
 	}
 }
 

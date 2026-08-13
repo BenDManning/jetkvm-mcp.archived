@@ -25,7 +25,10 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-const updateToolManifestEnvironment = "JETKVM_UPDATE_TOOL_MANIFEST"
+const (
+	updateToolManifestEnvironment = "JETKVM_UPDATE_TOOL_MANIFEST"
+	toolManifestCount             = 17
+)
 
 var toolManifestFixturePath = filepath.Join("testdata", "tool-manifest.json")
 
@@ -133,7 +136,7 @@ func TestToolManifestContract(t *testing.T) {
 		t.Run(path.name, func(t *testing.T) {
 			session, discovery, cleanup := path.connect(t)
 			defer cleanup()
-			got := captureToolManifest(t, ctx, session, discovery, path.connectError, 12)
+			got := captureToolManifest(t, ctx, session, discovery, path.connectError, toolManifestCount)
 			if canonical == nil {
 				canonical = got
 			} else if !bytes.Equal(got, canonical) {
@@ -153,7 +156,7 @@ func TestToolManifestFixtureUpdate(t *testing.T) {
 	ctx := context.Background()
 	session, discovery, cleanup := connectManifestInMemory(t)
 	defer cleanup()
-	manifest := captureToolManifest(t, ctx, session, discovery, connectManifestFailingInMemory, 12)
+	manifest := captureToolManifest(t, ctx, session, discovery, connectManifestFailingInMemory, toolManifestCount)
 	if err := os.WriteFile(toolManifestFixturePath, append(manifest, '\n'), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -163,7 +166,7 @@ func TestToolManifestFixtureRejectsUnreviewedMutation(t *testing.T) {
 	fixture := readToolManifestFixture(t)
 	session, discovery, cleanup := connectManifestMutatedInMemory(t)
 	defer cleanup()
-	mutated := captureToolManifest(t, context.Background(), session, discovery, connectManifestFailingInMemory, 12)
+	mutated := captureToolManifest(t, context.Background(), session, discovery, connectManifestFailingInMemory, toolManifestCount)
 	if manifestMatchesFixture(mutated, fixture) {
 		t.Fatal("temporary runtime tool mutation did not fail the manifest gate")
 	}
@@ -525,18 +528,23 @@ func jsonEqual(got, want any) bool {
 
 func representativeCalls() map[string]map[string]any {
 	return map[string]map[string]any{
-		GetStatusToolName:            {"device": "fixture"},
-		PressHostPowerButtonToolName: {"device": "fixture"},
-		ForceHostPowerOffToolName:    {"device": "fixture"},
-		PressHostResetButtonToolName: {"device": "fixture"},
-		TurnHostDCPowerOnToolName:    {"device": "fixture"},
-		TurnHostDCPowerOffToolName:   {"device": "fixture"},
-		WakeHostUSBToolName:          {"device": "fixture"},
-		WakeHostLANToolName:          {"device": "fixture", "target": "fixture-target"},
-		CaptureScreenToolName:        {"device": "fixture", "max_width": 640, "max_height": 480},
-		KeyboardToolName:             {"device": "fixture", "operation": string(KeyboardPressKey), "key": "enter"},
-		MouseToolName:                {"device": "fixture", "operation": string(MouseClick), "button": "left"},
-		VirtualMediaToolName:         {"device": "fixture", "operation": string(VirtualMediaStatus)},
+		GetStatusToolName:              {"device": "fixture"},
+		PressHostPowerButtonToolName:   {"device": "fixture"},
+		ForceHostPowerOffToolName:      {"device": "fixture"},
+		PressHostResetButtonToolName:   {"device": "fixture"},
+		TurnHostDCPowerOnToolName:      {"device": "fixture"},
+		TurnHostDCPowerOffToolName:     {"device": "fixture"},
+		WakeHostUSBToolName:            {"device": "fixture"},
+		WakeHostLANToolName:            {"device": "fixture", "target": "fixture-target"},
+		CaptureScreenToolName:          {"device": "fixture", "max_width": 640, "max_height": 480},
+		KeyboardToolName:               {"device": "fixture", "operation": string(KeyboardPressKey), "key": "enter"},
+		MouseToolName:                  {"device": "fixture", "operation": string(MouseClick), "button": "left"},
+		VirtualMediaToolName:           {"device": "fixture", "operation": string(VirtualMediaStatus)},
+		GetVirtualMediaStatusToolName:  {"device": "fixture"},
+		MountVirtualMediaURLToolName:   {"device": "fixture", "url": "https://example.invalid/media.iso"},
+		MountVirtualMediaFileToolName:  {"device": "fixture", "path": "fixture.iso"},
+		UnmountVirtualMediaToolName:    {"device": "fixture"},
+		UploadVirtualMediaFileToolName: {"device": "fixture", "path": "fixture.iso"},
 	}
 }
 

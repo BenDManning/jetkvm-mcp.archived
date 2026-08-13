@@ -101,7 +101,7 @@ func TestHTTPHandlerOptionalBearerToken(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(listed.Tools) != 12 {
+	if len(listed.Tools) != toolManifestCount {
 		t.Fatalf("authenticated tool count = %d", len(listed.Tools))
 	}
 }

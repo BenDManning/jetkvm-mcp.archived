@@ -22,9 +22,10 @@ import (
 )
 
 const (
-	statusTool     = "jetkvm_get_status"
-	captureTool    = "jetkvm_capture_screen"
-	captureTimeout = 30 * time.Second
+	statusTool      = "jetkvm_get_status"
+	captureTool     = "jetkvm_capture_screen"
+	mediaStatusTool = "jetkvm_get_virtual_media_status"
+	captureTimeout  = 30 * time.Second
 )
 
 type options struct {
@@ -137,7 +138,7 @@ func validateReadOnlyTools(tools []*mcp.Tool) error {
 	for _, tool := range tools {
 		byName[tool.Name] = tool
 	}
-	for _, name := range []string{statusTool, captureTool} {
+	for _, name := range []string{statusTool, captureTool, mediaStatusTool} {
 		tool := byName[name]
 		if tool == nil || tool.Annotations == nil || !tool.Annotations.ReadOnlyHint ||
 			tool.Annotations.DestructiveHint == nil || *tool.Annotations.DestructiveHint ||

@@ -110,7 +110,12 @@ The proxy must preserve the public `Host` header, and every accepted public orig
 - `jetkvm_capture_screen`
 - `jetkvm_keyboard`
 - `jetkvm_mouse`
-- `jetkvm_virtual_media`
+- `jetkvm_get_virtual_media_status`
+- `jetkvm_mount_virtual_media_url`
+- `jetkvm_mount_virtual_media_file`
+- `jetkvm_unmount_virtual_media`
+- `jetkvm_upload_virtual_media_file`
+- `jetkvm_virtual_media` (deprecated compatibility surface; migrate to the one-purpose tools above)
 - `jetkvm_press_host_power_button`
 - `jetkvm_force_host_power_off`
 - `jetkvm_press_host_reset_button`
@@ -149,8 +154,9 @@ go vet ./...
 ### Read-only real-hardware validation
 
 After building the server, the separate validation runner can exercise one
-configured device through actual MCP stdio. It lists tools, verifies the status
-and capture tools' read-only annotations, validates status fields, and fully
+configured device through actual MCP stdio. It lists tools, verifies the
+device-status, virtual-media-status, and capture tools' read-only annotations,
+validates status fields, and fully
 decodes one PNG without writing or displaying it. It never invokes keyboard,
 mouse, virtual-media, power, wake, or raw-RPC operations.
 

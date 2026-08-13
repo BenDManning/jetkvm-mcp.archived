@@ -170,12 +170,15 @@ func withToolFailure[In, Out any](mutation func(In) bool, handler mcp.ToolHandle
 }
 
 func annotations(readOnly, destructive, idempotent bool) *mcp.ToolAnnotations {
-	closedWorld := false
+	return annotationsWithOpenWorld(readOnly, destructive, idempotent, false)
+}
+
+func annotationsWithOpenWorld(readOnly, destructive, idempotent, openWorld bool) *mcp.ToolAnnotations {
 	return &mcp.ToolAnnotations{
 		ReadOnlyHint:    readOnly,
 		DestructiveHint: &destructive,
 		IdempotentHint:  idempotent,
-		OpenWorldHint:   &closedWorld,
+		OpenWorldHint:   &openWorld,
 	}
 }
 
