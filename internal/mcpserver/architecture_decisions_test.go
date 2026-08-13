@@ -34,9 +34,10 @@ func TestArchitectureDecisionIndexAndStatuses(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	recordPattern := regexp.MustCompile(`^[0-9]{4}-.*\.md$`)
 	var recordFiles []string
 	for _, entry := range entries {
-		if matched, _ := regexp.MatchString(`^[0-9]{4}-.*\.md$`, entry.Name()); matched {
+		if recordPattern.MatchString(entry.Name()) {
 			recordFiles = append(recordFiles, entry.Name())
 		}
 	}

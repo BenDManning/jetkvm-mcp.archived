@@ -32,17 +32,16 @@ const (
 
 var toolManifestFixturePath = filepath.Join("testdata", "tool-manifest.json")
 
-type contractDevice struct {
-	recordingDevice
-}
+type contractDevice struct{}
 
 func (*contractDevice) Status(context.Context, string) (Status, error) {
 	atxPowerOn, videoReady, usbWakeAttached := true, true, true
 	return Status{
 		Device: "fixture-device", Connected: true, Application: "fixture-app", System: "fixture-system",
 		Extension: "atx-power", ATXPowerOn: &atxPowerOn, VideoReady: &videoReady,
-		VideoWidth: 640, VideoHeight: 480, VideoFPS: 30, VirtualMedia: `{"mounted":false}`,
-		USBState: "attached", USBWakeAttached: &usbWakeAttached, Warnings: []string{"fixture warning"},
+		VideoWidth: 640, VideoHeight: 480, VideoFPS: 30,
+		VirtualMedia: &VirtualMediaState{Mounted: false},
+		USBState:     "attached", USBWakeAttached: &usbWakeAttached, Warnings: []string{"fixture warning"},
 	}, nil
 }
 
@@ -66,9 +65,15 @@ func (*contractDevice) Mouse(_ context.Context, _ string, request MouseRequest) 
 }
 
 func (*contractDevice) VirtualMedia(_ context.Context, _ string, request VirtualMediaRequest) (VirtualMediaResult, error) {
+	sourceType := VirtualMediaSourceType("")
+	if request.Operation == VirtualMediaMountURL {
+		sourceType = VirtualMediaSourceHTTP
+	} else if request.Operation == VirtualMediaMountFile || request.Operation == VirtualMediaUpload {
+		sourceType = VirtualMediaSourceStorage
+	}
 	return VirtualMediaResult{
 		Device: "fixture-device", Operation: request.Operation, Mounted: false,
-		Source: request.Source, Mode: request.Mode, Status: "completed",
+		SourceType: sourceType, Mode: request.Mode, Status: "completed",
 	}, nil
 }
 
@@ -191,6 +196,7 @@ func TestManifestClientAdvertisesNoDeprecatedCapabilities(t *testing.T) {
 	capabilities := initialized.Capabilities
 	// Roots is an SDK compatibility mirror whose zero value re-marshals as
 	// {"roots":{}}; RootsV2 is the authoritative presence marker on the wire.
+	//lint:ignore SA1019 Deliberately assert deprecated capabilities stay absent throughout their compatibility window.
 	if capabilities.RootsV2 != nil || capabilities.Sampling != nil || capabilities.Elicitation != nil ||
 		len(capabilities.Experimental) != 0 || len(capabilities.Extensions) != 0 {
 		t.Fatalf("unexpected client capabilities = %#v", capabilities)

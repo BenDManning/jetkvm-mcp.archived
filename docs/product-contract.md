@@ -131,6 +131,15 @@ stream, category, exit semantics, and any documented structured representation
 remain compatible. Status strings and JSON fields documented as structured
 results are versioned surfaces, not free-form diagnostics.
 
+Status and virtual-media success results expose only product-owned typed fields.
+The `virtualMedia` status object and media-tool results report `mounted`, an
+optional `sourceType` (`http` or `storage`), and an optional normalized `mode`;
+they never return firmware JSON, URLs, paths, filenames, query strings,
+fragments, or unknown firmware fields. This reviewed privacy correction is an
+intentional breaking output-contract change relative to v0.1.0 and therefore
+requires the next release carrying it to use the major version `v1.0.0` or
+later under this contract's pre-1.0 SemVer rules.
+
 ### MCP tool-manifest review
 
 [`internal/mcpserver/testdata/tool-manifest.json`](../internal/mcpserver/testdata/tool-manifest.json)

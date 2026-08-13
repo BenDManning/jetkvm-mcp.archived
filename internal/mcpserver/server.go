@@ -2,9 +2,12 @@ package mcpserver
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 
+	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -35,22 +38,22 @@ const (
 // Status is the device state returned by the status tool. Optional fields remain
 // absent when a particular firmware does not report them.
 type Status struct {
-	Device          string   `json:"device"`
-	Connected       bool     `json:"connected"`
-	Application     string   `json:"applicationVersion,omitempty"`
-	System          string   `json:"systemVersion,omitempty"`
-	Extension       string   `json:"activeExtension,omitempty"`
-	ATXPowerOn      *bool    `json:"atxPowerOn,omitempty"`
-	DCPowerOn       *bool    `json:"dcPowerOn,omitempty"`
-	DCVoltage       float64  `json:"dcVoltage,omitempty"`
-	VideoReady      *bool    `json:"videoReady,omitempty"`
-	VideoWidth      int      `json:"videoWidth,omitempty"`
-	VideoHeight     int      `json:"videoHeight,omitempty"`
-	VideoFPS        int      `json:"videoFPS,omitempty"`
-	VirtualMedia    string   `json:"virtualMedia,omitempty"`
-	USBState        string   `json:"usbState,omitempty"`
-	USBWakeAttached *bool    `json:"usbWakeAttached,omitempty"`
-	Warnings        []string `json:"warnings,omitempty"`
+	Device          string             `json:"device"`
+	Connected       bool               `json:"connected"`
+	Application     string             `json:"applicationVersion,omitempty"`
+	System          string             `json:"systemVersion,omitempty"`
+	Extension       string             `json:"activeExtension,omitempty"`
+	ATXPowerOn      *bool              `json:"atxPowerOn,omitempty"`
+	DCPowerOn       *bool              `json:"dcPowerOn,omitempty"`
+	DCVoltage       float64            `json:"dcVoltage,omitempty"`
+	VideoReady      *bool              `json:"videoReady,omitempty"`
+	VideoWidth      int                `json:"videoWidth,omitempty"`
+	VideoHeight     int                `json:"videoHeight,omitempty"`
+	VideoFPS        int                `json:"videoFPS,omitempty"`
+	VirtualMedia    *VirtualMediaState `json:"virtualMedia,omitempty"`
+	USBState        string             `json:"usbState,omitempty"`
+	USBWakeAttached *bool              `json:"usbWakeAttached,omitempty"`
+	Warnings        []string           `json:"warnings,omitempty"`
 }
 
 // PowerResult describes the submitted host-power operation without exposing
@@ -89,9 +92,10 @@ func New(device Device, version string) *mcp.Server {
 	})
 
 	addReadTool(server, &mcp.Tool{
-		Name:        GetStatusToolName,
-		Description: "Read the current status of a configured JetKVM and its attached host.",
-		Annotations: annotations(true, false, true),
+		Name:         GetStatusToolName,
+		Description:  "Read the current status of a configured JetKVM and its attached host.",
+		OutputSchema: statusOutputSchema(),
+		Annotations:  annotations(true, false, true),
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, input deviceInput) (*mcp.CallToolResult, Status, error) {
 		if err := validDevice(input.Device); err != nil {
 			return nil, Status{}, invalidInput(err)
@@ -155,8 +159,97 @@ func addMutationTool[In, Out any](server *mcp.Server, tool *mcp.Tool, handler mc
 	mcp.AddTool(server, tool, withToolFailure(func(In) bool { return true }, handler))
 }
 
-func addConditionalMutationTool[In, Out any](server *mcp.Server, tool *mcp.Tool, mutation func(In) bool, handler mcp.ToolHandlerFor[In, Out]) {
-	mcp.AddTool(server, tool, withToolFailure(mutation, handler))
+// addSanitizedInputMutationTool retains the public JSON Schema while handling
+// its validation locally. The SDK's validation errors include rejected values,
+// which is unsafe for media URLs and local paths that may contain private data.
+func addSanitizedInputMutationTool[In, Out any](server *mcp.Server, tool *mcp.Tool, handler mcp.ToolHandlerFor[In, Out]) {
+	addSanitizedInputTool(server, tool, func(In) bool { return true }, handler)
+}
+
+func addSanitizedConditionalMutationTool[In, Out any](server *mcp.Server, tool *mcp.Tool, mutation func(In) bool, handler mcp.ToolHandlerFor[In, Out]) {
+	addSanitizedInputTool(server, tool, mutation, handler)
+}
+
+func addSanitizedInputTool[In, Out any](server *mcp.Server, tool *mcp.Tool, mutation func(In) bool, handler mcp.ToolHandlerFor[In, Out]) {
+	inputSchema, ok := tool.InputSchema.(*jsonschema.Schema)
+	if !ok || inputSchema == nil {
+		panic(fmt.Sprintf("tool %q requires a JSON Schema input", tool.Name))
+	}
+	inputResolved, err := inputSchema.Resolve(&jsonschema.ResolveOptions{ValidateDefaults: true})
+	if err != nil {
+		panic(fmt.Sprintf("tool %q input schema: %v", tool.Name, err))
+	}
+	outputSchema, ok := tool.OutputSchema.(*jsonschema.Schema)
+	if !ok || outputSchema == nil {
+		panic(fmt.Sprintf("tool %q requires a JSON Schema output", tool.Name))
+	}
+	outputResolved, err := outputSchema.Resolve(&jsonschema.ResolveOptions{ValidateDefaults: true})
+	if err != nil {
+		panic(fmt.Sprintf("tool %q output schema: %v", tool.Name, err))
+	}
+	wrapped := withToolFailure(mutation, handler)
+
+	server.AddTool(tool, func(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		input, err := decodeSanitizedToolInput[In](request.Params.Arguments, inputResolved)
+		if err != nil {
+			result := new(mcp.CallToolResult)
+			result.SetError(toolFailure(invalidInput(errors.New("arguments do not match the tool schema")), true))
+			return result, nil
+		}
+		result, output, err := wrapped(ctx, request, input)
+		if err != nil {
+			if result == nil {
+				result = new(mcp.CallToolResult)
+			}
+			result.SetError(err)
+			return result, nil
+		}
+		if result == nil {
+			result = new(mcp.CallToolResult)
+		}
+		outputJSON, err := json.Marshal(output)
+		if err != nil {
+			return nil, fmt.Errorf("marshaling tool output: %w", err)
+		}
+		var outputValue any
+		if err := json.Unmarshal(outputJSON, &outputValue); err != nil {
+			return nil, fmt.Errorf("unmarshaling tool output: %w", err)
+		}
+		if err := outputResolved.Validate(outputValue); err != nil {
+			return nil, fmt.Errorf("validating tool output: %w", err)
+		}
+		result.StructuredContent = json.RawMessage(outputJSON)
+		if result.Content == nil {
+			result.Content = []mcp.Content{&mcp.TextContent{Text: string(outputJSON)}}
+		}
+		return result, nil
+	})
+}
+
+func decodeSanitizedToolInput[In any](arguments json.RawMessage, schema *jsonschema.Resolved) (In, error) {
+	var input In
+	if len(arguments) == 0 {
+		arguments = json.RawMessage(`{}`)
+	}
+	value := make(map[string]any)
+	if err := json.Unmarshal(arguments, &value); err != nil {
+		return input, err
+	}
+	var instance any = value
+	if err := schema.ApplyDefaults(&instance); err != nil {
+		return input, err
+	}
+	if err := schema.Validate(instance); err != nil {
+		return input, err
+	}
+	normalized, err := json.Marshal(instance)
+	if err != nil {
+		return input, err
+	}
+	if err := json.Unmarshal(normalized, &input); err != nil {
+		return input, err
+	}
+	return input, nil
 }
 
 func withToolFailure[In, Out any](mutation func(In) bool, handler mcp.ToolHandlerFor[In, Out]) mcp.ToolHandlerFor[In, Out] {

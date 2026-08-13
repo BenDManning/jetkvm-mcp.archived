@@ -124,6 +124,11 @@ The proxy must preserve the public `Host` header, and every accepted public orig
 - `jetkvm_wake_host_usb`
 - `jetkvm_wake_host_lan`
 
+Status and virtual-media results are typed and redacted. They report whether
+media is mounted, whether its source class is `http` or `storage`, and its
+normalized mode when available; they do not echo URLs, local paths, filenames,
+query strings, fragments, or raw firmware JSON.
+
 ## Local diagnostic RPC
 
 Raw RPC is deliberately outside MCP `tools/list` and only available as a local CLI subcommand:

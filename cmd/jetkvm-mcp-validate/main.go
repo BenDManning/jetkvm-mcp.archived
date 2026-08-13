@@ -156,11 +156,17 @@ func validateStatus(status map[string]any, device string) error {
 	if connected, ok := status["connected"].(bool); !ok || !connected {
 		return errors.New("invalid connected field")
 	}
-	for _, name := range []string{"applicationVersion", "systemVersion", "activeExtension", "virtualMedia", "usbState"} {
+	for _, name := range []string{"applicationVersion", "systemVersion", "activeExtension", "usbState"} {
 		if value, exists := status[name]; exists {
 			if _, ok := value.(string); !ok {
 				return fmt.Errorf("invalid %s field", name)
 			}
+		}
+	}
+	if value, exists := status["virtualMedia"]; exists {
+		media, ok := value.(map[string]any)
+		if !ok || validateVirtualMediaState(media) != nil {
+			return errors.New("invalid virtualMedia field")
 		}
 	}
 	for _, name := range []string{"atxPowerOn", "dcPowerOn", "videoReady", "usbWakeAttached"} {
@@ -187,6 +193,31 @@ func validateStatus(status map[string]any, device string) error {
 				return errors.New("invalid warnings item")
 			}
 		}
+	}
+	return nil
+}
+
+func validateVirtualMediaState(media map[string]any) error {
+	mounted, ok := media["mounted"].(bool)
+	if !ok {
+		return errors.New("invalid mounted field")
+	}
+	allowed := map[string]bool{"mounted": true, "sourceType": true, "mode": true}
+	for name := range media {
+		if !allowed[name] {
+			return errors.New("unexpected virtual media field")
+		}
+	}
+	if !mounted {
+		if len(media) != 1 {
+			return errors.New("unmounted media must not describe a source")
+		}
+		return nil
+	}
+	sourceType, sourceOK := media["sourceType"].(string)
+	mode, modeOK := media["mode"].(string)
+	if !sourceOK || sourceType != "http" && sourceType != "storage" || !modeOK || mode != "read_only" && mode != "read_write" {
+		return errors.New("invalid mounted media state")
 	}
 	return nil
 }
