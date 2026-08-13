@@ -131,6 +131,49 @@ devices:
 	}
 }
 
+func TestConfigExampleWakeOnLANBlockLoadsWhenUncommented(t *testing.T) {
+	data, err := os.ReadFile("../../config.example.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(string(data), "\n")
+	inWakeOnLANBlock := false
+	for index, line := range lines {
+		if strings.Contains(line, "# wake_on_lan:") {
+			inWakeOnLANBlock = true
+		}
+		if !inWakeOnLANBlock {
+			continue
+		}
+		if strings.TrimSpace(line) == "" {
+			break
+		}
+		marker := strings.IndexByte(line, '#')
+		if marker < 0 {
+			continue
+		}
+		uncommented := line[:marker] + line[marker+1:]
+		if marker < len(uncommented) && uncommented[marker] == ' ' {
+			uncommented = uncommented[:marker] + uncommented[marker+1:]
+		}
+		lines[index] = uncommented
+	}
+
+	loaded, err := Load(writeConfig(t, strings.Join(lines, "\n")), func(name string) (string, bool) {
+		if name == "JETKVM_LAB_PASSWORD" {
+			return "test-password", true
+		}
+		return "", false
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	target, ok := loaded.Devices[0].WakeOnLAN["server"]
+	if !ok || target.BroadcastIP != "192.0.2.255" {
+		t.Fatalf("Wake-on-LAN target = %#v", target)
+	}
+}
+
 func TestLoadRejectsUnknownInlineCredentialAndMissingEnvironment(t *testing.T) {
 	for _, test := range []struct {
 		name    string

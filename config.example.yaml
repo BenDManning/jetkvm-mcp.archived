@@ -12,7 +12,7 @@ devices:
     # wake_on_lan:
     #   server:
     #     mac_address: "02:00:00:00:00:01"
-#     broadcast_ip: 192.0.2.255
+    #     broadcast_ip: 192.0.2.255
 
 # Optional process-wide admission limits. Omitted values use conservative
 # defaults: 16 operations, 4 operations per device, 8 live sessions, and 2
