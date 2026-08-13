@@ -106,6 +106,112 @@ func TestRPCSessionReturnsStableErrorsAndTimeout(t *testing.T) {
 	})
 }
 
+func TestRPCSessionCancellationBeforeSendIsDefinitelyNotSent(t *testing.T) {
+	sender := &fakeTextSender{sent: make(chan string, 1)}
+	session := newRPCSession(context.Background(), sender, time.Second)
+	defer session.Close()
+	<-session.sendGate
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- session.Call(ctx, "setATXPowerAction", nil, nil) }()
+	deadline := time.Now().Add(time.Second)
+	for session.pendingCount() == 0 && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	cancel()
+	err := <-done
+	var classified interface {
+		ToolErrorOutcome() string
+	}
+	if !errors.As(err, &classified) || classified.ToolErrorOutcome() != "not_sent" {
+		t.Fatalf("error = %#v, want classified not_sent outcome", err)
+	}
+	select {
+	case payload := <-sender.sent:
+		t.Fatalf("request was sent before cancellation: %q", payload)
+	default:
+	}
+}
+
+func TestRPCSessionDispatchPhasesClassifyMutationOutcomes(t *testing.T) {
+	t.Run("during send is unknown", func(t *testing.T) {
+		sender := &fakeTextSender{sent: make(chan string, 1), err: errors.New("transport write failed")}
+		session := newRPCSession(context.Background(), sender, time.Second)
+		defer session.Close()
+		err := session.Call(context.Background(), "setATXPowerAction", nil, nil)
+		assertToolOutcome(t, err, ToolOutcomeUnknown)
+	})
+
+	t.Run("after send before response is unknown", func(t *testing.T) {
+		sender := &fakeTextSender{sent: make(chan string, 1)}
+		session := newRPCSession(context.Background(), sender, 5*time.Millisecond)
+		defer session.Close()
+		err := session.Call(context.Background(), "setATXPowerAction", nil, nil)
+		assertToolOutcome(t, err, ToolOutcomeUnknown)
+	})
+
+	t.Run("cancellation after send is unknown", func(t *testing.T) {
+		sender := &fakeTextSender{sent: make(chan string, 1)}
+		session := newRPCSession(context.Background(), sender, time.Second)
+		defer session.Close()
+		ctx, cancel := context.WithCancel(context.Background())
+		done := make(chan error, 1)
+		go func() { done <- session.Call(ctx, "setATXPowerAction", nil, nil) }()
+		<-sender.sent
+		cancel()
+		assertToolOutcome(t, <-done, ToolOutcomeUnknown)
+	})
+
+	t.Run("confirmed RPC failure is failed", func(t *testing.T) {
+		sender := &fakeTextSender{sent: make(chan string, 1)}
+		session := newRPCSession(context.Background(), sender, time.Second)
+		defer session.Close()
+		done := make(chan error, 1)
+		go func() { done <- session.Call(context.Background(), "setATXPowerAction", nil, nil) }()
+		var request struct {
+			ID uint64 `json:"id"`
+		}
+		if err := json.Unmarshal([]byte(<-sender.sent), &request); err != nil {
+			t.Fatal(err)
+		}
+		session.HandleMessage([]byte(`{"jsonrpc":"2.0","id":` + jsonNumber(request.ID) + `,"error":{"code":-32601,"message":"private"}}`))
+		assertToolOutcome(t, <-done, ToolOutcomeFailed)
+	})
+}
+
+func assertToolOutcome(t *testing.T, err error, want string) {
+	t.Helper()
+	var classified interface{ ToolErrorOutcome() string }
+	if !errors.As(err, &classified) || classified.ToolErrorOutcome() != want {
+		t.Fatalf("error = %#v, want outcome %q", err, want)
+	}
+}
+
+func TestRPCSessionAdmissionLimitIsBusyAndNotSent(t *testing.T) {
+	sender := &fakeTextSender{sent: make(chan string, 1)}
+	session := newRPCSession(context.Background(), sender, time.Second)
+	defer session.Close()
+	for id := uint64(1); id <= maxPendingRPCRequests; id++ {
+		if err := session.addPending(id, make(chan rpcOutcome, 1)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	err := session.Call(context.Background(), "setATXPowerAction", nil, nil)
+	var classified interface {
+		ToolErrorCode() string
+		ToolErrorOutcome() string
+	}
+	if !errors.As(err, &classified) || classified.ToolErrorCode() != "busy" || classified.ToolErrorOutcome() != ToolOutcomeNotSent {
+		t.Fatalf("error = %#v, want busy/not_sent", err)
+	}
+	select {
+	case payload := <-sender.sent:
+		t.Fatalf("admission-limited call sent payload %q", payload)
+	default:
+	}
+}
+
 func jsonNumber(value uint64) string {
 	encoded, _ := json.Marshal(value)
 	return string(encoded)

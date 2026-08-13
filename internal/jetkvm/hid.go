@@ -50,22 +50,22 @@ func (manager *Manager) Keyboard(ctx context.Context, name string, request mcpse
 	}
 	reports, err := keyboardReports(request)
 	if err != nil {
-		return mcpserver.KeyboardResult{}, err
+		return mcpserver.KeyboardResult{}, classifyOperationError(err, ToolOutcomeNotSent)
 	}
-	err = manager.provider.WithSession(ctx, device, SessionProfileData, func(session Session) error {
+	err = manager.withSession(ctx, device, SessionProfileData, func(session Session) error {
 		pressed := false
 		defer func() {
 			if pressed {
 				bestEffortKeyboardRelease(session)
 			}
 		}()
-		for _, report := range reports {
+		for index, report := range reports {
 			pressed = true
 			if err := session.Call(ctx, "keyboardReport", map[string]any{"modifier": report.modifier, "keys": []int{report.usage}}, nil); err != nil {
-				return err
+				return mutationSequenceError(err, index > 0)
 			}
 			if err := releaseKeyboard(ctx, session); err != nil {
-				return err
+				return mutationSequenceError(err, true)
 			}
 			pressed = false
 		}
@@ -84,9 +84,9 @@ func (manager *Manager) Mouse(ctx context.Context, name string, request mcpserve
 	}
 	calls, err := mouseCalls(request)
 	if err != nil {
-		return mcpserver.MouseResult{}, err
+		return mcpserver.MouseResult{}, classifyOperationError(err, ToolOutcomeNotSent)
 	}
-	err = manager.provider.WithSession(ctx, device, SessionProfileData, func(session Session) error {
+	err = manager.withSession(ctx, device, SessionProfileData, func(session Session) error {
 		pressed := false
 		defer func() {
 			if pressed {
@@ -98,7 +98,7 @@ func (manager *Manager) Mouse(ctx context.Context, name string, request mcpserve
 				pressed = true
 			}
 			if err := session.Call(ctx, call.method, call.params, nil); err != nil {
-				return err
+				return mutationSequenceError(err, index > 0)
 			}
 			if request.Operation == mcpserver.MouseClick && index == len(calls)-1 {
 				pressed = false
@@ -110,6 +110,13 @@ func (manager *Manager) Mouse(ctx context.Context, name string, request mcpserve
 		return mcpserver.MouseResult{}, err
 	}
 	return mcpserver.MouseResult{Device: device.Name, Operation: request.Operation, Status: "completed"}, nil
+}
+
+func mutationSequenceError(err error, priorDispatch bool) error {
+	if err == nil || !priorDispatch {
+		return err
+	}
+	return classifyOperationError(err, ToolOutcomeUnknown)
 }
 
 func keyboardReports(request mcpserver.KeyboardRequest) ([]keyReport, error) {

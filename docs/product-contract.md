@@ -219,6 +219,18 @@ fetching actor, credential prohibition, result/error behavior, and annotation
 are separately versioned public behavior. The current annotation is documented
 as-is and is not a firmware, network, or safety guarantee.
 
+Tool execution failures use a versioned caller-visible JSON object with
+`version`, `code`, `message`, `outcome`, and `retryable`. Stable codes include
+`invalid_input`, `busy`, `authentication_failed`, `device_unavailable`,
+`video_unavailable`, `no_signal`, `protocol_error`, `canceled`, `timeout`, and
+the conservative `operation_failed` fallback. Outcomes are `not_sent` when the
+server knows dispatch did not begin, `failed` when failure is confirmed, and
+`unknown` when a mutation may have been sent without a conclusive response.
+Read-only transient failures may be marked retryable. Mutation failures are
+never marked retryable, and an `unknown` outcome is never reported as completed
+or as safe to retry. Messages omit raw firmware, URLs, paths, credentials, and
+request payloads.
+
 ## Exclusions
 
 Permanent product boundaries are: capability grants; qualification flags or

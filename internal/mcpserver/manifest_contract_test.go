@@ -263,6 +263,17 @@ func captureToolManifest(t *testing.T, ctx context.Context, session *mcp.ClientS
 	if !failure.IsError || failure.StructuredContent != nil {
 		t.Fatalf("operational error envelope = %#v", failure)
 	}
+	if len(failure.Content) != 1 {
+		t.Fatalf("operational error content = %#v, want one stable JSON block", failure.Content)
+	}
+	text, ok := failure.Content[0].(*mcp.TextContent)
+	if !ok {
+		t.Fatalf("operational error content = %T, want text", failure.Content[0])
+	}
+	var stableError decodedToolError
+	if err := json.Unmarshal([]byte(text.Text), &stableError); err != nil || stableError.Version != toolErrorVersion || stableError.Code == "" || stableError.Outcome == "" {
+		t.Fatalf("operational error is not the versioned taxonomy: %q: %v", text.Text, err)
+	}
 	results["operational_error"] = normalizeCallToolResult(t, failure)
 
 	_, err = session.CallTool(ctx, &mcp.CallToolParams{Name: "jetkvm_missing_fixture", Arguments: map[string]any{}})

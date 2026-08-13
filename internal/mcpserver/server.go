@@ -88,13 +88,13 @@ func New(device Device, version string) *mcp.Server {
 		Capabilities: &mcp.ServerCapabilities{Tools: &mcp.ToolCapabilities{}},
 	})
 
-	mcp.AddTool(server, &mcp.Tool{
+	addReadTool(server, &mcp.Tool{
 		Name:        GetStatusToolName,
 		Description: "Read the current status of a configured JetKVM and its attached host.",
 		Annotations: annotations(true, false, true),
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, input deviceInput) (*mcp.CallToolResult, Status, error) {
 		if err := validDevice(input.Device); err != nil {
-			return nil, Status{}, err
+			return nil, Status{}, invalidInput(err)
 		}
 		status, err := device.Status(ctx, input.Device)
 		return nil, status, err
@@ -113,16 +113,16 @@ func New(device Device, version string) *mcp.Server {
 	registerPowerTool(server, device, WakeHostUSBToolName,
 		"Wake the attached host through JetKVM USB HID.", PowerActionWakeHostUSB, false, true)
 
-	mcp.AddTool(server, &mcp.Tool{
+	addMutationTool(server, &mcp.Tool{
 		Name:        WakeHostLANToolName,
 		Description: "Send Wake-on-LAN to a named target configured for this JetKVM.",
 		Annotations: annotations(false, false, true),
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, input wakeLANInput) (*mcp.CallToolResult, PowerResult, error) {
 		if err := validDevice(input.Device); err != nil {
-			return nil, PowerResult{}, err
+			return nil, PowerResult{}, invalidInput(err)
 		}
 		if strings.TrimSpace(input.Target) == "" {
-			return nil, PowerResult{}, errors.New("target is required")
+			return nil, PowerResult{}, invalidInput(errors.New("target is required"))
 		}
 		result, err := device.Power(ctx, input.Device, PowerActionWakeHostLAN, input.Target)
 		return nil, result, err
@@ -134,17 +134,39 @@ func New(device Device, version string) *mcp.Server {
 }
 
 func registerPowerTool(server *mcp.Server, device Device, name, description string, action PowerAction, destructive, idempotent bool) {
-	mcp.AddTool(server, &mcp.Tool{
+	addMutationTool(server, &mcp.Tool{
 		Name:        name,
 		Description: description,
 		Annotations: annotations(false, destructive, idempotent),
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, input deviceInput) (*mcp.CallToolResult, PowerResult, error) {
 		if err := validDevice(input.Device); err != nil {
-			return nil, PowerResult{}, err
+			return nil, PowerResult{}, invalidInput(err)
 		}
 		result, err := device.Power(ctx, input.Device, action, "")
 		return nil, result, err
 	})
+}
+
+func addReadTool[In, Out any](server *mcp.Server, tool *mcp.Tool, handler mcp.ToolHandlerFor[In, Out]) {
+	mcp.AddTool(server, tool, withToolFailure(func(In) bool { return false }, handler))
+}
+
+func addMutationTool[In, Out any](server *mcp.Server, tool *mcp.Tool, handler mcp.ToolHandlerFor[In, Out]) {
+	mcp.AddTool(server, tool, withToolFailure(func(In) bool { return true }, handler))
+}
+
+func addConditionalMutationTool[In, Out any](server *mcp.Server, tool *mcp.Tool, mutation func(In) bool, handler mcp.ToolHandlerFor[In, Out]) {
+	mcp.AddTool(server, tool, withToolFailure(mutation, handler))
+}
+
+func withToolFailure[In, Out any](mutation func(In) bool, handler mcp.ToolHandlerFor[In, Out]) mcp.ToolHandlerFor[In, Out] {
+	return func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mcp.CallToolResult, Out, error) {
+		result, output, err := handler(ctx, request, input)
+		if err != nil {
+			return result, output, toolFailure(err, mutation(input))
+		}
+		return result, output, nil
+	}
 }
 
 func annotations(readOnly, destructive, idempotent bool) *mcp.ToolAnnotations {

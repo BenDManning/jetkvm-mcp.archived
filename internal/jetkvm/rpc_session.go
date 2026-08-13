@@ -50,70 +50,74 @@ func newRPCSession(parent context.Context, sender textSender, timeout time.Durat
 
 func (session *rpcSession) Call(ctx context.Context, method string, params any, result any) error {
 	if session == nil || session.sender == nil {
-		return ErrSessionClosed
+		return classifyOperationError(ErrSessionClosed, ToolOutcomeNotSent)
 	}
 	if strings.TrimSpace(method) == "" {
-		return errors.New("RPC method is required")
+		return classifyOperationError(errors.New("RPC method is required"), ToolOutcomeNotSent)
 	}
 	requestCtx, cancel := context.WithTimeout(ctx, session.timeout)
 	defer cancel()
 	id := session.nextID.Add(1)
 	waiter := make(chan rpcOutcome, 1)
 	if err := session.addPending(id, waiter); err != nil {
-		return err
+		return classifyOperationError(err, ToolOutcomeNotSent)
 	}
 	remove := func() { session.removePending(id) }
 
 	payload, err := marshalRPCRequest(id, method, params)
 	if err != nil {
 		remove()
-		return err
+		return classifyOperationError(err, ToolOutcomeNotSent)
 	}
 	select {
 	case <-requestCtx.Done():
 		remove()
-		return requestCtx.Err()
+		return classifyOperationError(requestCtx.Err(), ToolOutcomeNotSent)
 	case <-session.ctx.Done():
 		remove()
-		return ErrSessionClosed
+		return classifyOperationError(ErrSessionClosed, ToolOutcomeNotSent)
 	case <-session.sendGate:
 	}
 	if requestCtx.Err() != nil || session.ctx.Err() != nil {
 		session.sendGate <- struct{}{}
 		remove()
 		if requestCtx.Err() != nil {
-			return requestCtx.Err()
+			return classifyOperationError(requestCtx.Err(), ToolOutcomeNotSent)
 		}
-		return ErrSessionClosed
+		return classifyOperationError(ErrSessionClosed, ToolOutcomeNotSent)
 	}
 	err = session.sender.SendText(payload)
 	session.sendGate <- struct{}{}
 	if err != nil {
 		remove()
-		return fmt.Errorf("%w: RPC send", ErrDeviceUnreachable)
+		return classifyOperationError(fmt.Errorf("%w: RPC send", ErrDeviceUnreachable), ToolOutcomeUnknown)
 	}
 
 	select {
 	case outcome := <-waiter:
 		if outcome.err != nil {
-			return outcome.err
+			var rpcErr *rpcProtocolError
+			if errors.Is(outcome.err, ErrRPCMethodUnavailable) || errors.As(outcome.err, &rpcErr) {
+				return classifyOperationError(outcome.err, ToolOutcomeFailed)
+			}
+			return classifyOperationError(outcome.err, ToolOutcomeUnknown)
 		}
 		if result == nil {
 			return nil
 		}
 		if len(outcome.result) == 0 {
-			return ErrInvalidResponse
+			return classifyOperationError(ErrInvalidResponse, ToolOutcomeUnknown)
 		}
 		if err := json.Unmarshal(outcome.result, result); err != nil {
-			return ErrInvalidResponse
+			return classifyOperationError(ErrInvalidResponse, ToolOutcomeUnknown)
 		}
 		return nil
 	case <-requestCtx.Done():
 		remove()
-		return requestCtx.Err()
+		return classifyOperationError(requestCtx.Err(), ToolOutcomeUnknown)
 	case <-session.ctx.Done():
 		remove()
-		return ErrSessionClosed
+		return classifyOperationError(ErrSessionClosed, ToolOutcomeUnknown)
 	}
 }
 
@@ -164,7 +168,7 @@ func (session *rpcSession) addPending(id uint64, waiter chan rpcOutcome) error {
 		return ErrSessionClosed
 	}
 	if len(session.pending) >= maxPendingRPCRequests {
-		return errors.New("too many pending RPC requests")
+		return ErrBusy
 	}
 	session.pending[id] = waiter
 	return nil

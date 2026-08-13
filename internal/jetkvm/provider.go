@@ -208,7 +208,7 @@ func (session *connectedSession) Call(ctx context.Context, method string, params
 
 func (session *connectedSession) Upload(ctx context.Context, uploadID string, reader io.Reader, size int64) error {
 	if session == nil || session.httpClient == nil || size < 0 || !uploadIDPattern.MatchString(uploadID) {
-		return ErrInvalidResponse
+		return classifyOperationError(ErrInvalidResponse, ToolOutcomeNotSent)
 	}
 	uploadURL := endpoint(session.baseURL, "/storage/upload")
 	query := uploadURL.Query()
@@ -216,18 +216,18 @@ func (session *connectedSession) Upload(ctx context.Context, uploadID string, re
 	uploadURL.RawQuery = query.Encode()
 	request, err := http.NewRequestWithContext(ctx, http.MethodPost, uploadURL.String(), io.LimitReader(reader, size))
 	if err != nil {
-		return err
+		return classifyOperationError(err, ToolOutcomeNotSent)
 	}
 	request.Header.Set("Content-Type", "application/octet-stream")
 	request.ContentLength = size
 	response, err := session.httpClient.Do(request)
 	if err != nil {
-		return fmt.Errorf("%w: media upload", ErrDeviceUnreachable)
+		return classifyOperationError(fmt.Errorf("%w: media upload", ErrDeviceUnreachable), ToolOutcomeUnknown)
 	}
 	_, readErr := readBounded(response.Body, 4<<10)
 	closeErr := response.Body.Close()
 	if readErr != nil || closeErr != nil || response.StatusCode < 200 || response.StatusCode >= 300 {
-		return fmt.Errorf("%w: media upload response", ErrProtocol)
+		return classifyOperationError(fmt.Errorf("%w: media upload response", ErrProtocol), ToolOutcomeUnknown)
 	}
 	return nil
 }

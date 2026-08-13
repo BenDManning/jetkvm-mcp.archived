@@ -83,6 +83,14 @@ type fakeProvider struct {
 	profile SessionProfile
 }
 
+type failingBeforeSessionProvider struct {
+	err error
+}
+
+func (provider *failingBeforeSessionProvider) WithSession(context.Context, DeviceConfig, SessionProfile, func(Session) error) error {
+	return provider.err
+}
+
 func (provider *fakeProvider) WithSession(ctx context.Context, device DeviceConfig, profile SessionProfile, operation func(Session) error) error {
 	provider.device = device
 	provider.profile = profile
@@ -147,6 +155,42 @@ func TestManagerPowerMapsSevenActionsExactly(t *testing.T) {
 				t.Fatalf("call = %#v, want %s %#v", call, test.wantMethod, test.wantParams)
 			}
 		})
+	}
+}
+
+func TestManagerPowerClassifiesConnectionFailureAsDefinitelyNotSent(t *testing.T) {
+	base, err := url.Parse("https://jetkvm.invalid")
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager, err := NewManager([]DeviceConfig{{Name: "lab", BaseURL: *base}}, &failingBeforeSessionProvider{err: ErrDeviceUnreachable})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = manager.Power(context.Background(), "lab", mcpserver.PowerActionPressHostPowerButton, "")
+	var classified interface {
+		ToolErrorCode() string
+		ToolErrorOutcome() string
+	}
+	if !errors.As(err, &classified) || classified.ToolErrorCode() != "device_unavailable" || classified.ToolErrorOutcome() != ToolOutcomeNotSent {
+		t.Fatalf("error = %#v, want device_unavailable/not_sent", err)
+	}
+}
+
+func TestManagerPowerPreservesPossiblySentFailure(t *testing.T) {
+	possiblySent := classifyOperationError(context.DeadlineExceeded, ToolOutcomeUnknown)
+	base, err := url.Parse("https://jetkvm.invalid")
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager, err := NewManager([]DeviceConfig{{Name: "lab", BaseURL: *base}}, &failingBeforeSessionProvider{err: possiblySent})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = manager.Power(context.Background(), "lab", mcpserver.PowerActionPressHostPowerButton, "")
+	var classified interface{ ToolErrorOutcome() string }
+	if !errors.As(err, &classified) || classified.ToolErrorOutcome() != ToolOutcomeUnknown {
+		t.Fatalf("error = %#v, want preserved unknown outcome", err)
 	}
 }
 

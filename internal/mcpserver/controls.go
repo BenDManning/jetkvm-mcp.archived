@@ -146,17 +146,17 @@ type virtualMediaInput struct {
 }
 
 func addControlTools(server *mcp.Server, device Device) {
-	mcp.AddTool(server, &mcp.Tool{
+	addReadTool(server, &mcp.Tool{
 		Name:        CaptureScreenToolName,
 		Description: "Capture one fresh PNG from the host display attached to a configured JetKVM.",
 		InputSchema: captureSchema(),
 		Annotations: annotations(true, false, true),
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, input captureInput) (*mcp.CallToolResult, CaptureOutput, error) {
 		if err := validDevice(input.Device); err != nil {
-			return nil, CaptureOutput{}, err
+			return nil, CaptureOutput{}, invalidInput(err)
 		}
 		if input.MaxWidth < 0 || input.MaxHeight < 0 {
-			return nil, CaptureOutput{}, errors.New("capture dimensions must be positive")
+			return nil, CaptureOutput{}, invalidInput(errors.New("capture dimensions must be positive"))
 		}
 		capture, err := device.CaptureScreen(ctx, input.Device, CaptureRequest{MaxWidth: input.MaxWidth, MaxHeight: input.MaxHeight})
 		if err != nil {
@@ -172,7 +172,7 @@ func addControlTools(server *mcp.Server, device Device) {
 		return &mcp.CallToolResult{Content: []mcp.Content{&mcp.ImageContent{MIMEType: capture.MIMEType, Data: append([]byte(nil), capture.PNG...)}}}, output, nil
 	})
 
-	mcp.AddTool(server, &mcp.Tool{
+	addMutationTool(server, &mcp.Tool{
 		Name:        KeyboardToolName,
 		Description: "Type bounded text or press one named key through JetKVM USB HID.",
 		InputSchema: operationSchema[keyboardInput]([]string{string(KeyboardTypeText), string(KeyboardPressKey)}),
@@ -180,13 +180,13 @@ func addControlTools(server *mcp.Server, device Device) {
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, input keyboardInput) (*mcp.CallToolResult, KeyboardResult, error) {
 		request := KeyboardRequest{Operation: input.Operation, Text: input.Text, Key: input.Key, Modifiers: input.Modifiers}
 		if err := validateKeyboardInput(input.Device, request); err != nil {
-			return nil, KeyboardResult{}, err
+			return nil, KeyboardResult{}, invalidInput(err)
 		}
 		result, err := device.Keyboard(ctx, input.Device, request)
 		return nil, result, err
 	})
 
-	mcp.AddTool(server, &mcp.Tool{
+	addMutationTool(server, &mcp.Tool{
 		Name:        MouseToolName,
 		Description: "Move, click, or scroll the host pointer through JetKVM USB HID.",
 		InputSchema: mouseSchema(),
@@ -197,21 +197,23 @@ func addControlTools(server *mcp.Server, device Device) {
 			Button: input.Button, WheelX: input.WheelX, WheelY: input.WheelY,
 		}
 		if err := validateMouseInput(input.Device, request); err != nil {
-			return nil, MouseResult{}, err
+			return nil, MouseResult{}, invalidInput(err)
 		}
 		result, err := device.Mouse(ctx, input.Device, request)
 		return nil, result, err
 	})
 
-	mcp.AddTool(server, &mcp.Tool{
+	addConditionalMutationTool(server, &mcp.Tool{
 		Name:        VirtualMediaToolName,
 		Description: "Inspect, mount, unmount, or upload JetKVM virtual media using a URL or configured media-directory path.",
 		InputSchema: operationSchema[virtualMediaInput]([]string{string(VirtualMediaStatus), string(VirtualMediaMountURL), string(VirtualMediaMountFile), string(VirtualMediaUnmount), string(VirtualMediaUpload)}),
 		Annotations: annotations(false, true, false),
+	}, func(input virtualMediaInput) bool {
+		return input.Operation != VirtualMediaStatus
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, input virtualMediaInput) (*mcp.CallToolResult, VirtualMediaResult, error) {
 		request := VirtualMediaRequest{Operation: input.Operation, Source: input.Source, Mode: input.Mode}
 		if err := validateVirtualMediaInput(input.Device, request); err != nil {
-			return nil, VirtualMediaResult{}, err
+			return nil, VirtualMediaResult{}, invalidInput(err)
 		}
 		result, err := device.VirtualMedia(ctx, input.Device, request)
 		return nil, result, err

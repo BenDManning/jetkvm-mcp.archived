@@ -64,3 +64,18 @@ func TestConnectedSessionUploadRejectsInvalidIDAndHTTPFailure(t *testing.T) {
 		t.Fatalf("HTTP error = %v", err)
 	}
 }
+
+func TestConnectedSessionUploadFailureHasUnknownOutcome(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		_, _ = io.Copy(io.Discard, request.Body)
+		writer.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer server.Close()
+	base, _ := url.Parse(server.URL)
+	session := &connectedSession{httpClient: server.Client(), baseURL: *base}
+	err := session.Upload(context.Background(), "upload_12345678-1234-1234-1234-123456789abc", bytes.NewReader([]byte("media")), 5)
+	var classified interface{ ToolErrorOutcome() string }
+	if !errors.As(err, &classified) || classified.ToolErrorOutcome() != ToolOutcomeUnknown {
+		t.Fatalf("error = %#v, want unknown upload outcome", err)
+	}
+}

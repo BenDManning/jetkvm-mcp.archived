@@ -34,7 +34,7 @@ func (manager *Manager) CaptureScreen(ctx context.Context, name string, request 
 		return mcpserver.CaptureResult{}, err
 	}
 	if manager.decoder == nil {
-		return mcpserver.CaptureResult{}, ErrDecoderUnavailable
+		return mcpserver.CaptureResult{}, classifyReadFailure(ErrDecoderUnavailable)
 	}
 	maxWidth, maxHeight := request.MaxWidth, request.MaxHeight
 	if maxWidth == 0 {
@@ -44,28 +44,37 @@ func (manager *Manager) CaptureScreen(ctx context.Context, name string, request 
 		maxHeight = 1080
 	}
 	if maxWidth < 1 || maxWidth > 3840 || maxHeight < 1 || maxHeight > 2160 {
-		return mcpserver.CaptureResult{}, fmt.Errorf("%w: capture bounds", ErrUnsupportedInput)
+		return mcpserver.CaptureResult{}, classifyOperationError(fmt.Errorf("%w: capture bounds", ErrUnsupportedInput), ToolOutcomeNotSent)
 	}
 	var annexB []byte
 	var capturedAt time.Time
-	err = manager.provider.WithSession(ctx, device, SessionProfileVideo, func(session Session) error {
+	err = manager.withSession(ctx, device, SessionProfileVideo, func(session Session) error {
+		var state struct {
+			Ready *bool `json:"ready"`
+		}
+		if err := session.Call(ctx, methodVideoState, nil, &state); err != nil {
+			return err
+		}
+		if state.Ready != nil && !*state.Ready {
+			return ErrNoSignal
+		}
 		var err error
 		annexB, capturedAt, err = session.CaptureH264(ctx)
 		return err
 	})
 	if err != nil {
-		return mcpserver.CaptureResult{}, err
+		return mcpserver.CaptureResult{}, classifyReadFailure(err)
 	}
 	pngData, width, height, err := manager.decoder.Decode(ctx, annexB, maxWidth, maxHeight)
 	if err != nil {
-		return mcpserver.CaptureResult{}, err
+		return mcpserver.CaptureResult{}, classifyReadFailure(err)
 	}
 	if len(pngData) == 0 || len(pngData) > maxCapturePNGBytes || width < 1 || width > maxWidth || height < 1 || height > maxHeight || capturedAt.IsZero() {
-		return mcpserver.CaptureResult{}, ErrInvalidResponse
+		return mcpserver.CaptureResult{}, classifyReadFailure(ErrInvalidResponse)
 	}
 	config, err := png.DecodeConfig(bytes.NewReader(pngData))
 	if err != nil || config.Width != width || config.Height != height {
-		return mcpserver.CaptureResult{}, ErrInvalidResponse
+		return mcpserver.CaptureResult{}, classifyReadFailure(ErrInvalidResponse)
 	}
 	return mcpserver.CaptureResult{
 		Device: device.Name, CapturedAt: capturedAt.UTC(), MIMEType: "image/png",
