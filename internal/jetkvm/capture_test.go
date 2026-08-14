@@ -242,6 +242,40 @@ func TestCaptureScreenCallerDeadlineDuringSessionSetupStaysNotSent(t *testing.T)
 	}
 }
 
+func TestCaptureScreenExpiredAtEntryDoesNotDispatchOrSucceed(t *testing.T) {
+	var providerCalls atomic.Int32
+	provider := &captureTestProvider{
+		session: &captureTestSession{
+			h264:       []byte{0, 0, 0, 1, 0x65},
+			capturedAt: time.Now().UTC(),
+		},
+		setup: func(context.Context) error {
+			providerCalls.Add(1)
+			return nil
+		},
+	}
+	manager := newCaptureTestManagerWithProvider(t, provider, &fakeDecoder{
+		png: testPNG(t, 1, 1), width: 1, height: 1,
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, err := manager.captureScreen(ctx, "lab", mcpserver.CaptureRequest{}, time.Second)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("error = %v, want caller cancellation", err)
+	}
+	var classified interface {
+		ToolErrorCode() string
+		ToolErrorOutcome() string
+	}
+	if !errors.As(err, &classified) || classified.ToolErrorCode() != "canceled" || classified.ToolErrorOutcome() != ToolOutcomeNotSent {
+		t.Fatalf("error = %#v, want canceled/not_sent", err)
+	}
+	if calls := providerCalls.Load(); calls != 0 {
+		t.Fatalf("provider calls = %d, want zero pre-dispatch calls", calls)
+	}
+}
+
 func TestCaptureScreenRestoresCallerContextErasedDuringSessionSetup(t *testing.T) {
 	tests := []struct {
 		name     string

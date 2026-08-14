@@ -61,6 +61,9 @@ func (manager *Manager) captureScreen(ctx context.Context, name string, request 
 	if maxWidth < 1 || maxWidth > 3840 || maxHeight < 1 || maxHeight > 2160 {
 		return mcpserver.CaptureResult{}, classifyOperationError(fmt.Errorf("%w: capture bounds", ErrUnsupportedInput), ToolOutcomeNotSent)
 	}
+	if err := capturePreDispatchContextError(captureCtx); err != nil {
+		return mcpserver.CaptureResult{}, err
+	}
 	if !tryAcquire(manager.decoders) {
 		return mcpserver.CaptureResult{}, busyNotSent()
 	}
@@ -140,4 +143,14 @@ func captureContextError(captureCtx context.Context) error {
 		return classifyReadFailure(context.DeadlineExceeded)
 	}
 	return classifyReadFailure(captureCtx.Err())
+}
+
+func capturePreDispatchContextError(captureCtx context.Context) error {
+	if captureCtx.Err() == nil {
+		return nil
+	}
+	if errors.Is(context.Cause(captureCtx), errCaptureServerDeadline) {
+		return classifyReadFailure(context.DeadlineExceeded)
+	}
+	return classifyOperationError(captureCtx.Err(), ToolOutcomeNotSent)
 }
