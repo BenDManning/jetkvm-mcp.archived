@@ -445,6 +445,66 @@ func TestCaptureScreenRejectsSuccessfulDecodeAfterServerDeadline(t *testing.T) {
 	}
 }
 
+func TestCaptureScreenContextWinsOverRawDecoderError(t *testing.T) {
+	tests := []struct {
+		name     string
+		context  func(started <-chan struct{}) (context.Context, context.CancelFunc)
+		timeout  time.Duration
+		wantErr  error
+		wantCode string
+	}{
+		{
+			name: "server deadline",
+			context: func(<-chan struct{}) (context.Context, context.CancelFunc) {
+				return context.Background(), func() {}
+			},
+			timeout: 10 * time.Millisecond, wantErr: context.DeadlineExceeded, wantCode: "timeout",
+		},
+		{
+			name: "caller deadline",
+			context: func(<-chan struct{}) (context.Context, context.CancelFunc) {
+				return context.WithTimeout(context.Background(), 10*time.Millisecond)
+			},
+			timeout: time.Second, wantErr: context.DeadlineExceeded, wantCode: "timeout",
+		},
+		{
+			name: "caller cancellation",
+			context: func(started <-chan struct{}) (context.Context, context.CancelFunc) {
+				ctx, cancel := context.WithCancel(context.Background())
+				go func() {
+					<-started
+					cancel()
+				}()
+				return ctx, cancel
+			},
+			timeout: time.Second, wantErr: context.Canceled, wantCode: "canceled",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			decoder := &rawErrorAfterContextDecoder{started: make(chan struct{})}
+			manager := newCaptureTestManager(t, &captureTestSession{
+				h264:       []byte{0, 0, 0, 1, 0x65},
+				capturedAt: time.Now().UTC(),
+			}, decoder)
+			ctx, cancel := test.context(decoder.started)
+			defer cancel()
+
+			result, err := manager.captureScreen(ctx, "lab", mcpserver.CaptureRequest{}, test.timeout)
+			if !errors.Is(err, test.wantErr) {
+				t.Fatalf("result = %+v error = %v, want %v", result, err, test.wantErr)
+			}
+			var classified interface {
+				ToolErrorCode() string
+				ToolErrorOutcome() string
+			}
+			if !errors.As(err, &classified) || classified.ToolErrorCode() != test.wantCode || classified.ToolErrorOutcome() != ToolOutcomeFailed {
+				t.Fatalf("error = %#v, want %s/failed", err, test.wantCode)
+			}
+		})
+	}
+}
+
 func TestCaptureScreenCanProceedAfterTimedOutCapture(t *testing.T) {
 	receiver := newVideoReceiver()
 	defer receiver.Close()
@@ -517,6 +577,16 @@ type deadlineBlockingDecoder struct {
 
 type successfulAfterDeadlineDecoder struct {
 	png []byte
+}
+
+type rawErrorAfterContextDecoder struct {
+	started chan struct{}
+}
+
+func (decoder *rawErrorAfterContextDecoder) Decode(ctx context.Context, _ []byte, _, _ int) ([]byte, int, int, error) {
+	close(decoder.started)
+	<-ctx.Done()
+	return nil, 0, 0, ErrInvalidResponse
 }
 
 func (decoder *successfulAfterDeadlineDecoder) Decode(ctx context.Context, _ []byte, _, _ int) ([]byte, int, int, error) {

@@ -126,6 +126,9 @@ func classifyCaptureReadFailure(captureCtx context.Context, err error) error {
 		}
 		return err
 	}
+	if contextErr := captureContextError(captureCtx); contextErr != nil {
+		return contextErr
+	}
 	return classifyReadFailure(err)
 }
 
