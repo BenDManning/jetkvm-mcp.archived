@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -79,6 +80,51 @@ func TestRunBinaryRejectsSuccessfulStderr(t *testing.T) {
 	output, err := runBinary(context.Background(), "sh", nil, nil, "-c", "printf ok")
 	if err != nil || string(output) != "ok" {
 		t.Fatalf("clean command output=%q err=%v", output, err)
+	}
+}
+
+func TestConformanceDiagnosticsWriterUsesStderr(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	writer := conformanceDiagnosticsWriter(&stdout, &stderr)
+	if _, err := io.WriteString(writer, "gate diagnostic"); err != nil {
+		t.Fatal(err)
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("conformance diagnostic polluted stdout: %q", stdout.String())
+	}
+	if got := stderr.String(); got != "gate diagnostic" {
+		t.Fatalf("stderr = %q", got)
+	}
+}
+
+func TestWriteInspectorConfigPinsModernProtocolEra(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "inspector.json")
+	if err := writeInspectorConfig(path, "/tmp/jetkvm-mcp", "/tmp/config.yaml", "http://127.0.0.1:1234/mcp"); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var document struct {
+		MCPServers map[string]struct {
+			Type        string   `json:"type"`
+			Command     string   `json:"command"`
+			Args        []string `json:"args"`
+			URL         string   `json:"url"`
+			ProtocolEra string   `json:"protocolEra"`
+		} `json:"mcpServers"`
+	}
+	if err := json.Unmarshal(data, &document); err != nil {
+		t.Fatal(err)
+	}
+	stdio := document.MCPServers["fixture-stdio"]
+	http := document.MCPServers["fixture-http"]
+	if stdio.Type != "stdio" || stdio.Command != "/tmp/jetkvm-mcp" || !reflect.DeepEqual(stdio.Args, []string{"--config", "/tmp/config.yaml"}) || stdio.ProtocolEra != "modern" {
+		t.Fatalf("stdio Inspector config = %#v", stdio)
+	}
+	if http.Type != "streamable-http" || http.URL != "http://127.0.0.1:1234/mcp" || http.ProtocolEra != "modern" {
+		t.Fatalf("HTTP Inspector config = %#v", http)
 	}
 }
 

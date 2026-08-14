@@ -29,6 +29,7 @@ const (
 	reviewedInspectorCommit      = "672f9f41c548487a468b9e7007d2f9de14da5a69"
 	reviewedInspectorIntegrity   = "sha512-IUyZsx6XzSr1Rl3xScqkOtqAwCsguI6kdc+/6rP0efKL/O22/5ougEkhVxudN7yIVGiSd49FZKhUk47/iMJRxA=="
 	reviewedScenarioInventory    = "cd729ec47ce5ca74438fa0e83836f302d486182fda62f246ad2e76350eee1406"
+	reviewedProtocolVersion      = "2026-07-28"
 )
 
 type Pins struct {
@@ -98,7 +99,7 @@ func (pins Pins) validate() error {
 	if pins.Conformance.Package != reviewedConformancePackage || pins.Conformance.Version != reviewedConformanceVersion || pins.Conformance.Commit != reviewedConformanceCommit || pins.Conformance.Integrity != reviewedConformanceIntegrity {
 		return errors.New("MCP gate pins: unreviewed conformance source")
 	}
-	if pins.Conformance.SpecVersion != "2026-07-28" {
+	if pins.Conformance.SpecVersion != reviewedProtocolVersion {
 		return errors.New("MCP gate pins: unreviewed conformance specification version")
 	}
 	if pins.Conformance.ScenarioInventorySHA256 != reviewedScenarioInventory {

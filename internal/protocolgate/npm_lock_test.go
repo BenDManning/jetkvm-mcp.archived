@@ -21,9 +21,12 @@ func TestVerifyNPMLockRejectsPinAndGraphDrift(t *testing.T) {
 		t.Fatal(err)
 	}
 	for name, mutation := range map[string]string{
-		"top_integrity":        strings.Replace(string(original), pins.Conformance.Integrity, "sha512-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==", 1),
-		"unhashed_graph_entry": strings.Replace(string(original), `"packages": {`, `"packages": {"node_modules/unreviewed": {"version":"1.0.0"},`, 1),
-		"trailing_json":        string(original) + `{}`,
+		"top_integrity":            strings.Replace(string(original), pins.Conformance.Integrity, "sha512-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==", 1),
+		"unhashed_graph_entry":     strings.Replace(string(original), `"packages": {`, `"packages": {"node_modules/unreviewed": {"version":"1.0.0"},`, 1),
+		"trailing_json":            string(original) + `{}`,
+		"root_dev_dependency":      strings.Replace(string(original), `"dependencies": {`, `"devDependencies":{"unreviewed":"1.0.0"},"dependencies": {`, 1),
+		"root_optional_dependency": strings.Replace(string(original), `"dependencies": {`, `"optionalDependencies":{"unreviewed":"1.0.0"},"dependencies": {`, 1),
+		"root_peer_dependency":     strings.Replace(string(original), `"dependencies": {`, `"peerDependencies":{"unreviewed":"1.0.0"},"dependencies": {`, 1),
 	} {
 		t.Run(name, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "package-lock.json")

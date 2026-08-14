@@ -14,6 +14,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/BenDManning/jetkvm-mcp/internal/protocolgate"
@@ -53,12 +54,26 @@ type conformanceArtifact struct {
 	AllowedSkippedChecks []string `json:"allowedSkippedChecks"`
 }
 
+type inspectorServerConfig struct {
+	Type        string   `json:"type"`
+	Command     string   `json:"command,omitempty"`
+	Args        []string `json:"args,omitempty"`
+	URL         string   `json:"url,omitempty"`
+	ProtocolEra string   `json:"protocolEra"`
+}
+
+type inspectorConfig struct {
+	MCPServers map[string]inspectorServerConfig `json:"mcpServers"`
+}
+
 type runningServer struct {
 	command  *exec.Cmd
 	done     chan error
 	endpoint string
 	stdout   bytes.Buffer
 	stderr   bytes.Buffer
+	stopOnce sync.Once
+	stopErr  error
 }
 
 func main() {
@@ -166,6 +181,10 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) (runErr e
 		}
 	}()
 	recordPass(&summary, "server/http-start")
+	inspectorConfigPath := filepath.Join(temporaryDir, "inspector.json")
+	if err := writeInspectorConfig(inspectorConfigPath, options.serverPath, configPath, server.endpoint); err != nil {
+		return err
+	}
 
 	conformanceArtifacts := filepath.Join(options.artifactDir, "conformance")
 	if err := os.MkdirAll(conformanceArtifacts, 0o755); err != nil {
@@ -177,7 +196,7 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) (runErr e
 	}
 	for _, scenarioName := range pins.GatedScenarios() {
 		id := "conformance/" + scenarioName
-		output, err := runConformance(ctx, conformanceBinary, stdout,
+		output, err := runConformance(ctx, conformanceBinary, conformanceDiagnosticsWriter(stdout, stderr),
 			"server", "--url", server.endpoint, "--scenario", scenarioName,
 			"--spec-version", pins.Conformance.SpecVersion, "--output-dir", privateConformanceOutput)
 		var scenario protocolgate.ScenarioClassification
@@ -209,7 +228,7 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) (runErr e
 	for _, transport := range pins.Inspector.Transports {
 		for _, method := range pins.Inspector.Methods {
 			id := "inspector/" + transport + "/" + method
-			output, err := runInspector(ctx, inspectorBinary, inspectorEnvironment, transport, method, "", options.serverPath, configPath, server.endpoint)
+			output, err := runInspector(ctx, inspectorBinary, inspectorEnvironment, transport, method, "", inspectorConfigPath)
 			if err == nil {
 				err = protocolgate.ValidateInspectorResult(method, output, pins.Inspector.FixtureSafeTools[0])
 			}
@@ -224,7 +243,7 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) (runErr e
 		for _, tool := range pins.Inspector.FixtureSafeTools {
 			method := "tools/call:" + tool
 			id := "inspector/" + transport + "/" + method
-			output, err := runInspector(ctx, inspectorBinary, inspectorEnvironment, transport, "tools/call", tool, options.serverPath, configPath, server.endpoint)
+			output, err := runInspector(ctx, inspectorBinary, inspectorEnvironment, transport, "tools/call", tool, inspectorConfigPath)
 			if err == nil {
 				err = protocolgate.ValidateInspectorResult(method, output, tool)
 			}
@@ -361,20 +380,40 @@ func runConformance(ctx context.Context, binary string, mirror io.Writer, args .
 	return combined, nil
 }
 
-func runInspector(ctx context.Context, inspectorBinary string, environment []string, transport, method, tool, serverPath, configPath, endpoint string) ([]byte, error) {
-	args := []string{"--cli"}
-	if transport == "http" {
-		args = append(args, "--server-url", endpoint, "--transport", "http", "--method", method)
-	} else if transport == "stdio" {
-		args = append(args, serverPath, "--config", configPath, "--", "--method", method)
-	} else {
+func conformanceDiagnosticsWriter(_ io.Writer, stderr io.Writer) io.Writer {
+	return stderr
+}
+
+func runInspector(ctx context.Context, inspectorBinary string, environment []string, transport, method, tool, configPath string) ([]byte, error) {
+	if transport != "http" && transport != "stdio" {
 		return nil, errors.New("unreviewed Inspector transport")
 	}
+	args := []string{"--cli", "--config", configPath, "--server", "fixture-" + transport, "--method", method}
 	if tool != "" {
 		args = append(args, "--tool-name", tool, "--tool-args-json", "{}")
 	}
 	args = append(args, "--format", "json", "--connect-timeout", "5000")
 	return runBinary(ctx, inspectorBinary, environment, nil, args...)
+}
+
+func writeInspectorConfig(path, serverPath, configPath, endpoint string) error {
+	document := inspectorConfig{MCPServers: map[string]inspectorServerConfig{
+		"fixture-stdio": {
+			Type: "stdio", Command: serverPath, Args: []string{"--config", configPath}, ProtocolEra: "modern",
+		},
+		"fixture-http": {
+			Type: "streamable-http", URL: endpoint, ProtocolEra: "modern",
+		},
+	}}
+	encoded, err := json.MarshalIndent(document, "", "  ")
+	if err != nil {
+		return errors.New("encode Inspector fixture configuration")
+	}
+	encoded = append(encoded, '\n')
+	if err := os.WriteFile(path, encoded, 0o600); err != nil {
+		return errors.New("write Inspector fixture configuration")
+	}
+	return nil
 }
 
 func writeFixtureFFmpegEnvironment(temporaryDirectory string) ([]string, error) {
@@ -446,6 +485,13 @@ func startHTTPServer(ctx context.Context, serverPath, configPath string, environ
 }
 
 func (server *runningServer) stop() error {
+	server.stopOnce.Do(func() {
+		server.stopErr = server.stopCommand()
+	})
+	return server.stopErr
+}
+
+func (server *runningServer) stopCommand() error {
 	if server.command.Process == nil {
 		return nil
 	}

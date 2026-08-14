@@ -24,6 +24,24 @@ var (
 
 const officialScenarioTitle = "Server scenarios (test against a server):"
 
+const reviewedFixtureDevice = "fixture"
+
+type inspectorDeviceCapabilities struct {
+	MountVirtualMediaURL   *bool `json:"mountVirtualMediaURL"`
+	MountVirtualMediaFile  *bool `json:"mountVirtualMediaFile"`
+	UploadVirtualMediaFile *bool `json:"uploadVirtualMediaFile"`
+	WakeHostLAN            *bool `json:"wakeHostLAN"`
+}
+
+type inspectorConfiguredDevice struct {
+	Device       string                      `json:"device"`
+	Capabilities inspectorDeviceCapabilities `json:"capabilities"`
+}
+
+type inspectorDeviceList struct {
+	Devices []inspectorConfiguredDevice `json:"devices"`
+}
+
 func ParseOfficialServerScenarioList(output string) ([]string, error) {
 	scenarios, _, err := parseOfficialServerScenarioInventory(output)
 	return scenarios, err
@@ -140,7 +158,7 @@ func ValidateInspectorResult(method string, output []byte, fixtureSafeTool strin
 			ProtocolVersion string         `json:"protocolVersion"`
 			Capabilities    map[string]any `json:"capabilities"`
 		}
-		if err := json.Unmarshal(envelope.Result, &result); err != nil || result.ServerInfo.Name == "" || result.ServerInfo.Version == "" || result.ProtocolVersion == "" || result.Capabilities == nil {
+		if err := json.Unmarshal(envelope.Result, &result); err != nil || result.ServerInfo.Name == "" || result.ServerInfo.Version == "" || result.ProtocolVersion != reviewedProtocolVersion || result.Capabilities == nil {
 			return errors.New("Inspector initialize result lacks required MCP fields")
 		}
 		return nil
@@ -162,17 +180,55 @@ func ValidateInspectorResult(method string, output []byte, fixtureSafeTool strin
 	case "tools/call:" + fixtureSafeTool:
 		var result struct {
 			Content           []json.RawMessage `json:"content"`
-			StructuredContent struct {
-				Devices []json.RawMessage `json:"devices"`
-			} `json:"structuredContent"`
+			StructuredContent json.RawMessage   `json:"structuredContent"`
 		}
-		if err := json.Unmarshal(envelope.Result, &result); err != nil || len(result.Content) == 0 || result.StructuredContent.Devices == nil {
+		if err := json.Unmarshal(envelope.Result, &result); err != nil || len(result.Content) != 1 || len(result.StructuredContent) == 0 {
 			return errors.New("Inspector fixture-safe tool result lacks typed content")
+		}
+		var content struct {
+			Type string `json:"type"`
+			Text string `json:"text"`
+		}
+		if err := decodeInspectorJSON(result.Content[0], &content); err != nil || content.Type != "text" || content.Text == "" {
+			return errors.New("Inspector fixture-safe tool result has invalid content")
+		}
+		var contentDevices, structuredDevices inspectorDeviceList
+		if err := decodeInspectorJSON([]byte(content.Text), &contentDevices); err != nil {
+			return errors.New("Inspector fixture-safe tool text does not contain the typed result")
+		}
+		if err := decodeInspectorJSON(result.StructuredContent, &structuredDevices); err != nil {
+			return errors.New("Inspector fixture-safe tool structured content is invalid")
+		}
+		if !validInspectorFixtureDeviceList(contentDevices) || !validInspectorFixtureDeviceList(structuredDevices) {
+			return errors.New("Inspector fixture-safe tool result differs from the configured fixture")
 		}
 		return nil
 	default:
 		return errors.New("Inspector method is outside the reviewed gate")
 	}
+}
+
+func decodeInspectorJSON(data []byte, target any) error {
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(target); err != nil {
+		return err
+	}
+	if err := decoder.Decode(new(any)); !errors.Is(err, io.EOF) {
+		return errors.New("unexpected trailing JSON data")
+	}
+	return nil
+}
+
+func validInspectorFixtureDeviceList(list inspectorDeviceList) bool {
+	if len(list.Devices) != 1 || list.Devices[0].Device != reviewedFixtureDevice {
+		return false
+	}
+	capabilities := list.Devices[0].Capabilities
+	return capabilities.MountVirtualMediaURL != nil && !*capabilities.MountVirtualMediaURL &&
+		capabilities.MountVirtualMediaFile != nil && !*capabilities.MountVirtualMediaFile &&
+		capabilities.UploadVirtualMediaFile != nil && !*capabilities.UploadVirtualMediaFile &&
+		capabilities.WakeHostLAN != nil && !*capabilities.WakeHostLAN
 }
 
 func CanonicalInspectorResult(output []byte) ([]byte, error) {

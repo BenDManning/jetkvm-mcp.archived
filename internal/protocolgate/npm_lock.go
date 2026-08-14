@@ -16,10 +16,13 @@ type npmLock struct {
 }
 
 type npmLockPackage struct {
-	Version      string            `json:"version"`
-	Resolved     string            `json:"resolved"`
-	Integrity    string            `json:"integrity"`
-	Dependencies map[string]string `json:"dependencies"`
+	Version              string            `json:"version"`
+	Resolved             string            `json:"resolved"`
+	Integrity            string            `json:"integrity"`
+	Dependencies         map[string]string `json:"dependencies"`
+	DevDependencies      map[string]string `json:"devDependencies"`
+	OptionalDependencies map[string]string `json:"optionalDependencies"`
+	PeerDependencies     map[string]string `json:"peerDependencies"`
 }
 
 func VerifyNPMLock(path string, pins Pins) error {
@@ -44,7 +47,7 @@ func VerifyNPMLock(path string, pins Pins) error {
 		return errors.New("npm lock identity or format differs from the reviewed contract")
 	}
 	root, ok := lock.Packages[""]
-	if !ok || len(root.Dependencies) != 2 || root.Dependencies[pins.Conformance.Package] != pins.Conformance.Version || root.Dependencies[pins.Inspector.Package] != pins.Inspector.Version {
+	if !ok || len(root.Dependencies) != 2 || len(root.DevDependencies) != 0 || len(root.OptionalDependencies) != 0 || len(root.PeerDependencies) != 0 || root.Dependencies[pins.Conformance.Package] != pins.Conformance.Version || root.Dependencies[pins.Inspector.Package] != pins.Inspector.Version {
 		return errors.New("npm lock root dependencies differ from the reviewed pins")
 	}
 	if err := verifyPinnedNPMPackage(lock.Packages, pins.Conformance.Package, pins.Conformance.Version, pins.Conformance.Integrity); err != nil {

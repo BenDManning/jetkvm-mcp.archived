@@ -130,7 +130,18 @@ func TestRunStdioMalformedJSONLClosesCleanlyAndFreshProcessRecovers(t *testing.T
 func TestRunStdioCleanEOFStopsWithoutStdout(t *testing.T) {
 	installFixtureFFmpeg(t)
 	var stdout, stderr bytes.Buffer
-	err := run(context.Background(), []string{"--config", writeStdioFixtureConfig(t)}, strings.NewReader(""), &stdout, &stderr, os.LookupEnv)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	done := make(chan error, 1)
+	go func() {
+		done <- run(ctx, []string{"--config", writeStdioFixtureConfig(t)}, strings.NewReader(""), &stdout, &stderr, os.LookupEnv)
+	}()
+	var err error
+	select {
+	case err = <-done:
+	case <-ctx.Done():
+		t.Fatal("stdio runtime did not stop after clean EOF")
+	}
 	if !benignStdioEOF(err) {
 		t.Fatal(err)
 	}

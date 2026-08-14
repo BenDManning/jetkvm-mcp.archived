@@ -71,7 +71,7 @@ func TestValidateInspectorResult(t *testing.T) {
 			method: "initialize",
 			input: map[string]any{"result": map[string]any{
 				"serverInfo":      map[string]any{"name": "jetkvm-mcp", "version": "dev"},
-				"protocolVersion": "2025-11-25",
+				"protocolVersion": "2026-07-28",
 				"capabilities":    map[string]any{"tools": map[string]any{}},
 			}},
 		},
@@ -86,8 +86,17 @@ func TestValidateInspectorResult(t *testing.T) {
 			name:   "fixture-safe call",
 			method: "tools/call:jetkvm_list_devices",
 			input: map[string]any{"result": map[string]any{
-				"content":           []any{map[string]any{"type": "text", "text": "Configured devices: fixture"}},
-				"structuredContent": map[string]any{"devices": []any{"fixture"}},
+				"content": []any{map[string]any{
+					"type": "text",
+					"text": `{"devices":[{"device":"fixture","capabilities":{"mountVirtualMediaURL":false,"mountVirtualMediaFile":false,"uploadVirtualMediaFile":false,"wakeHostLAN":false}}]}`,
+				}},
+				"structuredContent": map[string]any{"devices": []any{map[string]any{
+					"device": "fixture",
+					"capabilities": map[string]any{
+						"mountVirtualMediaURL": false, "mountVirtualMediaFile": false,
+						"uploadVirtualMediaFile": false, "wakeHostLAN": false,
+					},
+				}}},
 			}},
 		},
 	}
@@ -99,6 +108,28 @@ func TestValidateInspectorResult(t *testing.T) {
 			}
 			if err := ValidateInspectorResult(test.method, encoded, "jetkvm_list_devices"); err != nil {
 				t.Fatal(err)
+			}
+		})
+	}
+	oldRevision, err := json.Marshal(map[string]any{"result": map[string]any{
+		"serverInfo":      map[string]any{"name": "jetkvm-mcp", "version": "dev"},
+		"protocolVersion": "2025-11-25",
+		"capabilities":    map[string]any{"tools": map[string]any{}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidateInspectorResult("initialize", oldRevision, "jetkvm_list_devices"); err == nil {
+		t.Fatal("unsupported negotiated protocol revision was accepted")
+	}
+	for name, input := range map[string]string{
+		"null content":       `{"result":{"content":[null],"structuredContent":{"devices":[{"device":"fixture","capabilities":{"mountVirtualMediaURL":false,"mountVirtualMediaFile":false,"uploadVirtualMediaFile":false,"wakeHostLAN":false}}]}}}`,
+		"missing fixture":    `{"result":{"content":[{"type":"text","text":"{\"devices\":[]}"}],"structuredContent":{"devices":[]}}}`,
+		"missing capability": `{"result":{"content":[{"type":"text","text":"{\"devices\":[{\"device\":\"fixture\",\"capabilities\":{\"mountVirtualMediaURL\":false,\"mountVirtualMediaFile\":false,\"uploadVirtualMediaFile\":false}}]}"}],"structuredContent":{"devices":[{"device":"fixture","capabilities":{"mountVirtualMediaURL":false,"mountVirtualMediaFile":false,"uploadVirtualMediaFile":false}}]}}}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			if err := ValidateInspectorResult("tools/call:jetkvm_list_devices", []byte(input), "jetkvm_list_devices"); err == nil {
+				t.Fatal("malformed fixture-safe tool result was accepted")
 			}
 		})
 	}
