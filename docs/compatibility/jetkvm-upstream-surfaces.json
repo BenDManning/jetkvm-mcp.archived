@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "repository": "https://github.com/jetkvm/kvm",
+  "pinnedCommit": "b3c29a44d9e2862b8ff7530830781803ce27b060",
+  "surfaces": [
+    {
+      "name": "auth",
+      "paths": [
+        "web.go",
+        "ui/src/routes/devices.$id.tsx"
+      ]
+    },
+    {
+      "name": "signaling",
+      "paths": [
+        "web.go",
+        "ui/src/routes/devices.$id.tsx"
+      ]
+    },
+    {
+      "name": "rpc",
+      "paths": [
+        "jsonrpc.go",
+        "ota.go"
+      ]
+    },
+    {
+      "name": "video",
+      "paths": [
+        "video.go"
+      ]
+    },
+    {
+      "name": "hid",
+      "paths": [
+        "usb.go"
+      ]
+    },
+    {
+      "name": "virtual_media",
+      "paths": [
+        "usb_mass_storage.go",
+        "ui/src/routes/devices.$id.mount.tsx"
+      ]
+    }
+  ]
+}

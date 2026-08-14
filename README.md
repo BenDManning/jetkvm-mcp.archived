@@ -236,11 +236,11 @@ go vet ./...
 
 After building the server, the separate validation runner can exercise one
 configured device through actual MCP stdio. It lists tools, verifies the
-configured-device discovery, device-status, virtual-media-status, and capture
-tools' read-only annotations, confirms that discovery contains the selected
-alias, validates status fields, and fully
+configured-device discovery, device-status, dedicated virtual-media-status, and
+capture tools' read-only annotations, confirms that discovery contains the
+selected alias, validates both typed status results, and fully
 decodes one PNG without writing or displaying it. It never invokes keyboard,
-mouse, virtual-media, power, wake, or raw-RPC operations.
+mouse, virtual-media mutation, power, wake, or raw-RPC operations.
 
 ```sh
 go run ./cmd/jetkvm-mcp-validate \
@@ -253,6 +253,11 @@ Output is a single sanitized JSON pass/fail record. It excludes configuration
 paths, device names, server logs, status values, error details, and image data.
 The capture call has a dedicated 30-second deadline, and its PNG buffer is
 cleared after full in-memory decoding.
+
+The compact compatibility ledger, focused offline upstream-drift command, and
+evidence-refresh triggers are documented in
+[`docs/compatibility/`](docs/compatibility/README.md). Source review, fake-device
+tests, and unattributed historical runs do not qualify a firmware version.
 
 The checked-in Dockerfile builds the Linux amd64/arm64 image. `.goreleaser.yaml` builds the four supported binary targets.
 

@@ -226,13 +226,19 @@ A positive JetKVM compatibility claim must name all of the following:
 - retained sanitized validator JSON tied to that product commit and firmware.
 
 Evidence qualifies only that combination and those checks. The current validator
-lists tools and exercises status and capture; it does not qualify keyboard,
-mouse, virtual media, power, wake, raw RPC, transport deployment, or every
+lists tools and exercises configured-device discovery, status, dedicated
+virtual-media status, and capture; it does not qualify keyboard, mouse,
+virtual-media mutation, power, wake, raw RPC, transport deployment, or every
 returned firmware field. Evidence must be refreshed when the product's device
 protocol behavior changes, the model or firmware changes, the relevant runtime
 or FFmpeg changes, or the retained checks no longer cover the claim. It does not
 become an indefinite vendor compatibility guarantee. No current retained
 evidence satisfies this policy, so no model or firmware is presently qualified.
+
+The sanitized evidence ledger and focused upstream-source drift triggers are in
+[`compatibility/`](compatibility/README.md). An unattributed historical run,
+`review_required` source drift, source inspection, or fake-device result remains
+evidence of only its recorded checks and cannot become a positive claim.
 
 Repository tests, fake devices, cross-builds, the inspected upstream firmware
 commit, and a validator run without retained sanitized evidence remain useful

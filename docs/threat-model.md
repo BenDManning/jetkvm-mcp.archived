@@ -152,7 +152,7 @@ Consequence classes are cumulative:
 | `jetkvm_virtual_media` | O or M (deprecated, destructive hint) | Compatibility surface for `status`, `mount_url`, `mount_file`, `unmount`, and `upload`. Its whole-tool annotations cannot express per-operation consequences; clients must migrate to the one-purpose tools above. |
 | `config validate` | O (local configuration) | Strictly loads configuration and required environment bindings, then exits without FFmpeg, a listener, or device/network action. Success reveals only that configuration is valid; errors name a safe field, device alias, or rule without private paths, URL contents, or resolved values. |
 | `debug rpc --method --params` | O or U | The source-reviewed methods `ping`, `getLocalVersion`, and `getActiveExtension` are read-only observations by default. Every other method requires per-invocation `--unsafe-acknowledge-risk`, may read private firmware data or mutate hardware or boot/storage state, and remains intentionally absent from MCP discovery. The acknowledgement is not a safety classification. |
-| `jetkvm-mcp-validate` | O (bounded) | Lists tools, validates that safe configured-device discovery contains the selected alias, reads status, and captures/fully decodes one PNG. It never calls keyboard, mouse, media, power, wake, or raw RPC and emits only a sanitized pass/fail report. |
+| `jetkvm-mcp-validate` | O (bounded) | Lists tools, validates that safe configured-device discovery contains the selected alias, reads status and the dedicated redacted virtual-media status, and captures/fully decodes one PNG. It never calls keyboard, mouse, media mutation, power, wake, or raw RPC and emits only a sanitized pass/fail report. |
 
 ## Input, output, and configuration field walkthrough
 

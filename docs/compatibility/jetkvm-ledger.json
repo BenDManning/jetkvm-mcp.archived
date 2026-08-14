@@ -1,0 +1,83 @@
+{
+  "schemaVersion": 1,
+  "entries": [
+    {
+      "id": "source-review-b3c29a44",
+      "evidenceClass": "source_review",
+      "jetkvm": {
+        "firmwareVersion": "not_observed",
+        "sourceRef": "b3c29a44d9e2862b8ff7530830781803ce27b060"
+      },
+      "server": {
+        "version": "development",
+        "sourceRef": "35f9aac20e55e4b690c084b2ad90b4134d0e0f53"
+      },
+      "observedOn": "2026-08-14",
+      "environmentClass": "offline_upstream_source",
+      "checks": [
+        "auth_source_review",
+        "signaling_source_review",
+        "rpc_source_review",
+        "video_source_review",
+        "hid_source_review",
+        "virtual_media_source_review"
+      ],
+      "result": "pass",
+      "limitations": [
+        "Source review is protocol evidence, not firmware or device qualification.",
+        "No device, host, credential, network, mutation, or media payload was used."
+      ]
+    },
+    {
+      "id": "source-drift-fe77acd5",
+      "evidenceClass": "source_drift",
+      "jetkvm": {
+        "firmwareVersion": "not_observed",
+        "sourceRef": "fe77acd5f00300a4ab9acd5da57d7bb0916351d9"
+      },
+      "server": {
+        "version": "development",
+        "sourceRef": "35f9aac20e55e4b690c084b2ad90b4134d0e0f53"
+      },
+      "observedOn": "2026-08-14",
+      "environmentClass": "offline_upstream_source",
+      "checks": [
+        "auth_path_drift",
+        "signaling_path_drift",
+        "rpc_path_drift",
+        "video_path_drift",
+        "hid_path_drift",
+        "virtual_media_path_drift"
+      ],
+      "result": "review_required",
+      "limitations": [
+        "Every reviewed surface differs between the historical comparison source and the pin; the drift result requires focused source review before moving the pin or making a compatibility claim.",
+        "The comparison did not contact a device or establish firmware behavior, support, or incompatibility."
+      ]
+    },
+    {
+      "id": "read-only-hardware-2026-08-09",
+      "evidenceClass": "read_only_hardware",
+      "jetkvm": {
+        "firmwareVersion": "not_retained",
+        "sourceRef": "not_attributed"
+      },
+      "server": {
+        "version": "development",
+        "sourceRef": "f1be6653e494ba618c40dab9dd12cda34bd0bfab"
+      },
+      "observedOn": "2026-08-09",
+      "environmentClass": "non_production_physical",
+      "checks": [
+        "mcp_discovery",
+        "status",
+        "capture"
+      ],
+      "result": "pass",
+      "limitations": [
+        "The retained evidence did not record an exact model or firmware version, so it is not a positive compatibility claim.",
+        "The run did not validate virtual-media status, HID, power, wake, media mutation, raw RPC, releases, or deployments."
+      ]
+    }
+  ]
+}
