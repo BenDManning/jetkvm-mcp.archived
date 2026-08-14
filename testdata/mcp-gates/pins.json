@@ -1,0 +1,398 @@
+{
+  "schemaVersion": 1,
+  "conformance": {
+    "package": "@modelcontextprotocol/conformance",
+    "version": "0.2.0-alpha.11",
+    "commit": "c321dd32035556e6769d3724a8ee97d87c3faaac",
+    "integrity": "sha512-imPK9tx5gQsL6ZKQq4MrsyDYfSaIwpRmX6+ogjbeAXs9LGvxkBxWcY7KcS7TvwaBk/ZiVWl6b/naF4q83UwDRA==",
+    "specVersion": "2026-07-28",
+    "serverScenarioInventorySHA256": "cd729ec47ce5ca74438fa0e83836f302d486182fda62f246ad2e76350eee1406",
+    "serverScenarios": [
+      {
+        "name": "server-initialize",
+        "disposition": "not_applicable",
+        "reason": "This legacy stateful RPC is removed from the 2026-07-28 protocol surface.",
+        "replacement": "Current server/discover, stateless HTTP, and header behavior are covered by focused tests and the applicable 2026-07-28 official gates."
+      },
+      {
+        "name": "server-session-lifecycle",
+        "disposition": "not_applicable",
+        "reason": "This legacy stateful RPC is removed from the 2026-07-28 protocol surface.",
+        "replacement": "Current server/discover, stateless HTTP, and header behavior are covered by focused tests and the applicable 2026-07-28 official gates."
+      },
+      {
+        "name": "server-stateless",
+        "disposition": "not_applicable",
+        "reason": "The composite scenario requires conformance-only diagnostic tools and dynamic capability mutations that are not part of the product manifest.",
+        "replacement": "Focused stateless HTTP and discovery tests cover the product contract; tools-list, caching, HTTP-header, and DNS-rebinding official scenarios remain blocking."
+      },
+      {
+        "name": "logging-set-level",
+        "disposition": "not_applicable",
+        "reason": "The server does not advertise logging.",
+        "replacement": "Capability, manifest, and stdout-purity tests verify the intentionally absent surface."
+      },
+      {
+        "name": "ping",
+        "disposition": "not_applicable",
+        "reason": "This legacy stateful RPC is removed from the 2026-07-28 protocol surface.",
+        "replacement": "Current server/discover, stateless HTTP, and header behavior are covered by focused tests and the applicable 2026-07-28 official gates."
+      },
+      {
+        "name": "completion-complete",
+        "disposition": "not_applicable",
+        "reason": "The server does not advertise completion.",
+        "replacement": "Capability and manifest tests verify the intentionally absent surface."
+      },
+      {
+        "name": "tools-list",
+        "disposition": "gate"
+      },
+      {
+        "name": "tools-call-simple-text",
+        "disposition": "not_applicable",
+        "reason": "The scenario requires a specially named conformance fixture tool that is not part of the product manifest.",
+        "replacement": "Pinned Inspector calls the fixture-safe product discovery tool; focused manifest, schema, typed-result, and error tests cover product tools."
+      },
+      {
+        "name": "tools-call-image",
+        "disposition": "not_applicable",
+        "reason": "The scenario requires a specially named conformance fixture tool that is not part of the product manifest.",
+        "replacement": "Pinned Inspector calls the fixture-safe product discovery tool; focused manifest, schema, typed-result, and error tests cover product tools."
+      },
+      {
+        "name": "tools-call-audio",
+        "disposition": "not_applicable",
+        "reason": "The scenario requires a specially named conformance fixture tool that is not part of the product manifest.",
+        "replacement": "Pinned Inspector calls the fixture-safe product discovery tool; focused manifest, schema, typed-result, and error tests cover product tools."
+      },
+      {
+        "name": "tools-call-embedded-resource",
+        "disposition": "not_applicable",
+        "reason": "The scenario requires a specially named conformance fixture tool that is not part of the product manifest.",
+        "replacement": "Pinned Inspector calls the fixture-safe product discovery tool; focused manifest, schema, typed-result, and error tests cover product tools."
+      },
+      {
+        "name": "tools-call-mixed-content",
+        "disposition": "not_applicable",
+        "reason": "The scenario requires a specially named conformance fixture tool that is not part of the product manifest.",
+        "replacement": "Pinned Inspector calls the fixture-safe product discovery tool; focused manifest, schema, typed-result, and error tests cover product tools."
+      },
+      {
+        "name": "tools-call-with-logging",
+        "disposition": "not_applicable",
+        "reason": "The scenario requires a specially named conformance fixture tool that is not part of the product manifest.",
+        "replacement": "Pinned Inspector calls the fixture-safe product discovery tool; focused manifest, schema, typed-result, and error tests cover product tools."
+      },
+      {
+        "name": "tools-call-error",
+        "disposition": "not_applicable",
+        "reason": "The scenario requires a specially named conformance fixture tool that is not part of the product manifest.",
+        "replacement": "Pinned Inspector calls the fixture-safe product discovery tool; focused manifest, schema, typed-result, and error tests cover product tools."
+      },
+      {
+        "name": "tools-call-with-progress",
+        "disposition": "not_applicable",
+        "reason": "The scenario requires a specially named conformance fixture tool that is not part of the product manifest.",
+        "replacement": "Pinned Inspector calls the fixture-safe product discovery tool; focused manifest, schema, typed-result, and error tests cover product tools."
+      },
+      {
+        "name": "tools-call-sampling",
+        "disposition": "not_applicable",
+        "reason": "The scenario requires a specially named conformance fixture tool that is not part of the product manifest.",
+        "replacement": "Pinned Inspector calls the fixture-safe product discovery tool; focused manifest, schema, typed-result, and error tests cover product tools."
+      },
+      {
+        "name": "tools-call-elicitation",
+        "disposition": "not_applicable",
+        "reason": "The scenario requires a specially named conformance fixture tool that is not part of the product manifest.",
+        "replacement": "Pinned Inspector calls the fixture-safe product discovery tool; focused manifest, schema, typed-result, and error tests cover product tools."
+      },
+      {
+        "name": "json-schema-2020-12",
+        "disposition": "not_applicable",
+        "reason": "The scenario requires a specially named conformance fixture tool that is not part of the product manifest.",
+        "replacement": "Pinned Inspector calls the fixture-safe product discovery tool; focused manifest, schema, typed-result, and error tests cover product tools."
+      },
+      {
+        "name": "elicitation-sep1034-defaults",
+        "disposition": "not_applicable",
+        "reason": "The server does not request or advertise elicitation.",
+        "replacement": "Capability and manifest tests verify the intentionally absent surface."
+      },
+      {
+        "name": "server-sse-polling",
+        "disposition": "not_applicable",
+        "reason": "The product supports stateless JSON Streamable HTTP rather than SSE session streams.",
+        "replacement": "Focused HTTP transport tests and the blocking HTTP-header scenario verify the declared transport contract."
+      },
+      {
+        "name": "server-sse-multiple-streams",
+        "disposition": "not_applicable",
+        "reason": "The product supports stateless JSON Streamable HTTP rather than SSE session streams.",
+        "replacement": "Focused HTTP transport tests and the blocking HTTP-header scenario verify the declared transport contract."
+      },
+      {
+        "name": "elicitation-sep1330-enums",
+        "disposition": "not_applicable",
+        "reason": "The server does not request or advertise elicitation.",
+        "replacement": "Capability and manifest tests verify the intentionally absent surface."
+      },
+      {
+        "name": "resources-list",
+        "disposition": "not_applicable",
+        "reason": "The server does not advertise resources, templates, or resource subscriptions.",
+        "replacement": "Capability and manifest tests verify the intentionally absent surface."
+      },
+      {
+        "name": "resources-read-text",
+        "disposition": "not_applicable",
+        "reason": "The server does not advertise resources, templates, or resource subscriptions.",
+        "replacement": "Capability and manifest tests verify the intentionally absent surface."
+      },
+      {
+        "name": "resources-read-binary",
+        "disposition": "not_applicable",
+        "reason": "The server does not advertise resources, templates, or resource subscriptions.",
+        "replacement": "Capability and manifest tests verify the intentionally absent surface."
+      },
+      {
+        "name": "resources-templates-read",
+        "disposition": "not_applicable",
+        "reason": "The server does not advertise resources, templates, or resource subscriptions.",
+        "replacement": "Capability and manifest tests verify the intentionally absent surface."
+      },
+      {
+        "name": "resources-subscribe",
+        "disposition": "not_applicable",
+        "reason": "The server does not advertise resources, templates, or resource subscriptions.",
+        "replacement": "Capability and manifest tests verify the intentionally absent surface."
+      },
+      {
+        "name": "resources-unsubscribe",
+        "disposition": "not_applicable",
+        "reason": "The server does not advertise resources, templates, or resource subscriptions.",
+        "replacement": "Capability and manifest tests verify the intentionally absent surface."
+      },
+      {
+        "name": "sep-2164-resource-not-found",
+        "disposition": "not_applicable",
+        "reason": "The server does not advertise resources, templates, or resource subscriptions.",
+        "replacement": "Capability and manifest tests verify the intentionally absent surface."
+      },
+      {
+        "name": "prompts-list",
+        "disposition": "not_applicable",
+        "reason": "The server does not advertise prompts.",
+        "replacement": "Capability and manifest tests verify the intentionally absent surface."
+      },
+      {
+        "name": "prompts-get-simple",
+        "disposition": "not_applicable",
+        "reason": "The server does not advertise prompts.",
+        "replacement": "Capability and manifest tests verify the intentionally absent surface."
+      },
+      {
+        "name": "prompts-get-with-args",
+        "disposition": "not_applicable",
+        "reason": "The server does not advertise prompts.",
+        "replacement": "Capability and manifest tests verify the intentionally absent surface."
+      },
+      {
+        "name": "prompts-get-embedded-resource",
+        "disposition": "not_applicable",
+        "reason": "The server does not advertise prompts.",
+        "replacement": "Capability and manifest tests verify the intentionally absent surface."
+      },
+      {
+        "name": "prompts-get-with-image",
+        "disposition": "not_applicable",
+        "reason": "The server does not advertise prompts.",
+        "replacement": "Capability and manifest tests verify the intentionally absent surface."
+      },
+      {
+        "name": "dns-rebinding-protection",
+        "disposition": "gate"
+      },
+      {
+        "name": "caching",
+        "disposition": "gate",
+        "allowedSkippedChecks": [
+          "sep-2549-resources-read-caching-hints"
+        ]
+      },
+      {
+        "name": "http-header-validation",
+        "disposition": "gate"
+      },
+      {
+        "name": "http-custom-header-server-validation",
+        "disposition": "not_applicable",
+        "reason": "No product tool declares x-mcp-header annotations, which the official scenario requires.",
+        "replacement": "The blocking HTTP-header scenario and focused request-header tests verify the headers the product does declare."
+      },
+      {
+        "name": "tasks-lifecycle",
+        "disposition": "not_applicable",
+        "reason": "The product does not advertise the task extension.",
+        "replacement": "Capability and manifest tests verify the intentionally absent extension."
+      },
+      {
+        "name": "tasks-capability-negotiation",
+        "disposition": "not_applicable",
+        "reason": "The product does not advertise the task extension.",
+        "replacement": "Capability and manifest tests verify the intentionally absent extension."
+      },
+      {
+        "name": "tasks-wire-fields",
+        "disposition": "not_applicable",
+        "reason": "The product does not advertise the task extension.",
+        "replacement": "Capability and manifest tests verify the intentionally absent extension."
+      },
+      {
+        "name": "tasks-request-state-removal",
+        "disposition": "not_applicable",
+        "reason": "The product does not advertise the task extension.",
+        "replacement": "Capability and manifest tests verify the intentionally absent extension."
+      },
+      {
+        "name": "tasks-mrtr-input",
+        "disposition": "not_applicable",
+        "reason": "The product does not advertise the task extension.",
+        "replacement": "Capability and manifest tests verify the intentionally absent extension."
+      },
+      {
+        "name": "tasks-request-headers",
+        "disposition": "not_applicable",
+        "reason": "The product does not advertise the task extension.",
+        "replacement": "Capability and manifest tests verify the intentionally absent extension."
+      },
+      {
+        "name": "tasks-dispatch-and-envelope",
+        "disposition": "not_applicable",
+        "reason": "The product does not advertise the task extension.",
+        "replacement": "Capability and manifest tests verify the intentionally absent extension."
+      },
+      {
+        "name": "tasks-status-notifications",
+        "disposition": "not_applicable",
+        "reason": "The product does not advertise the task extension.",
+        "replacement": "Capability and manifest tests verify the intentionally absent extension."
+      },
+      {
+        "name": "tasks-required-task-error",
+        "disposition": "not_applicable",
+        "reason": "The product does not advertise the task extension.",
+        "replacement": "Capability and manifest tests verify the intentionally absent extension."
+      },
+      {
+        "name": "tasks-mrtr-composition",
+        "disposition": "not_applicable",
+        "reason": "The product does not advertise the task extension.",
+        "replacement": "Capability and manifest tests verify the intentionally absent extension."
+      },
+      {
+        "name": "input-required-result-basic-elicitation",
+        "disposition": "not_applicable",
+        "reason": "The product exposes no input-required tools or task-augmented execution.",
+        "replacement": "Capability, manifest, and typed tool-result tests verify the product's complete-result contract."
+      },
+      {
+        "name": "input-required-result-basic-sampling",
+        "disposition": "not_applicable",
+        "reason": "The product exposes no input-required tools or task-augmented execution.",
+        "replacement": "Capability, manifest, and typed tool-result tests verify the product's complete-result contract."
+      },
+      {
+        "name": "input-required-result-basic-list-roots",
+        "disposition": "not_applicable",
+        "reason": "The product exposes no input-required tools or task-augmented execution.",
+        "replacement": "Capability, manifest, and typed tool-result tests verify the product's complete-result contract."
+      },
+      {
+        "name": "input-required-result-request-state",
+        "disposition": "not_applicable",
+        "reason": "The product exposes no input-required tools or task-augmented execution.",
+        "replacement": "Capability, manifest, and typed tool-result tests verify the product's complete-result contract."
+      },
+      {
+        "name": "input-required-result-multiple-input-requests",
+        "disposition": "not_applicable",
+        "reason": "The product exposes no input-required tools or task-augmented execution.",
+        "replacement": "Capability, manifest, and typed tool-result tests verify the product's complete-result contract."
+      },
+      {
+        "name": "input-required-result-multi-round",
+        "disposition": "not_applicable",
+        "reason": "The product exposes no input-required tools or task-augmented execution.",
+        "replacement": "Capability, manifest, and typed tool-result tests verify the product's complete-result contract."
+      },
+      {
+        "name": "input-required-result-missing-input-response",
+        "disposition": "not_applicable",
+        "reason": "The product exposes no input-required tools or task-augmented execution.",
+        "replacement": "Capability, manifest, and typed tool-result tests verify the product's complete-result contract."
+      },
+      {
+        "name": "input-required-result-non-tool-request",
+        "disposition": "not_applicable",
+        "reason": "The product exposes no input-required tools or task-augmented execution.",
+        "replacement": "Capability, manifest, and typed tool-result tests verify the product's complete-result contract."
+      },
+      {
+        "name": "input-required-result-result-type",
+        "disposition": "not_applicable",
+        "reason": "The product exposes no input-required tools or task-augmented execution.",
+        "replacement": "Capability, manifest, and typed tool-result tests verify the product's complete-result contract."
+      },
+      {
+        "name": "input-required-result-unsupported-methods",
+        "disposition": "not_applicable",
+        "reason": "The product exposes no input-required tools or task-augmented execution.",
+        "replacement": "Capability, manifest, and typed tool-result tests verify the product's complete-result contract."
+      },
+      {
+        "name": "input-required-result-tampered-state",
+        "disposition": "not_applicable",
+        "reason": "The product exposes no input-required tools or task-augmented execution.",
+        "replacement": "Capability, manifest, and typed tool-result tests verify the product's complete-result contract."
+      },
+      {
+        "name": "input-required-result-capability-check",
+        "disposition": "not_applicable",
+        "reason": "The product exposes no input-required tools or task-augmented execution.",
+        "replacement": "Capability, manifest, and typed tool-result tests verify the product's complete-result contract."
+      },
+      {
+        "name": "input-required-result-ignore-extra-params",
+        "disposition": "not_applicable",
+        "reason": "The product exposes no input-required tools or task-augmented execution.",
+        "replacement": "Capability, manifest, and typed tool-result tests verify the product's complete-result contract."
+      },
+      {
+        "name": "input-required-result-validate-input",
+        "disposition": "not_applicable",
+        "reason": "The product exposes no input-required tools or task-augmented execution.",
+        "replacement": "Capability, manifest, and typed tool-result tests verify the product's complete-result contract."
+      }
+    ],
+    "expectedFailures": []
+  },
+  "inspector": {
+    "package": "@modelcontextprotocol/inspector",
+    "version": "2.2.0",
+    "commit": "672f9f41c548487a468b9e7007d2f9de14da5a69",
+    "integrity": "sha512-IUyZsx6XzSr1Rl3xScqkOtqAwCsguI6kdc+/6rP0efKL/O22/5ougEkhVxudN7yIVGiSd49FZKhUk47/iMJRxA==",
+    "transports": [
+      "stdio",
+      "http"
+    ],
+    "methods": [
+      "initialize",
+      "tools/list"
+    ],
+    "fixtureSafeTools": [
+      "jetkvm_list_devices"
+    ]
+  }
+}

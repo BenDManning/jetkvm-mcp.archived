@@ -12,6 +12,8 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
+    env:
+      JETKVM_REQUIRE_FFMPEG: '1'
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
@@ -27,6 +29,34 @@ jobs:
           CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -o /tmp/linux-arm64 ./cmd/jetkvm-mcp
           CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -trimpath -o /tmp/darwin-amd64 ./cmd/jetkvm-mcp
           CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -trimpath -o /tmp/darwin-arm64 ./cmd/jetkvm-mcp
+  protocol-gates:
+    name: MCP protocol gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: '1.26.5'
+          cache: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.22.0'
+      - name: Build server
+        run: go build -trimpath -o "${RUNNER_TEMP}/jetkvm-mcp" ./cmd/jetkvm-mcp
+      - name: Run pinned conformance and Inspector gates
+        run: >-
+          go run ./cmd/jetkvm-mcp-protocol-gates
+          --server-binary "${RUNNER_TEMP}/jetkvm-mcp"
+          --pins testdata/mcp-gates/pins.json
+          --artifacts "${RUNNER_TEMP}/mcp-gate-artifacts"
+      - name: Upload MCP gate evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mcp-protocol-gates
+          path: ${{ runner.temp }}/mcp-gate-artifacts
+          if-no-files-found: warn
   container:
     runs-on: ubuntu-latest
     steps:
