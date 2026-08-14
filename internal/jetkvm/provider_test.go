@@ -67,15 +67,22 @@ func TestWebRTCProviderClosesIdleHTTPConnectionsAfterAuthenticationFailure(t *te
 	}
 }
 
-func TestWebRTCProviderAuthenticatesSignalsAndCallsRPC(t *testing.T) {
-	var loginCalls atomic.Int32
-	var deviceCalls atomic.Int32
-	var authorizedDeviceCalls atomic.Int32
+type webRTCProviderFixture struct {
+	provider              *WebRTCProvider
+	device                DeviceConfig
+	loginCalls            atomic.Int32
+	deviceCalls           atomic.Int32
+	authorizedDeviceCalls atomic.Int32
+}
+
+func newWebRTCProviderFixture(t *testing.T) *webRTCProviderFixture {
+	t.Helper()
+	fixture := new(webRTCProviderFixture)
 	remotePeer, err := webrtc.NewPeerConnection(webrtc.Configuration{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer remotePeer.Close()
+	t.Cleanup(func() { _ = remotePeer.Close() })
 
 	remotePeer.OnDataChannel(func(channel *webrtc.DataChannel) {
 		if channel.Label() != "rpc" {
@@ -98,18 +105,18 @@ func TestWebRTCProviderAuthenticatesSignalsAndCallsRPC(t *testing.T) {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/device", func(writer http.ResponseWriter, request *http.Request) {
-		deviceCalls.Add(1)
+		fixture.deviceCalls.Add(1)
 		cookie, err := request.Cookie("session")
 		if err != nil || cookie.Value != "ok" {
 			writer.WriteHeader(http.StatusUnauthorized)
 			return
 		}
-		authorizedDeviceCalls.Add(1)
+		fixture.authorizedDeviceCalls.Add(1)
 		writer.Header().Set("Content-Type", "application/json")
 		_, _ = writer.Write([]byte("{\"authMode\":\"password\",\"deviceId\":\"test-device\",\"appVersion\":\"test\",\"systemVersion\":\"test\"}"))
 	})
 	mux.HandleFunc("/auth/login-local", func(writer http.ResponseWriter, request *http.Request) {
-		loginCalls.Add(1)
+		fixture.loginCalls.Add(1)
 		http.SetCookie(writer, &http.Cookie{Name: "session", Value: "ok", Path: "/"})
 		writer.Header().Set("Content-Type", "application/json")
 		_, _ = writer.Write([]byte("{\"message\":\"ok\"}"))
@@ -186,15 +193,21 @@ func TestWebRTCProviderAuthenticatesSignalsAndCallsRPC(t *testing.T) {
 	})
 
 	server := httptest.NewServer(mux)
-	defer server.Close()
+	t.Cleanup(server.Close)
 	base, err := url.Parse(server.URL)
 	if err != nil {
 		t.Fatal(err)
 	}
-	provider := NewWebRTCProvider(WebRTCProviderOptions{ConnectTimeout: 10 * time.Second, RequestTimeout: time.Second})
+	fixture.provider = NewWebRTCProvider(WebRTCProviderOptions{ConnectTimeout: 10 * time.Second, RequestTimeout: time.Second})
+	fixture.device = DeviceConfig{Name: "lab", BaseURL: *base, Password: "correct"}
+	return fixture
+}
+
+func TestWebRTCProviderAuthenticatesSignalsAndCallsRPC(t *testing.T) {
+	fixture := newWebRTCProviderFixture(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-	err = provider.WithSession(ctx, DeviceConfig{Name: "lab", BaseURL: *base, Password: "correct"}, SessionProfileData, func(session Session) error {
+	err := fixture.provider.WithSession(ctx, fixture.device, SessionProfileData, func(session Session) error {
 		var pong string
 		if err := session.Call(ctx, "ping", nil, &pong); err != nil {
 			return err
@@ -205,10 +218,80 @@ func TestWebRTCProviderAuthenticatesSignalsAndCallsRPC(t *testing.T) {
 		return nil
 	})
 	if err != nil {
-		t.Fatalf("%v (login=%d device=%d authorized=%d)", err, loginCalls.Load(), deviceCalls.Load(), authorizedDeviceCalls.Load())
+		t.Fatalf("%v (login=%d device=%d authorized=%d)", err, fixture.loginCalls.Load(), fixture.deviceCalls.Load(), fixture.authorizedDeviceCalls.Load())
 	}
-	if loginCalls.Load() != 1 {
-		t.Fatalf("login calls = %d", loginCalls.Load())
+	if fixture.loginCalls.Load() != 1 {
+		t.Fatalf("login calls = %d", fixture.loginCalls.Load())
+	}
+}
+
+func TestWebRTCProviderTeardownDoesNotOutliveOperationDeadline(t *testing.T) {
+	fixture := newWebRTCProviderFixture(t)
+	setupCtx, cancelSetup := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancelSetup()
+	connected, err := fixture.provider.connect(setupCtx, fixture.device, SessionProfileData)
+	if err != nil {
+		t.Fatal(err)
+	}
+	releasePump := make(chan struct{})
+	pumpExited := make(chan struct{})
+	connected.pumpMu.Lock()
+	connected.pumps.Add(1)
+	connected.pumpMu.Unlock()
+	go func() {
+		defer connected.pumps.Done()
+		defer close(pumpExited)
+		<-releasePump
+	}()
+	const teardownTimeout = 50 * time.Millisecond
+	teardownCtx, cancelTeardown := context.WithTimeout(context.Background(), teardownTimeout)
+	defer cancelTeardown()
+	resultCh := make(chan error, 1)
+	go func() {
+		resultCh <- withConnectedSession(teardownCtx, connected, func(Session) error {
+			<-teardownCtx.Done()
+			return teardownCtx.Err()
+		})
+	}()
+
+	select {
+	case err := <-resultCh:
+		close(releasePump)
+		<-pumpExited
+		if !errors.Is(err, context.DeadlineExceeded) {
+			t.Fatalf("error = %v, want operation deadline", err)
+		}
+		select {
+		case <-connected.ctx.Done():
+		default:
+			t.Fatal("bounded teardown did not cancel the connected session")
+		}
+	case <-time.After(teardownTimeout + 200*time.Millisecond):
+		close(releasePump)
+		<-pumpExited
+		err := <-resultCh
+		t.Fatalf("provider remained blocked after operation deadline: %v", err)
+	}
+}
+
+func TestFailedWebRTCSetupCleanupHonorsSetupContext(t *testing.T) {
+	setupCtx, cancelSetup := context.WithCancel(context.Background())
+	cancelSetup()
+	connectedCtx, cancelConnected := context.WithCancel(context.Background())
+	connected := &connectedSession{ctx: connectedCtx, cancel: cancelConnected}
+	connected.pumps.Add(1)
+	defer connected.pumps.Done()
+	returnErr := errors.New("setup failed")
+	done := make(chan struct{})
+	go func() {
+		closeConnectedOnError(setupCtx, connected, &returnErr)
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("failed setup cleanup outlived the setup context")
 	}
 }
 

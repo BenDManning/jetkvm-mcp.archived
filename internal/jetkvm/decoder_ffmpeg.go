@@ -16,6 +16,7 @@ import (
 const (
 	maxAnnexBBytes  = 4 << 20
 	maxFFmpegStderr = 16 << 10
+	ffmpegWaitDelay = 250 * time.Millisecond
 )
 
 var errDecoderOutputLimit = errors.New("decoder output limit exceeded")
@@ -65,7 +66,7 @@ func (decoder *ffmpegDecoder) Decode(ctx context.Context, annexB []byte, maxWidt
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	decodeCtx, cancel := context.WithTimeout(ctx, decoder.timeout)
+	decodeCtx, cancel := ffmpegDecodeContext(ctx, decoder.timeout)
 	defer cancel()
 	command := exec.CommandContext(decodeCtx, decoder.executable, args...)
 	command.Env = []string{"LANG=C", "LC_ALL=C", "PATH=/usr/bin:/bin"}
@@ -74,7 +75,7 @@ func (decoder *ffmpegDecoder) Decode(ctx context.Context, annexB []byte, maxWidt
 	stderr := &boundedBuffer{limit: maxFFmpegStderr, discardOverflow: true}
 	command.Stdout = stdout
 	command.Stderr = stderr
-	command.WaitDelay = 250 * time.Millisecond
+	command.WaitDelay = ffmpegWaitDelay
 	if err := command.Run(); err != nil {
 		if errors.Is(decodeCtx.Err(), context.Canceled) || errors.Is(decodeCtx.Err(), context.DeadlineExceeded) {
 			return nil, 0, 0, decodeCtx.Err()
@@ -84,7 +85,15 @@ func (decoder *ffmpegDecoder) Decode(ctx context.Context, annexB []byte, maxWidt
 		}
 		return nil, 0, 0, ErrInvalidResponse
 	}
-	return validateDecodedPNG(stdout.Bytes(), maxWidth, maxHeight)
+	return validateDecodedPNG(decodeCtx, stdout.Bytes(), maxWidth, maxHeight)
+}
+
+func ffmpegDecodeContext(ctx context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {
+	deadline := time.Now().Add(timeout)
+	if callerDeadline, ok := ctx.Deadline(); ok && callerDeadline.Before(deadline) {
+		deadline = callerDeadline
+	}
+	return context.WithDeadline(ctx, deadline.Add(-ffmpegWaitDelay))
 }
 
 func buildFFmpegArgs(maxWidth, maxHeight int) ([]string, error) {
@@ -101,16 +110,31 @@ func buildFFmpegArgs(maxWidth, maxHeight int) ([]string, error) {
 	}, nil
 }
 
-func validateDecodedPNG(data []byte, maxWidth, maxHeight int) ([]byte, int, int, error) {
+func validateDecodedPNG(ctx context.Context, data []byte, maxWidth, maxHeight int) ([]byte, int, int, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, 0, 0, err
+	}
 	if len(data) == 0 || len(data) > maxCapturePNGBytes {
 		return nil, 0, 0, ErrInvalidResponse
 	}
-	config, err := png.DecodeConfig(bytes.NewReader(data))
+	config, err := png.DecodeConfig(&contextReader{ctx: ctx, reader: bytes.NewReader(data)})
+	if contextErr := ctx.Err(); contextErr != nil {
+		return nil, 0, 0, contextErr
+	}
 	if err != nil || config.Width < 1 || config.Width > maxWidth || config.Height < 1 || config.Height > maxHeight || int64(config.Width)*int64(config.Height) > 8_294_400 {
 		return nil, 0, 0, ErrInvalidResponse
 	}
-	if _, err := png.Decode(bytes.NewReader(data)); err != nil {
+	if _, err := png.Decode(&contextReader{ctx: ctx, reader: bytes.NewReader(data)}); err != nil {
+		if contextErr := ctx.Err(); contextErr != nil {
+			return nil, 0, 0, contextErr
+		}
 		return nil, 0, 0, ErrInvalidResponse
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, 0, 0, err
 	}
 	return append([]byte(nil), data...), config.Width, config.Height, nil
 }

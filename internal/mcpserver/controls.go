@@ -2,6 +2,7 @@ package mcpserver
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -10,6 +11,11 @@ import (
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
+
+// CaptureScreenTimeout bounds the complete MCP screenshot operation.
+const CaptureScreenTimeout = 30 * time.Second
+
+var errCaptureScreenDeadline = errors.New("capture screen deadline exceeded")
 
 const (
 	CaptureScreenToolName          = "jetkvm_capture_screen"
@@ -211,7 +217,11 @@ func addControlTools(server *mcp.Server, device Device) {
 			Device: capture.Device, CapturedAt: capture.CapturedAt, MIMEType: capture.MIMEType,
 			Width: capture.Width, Height: capture.Height, SizeBytes: len(capture.PNG),
 		}
-		return &mcp.CallToolResult{Content: []mcp.Content{&mcp.ImageContent{MIMEType: capture.MIMEType, Data: append([]byte(nil), capture.PNG...)}}}, output, nil
+		imageData := append([]byte(nil), capture.PNG...)
+		if err := ctx.Err(); err != nil {
+			return nil, CaptureOutput{}, err
+		}
+		return &mcp.CallToolResult{Content: []mcp.Content{&mcp.ImageContent{MIMEType: capture.MIMEType, Data: imageData}}}, output, nil
 	})
 
 	addMutationTool(server, &mcp.Tool{
@@ -332,6 +342,69 @@ func addControlTools(server *mcp.Server, device Device) {
 		result, err := device.VirtualMedia(ctx, input.Device, request)
 		return nil, result, err
 	})
+}
+
+type captureDeadlineResult struct {
+	mcp.ResultBase
+	ctx    context.Context
+	cancel context.CancelFunc
+	result *mcp.CallToolResult
+}
+
+func (result *captureDeadlineResult) SetMeta(meta map[string]any) {
+	result.ResultBase.SetMeta(meta)
+	result.result.SetMeta(meta)
+}
+
+func (result *captureDeadlineResult) MarshalJSON() ([]byte, error) {
+	if result.ctx.Err() != nil {
+		return result.marshalContextFailure()
+	}
+	encoded, err := json.Marshal(result.result)
+	if err != nil {
+		result.cancel()
+		return nil, err
+	}
+	if result.ctx.Err() == nil {
+		result.cancel()
+		return encoded, nil
+	}
+
+	return result.marshalContextFailure()
+}
+
+func (result *captureDeadlineResult) marshalContextFailure() ([]byte, error) {
+	failure := new(mcp.CallToolResult)
+	if errors.Is(context.Cause(result.ctx), errCaptureScreenDeadline) {
+		failure.SetError(toolFailure(context.DeadlineExceeded, false))
+	} else {
+		failure.SetError(toolFailure(result.ctx.Err(), false))
+	}
+	result.cancel()
+	return json.Marshal(failure)
+}
+
+func captureDeadlineMiddleware(timeout time.Duration) mcp.Middleware {
+	return func(next mcp.MethodHandler) mcp.MethodHandler {
+		return func(ctx context.Context, method string, request mcp.Request) (mcp.Result, error) {
+			params, ok := request.GetParams().(*mcp.CallToolParamsRaw)
+			if method != "tools/call" || !ok || params.Name != CaptureScreenToolName {
+				return next(ctx, method, request)
+			}
+			captureCtx, cancel := context.WithTimeoutCause(ctx, timeout, errCaptureScreenDeadline)
+			result, err := next(captureCtx, method, request)
+			if err != nil || result == nil {
+				cancel()
+				return result, err
+			}
+			callResult, ok := result.(*mcp.CallToolResult)
+			if !ok || (captureCtx.Err() != nil && !errors.Is(context.Cause(captureCtx), errCaptureScreenDeadline)) {
+				cancel()
+				return result, nil
+			}
+			return &captureDeadlineResult{ctx: captureCtx, cancel: cancel, result: callResult}, nil
+		}
+	}
 }
 
 func captureSchema() *jsonschema.Schema {

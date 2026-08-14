@@ -69,3 +69,61 @@ func TestFFmpegDecoderRejectsMalformedOutput(t *testing.T) {
 		t.Fatalf("error = %v", err)
 	}
 }
+
+func TestFFmpegDecoderKeepsCleanupWithinCallerDeadline(t *testing.T) {
+	directory := t.TempDir()
+	executable := filepath.Join(directory, "ffmpeg-fixture")
+	if err := os.WriteFile(executable, []byte("#!/bin/sh\nsleep 2 &\nwait\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	decoder, err := newFFmpegDecoder(executable, 5*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const budget = 500 * time.Millisecond
+	ctx, cancel := context.WithTimeout(context.Background(), budget)
+	defer cancel()
+	started := time.Now()
+	_, _, _, err = decoder.Decode(ctx, []byte{0, 0, 0, 1, 0x65}, 800, 600)
+	elapsed := time.Since(started)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("error = %v, want deadline exceeded", err)
+	}
+	if elapsed > budget+150*time.Millisecond {
+		t.Fatalf("decode elapsed = %v, want cleanup within %v caller budget", elapsed, budget)
+	}
+}
+
+func TestValidateDecodedPNGStopsWhenContextEndsBetweenReads(t *testing.T) {
+	ctx := newCancelOnSecondReadContext()
+
+	_, _, _, err := validateDecodedPNG(ctx, testPNG(t, 2, 1), 800, 600)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("error = %v, want context cancellation", err)
+	}
+	if ctx.calls < 2 {
+		t.Fatalf("context read checks = %d, want at least 2", ctx.calls)
+	}
+}
+
+type cancelOnSecondReadContext struct {
+	calls int
+}
+
+func newCancelOnSecondReadContext() *cancelOnSecondReadContext {
+	return &cancelOnSecondReadContext{}
+}
+
+func (ctx *cancelOnSecondReadContext) Deadline() (time.Time, bool) { return time.Time{}, false }
+
+func (*cancelOnSecondReadContext) Done() <-chan struct{} { return nil }
+
+func (ctx *cancelOnSecondReadContext) Err() error {
+	ctx.calls++
+	if ctx.calls >= 2 {
+		return context.Canceled
+	}
+	return nil
+}
+
+func (*cancelOnSecondReadContext) Value(any) any { return nil }

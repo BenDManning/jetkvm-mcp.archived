@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -106,10 +107,15 @@ type wakeLANInput struct {
 
 // New builds a JetKVM MCP server using only the official Go SDK.
 func New(device Device, version string) *mcp.Server {
+	return newServer(device, version, CaptureScreenTimeout)
+}
+
+func newServer(device Device, version string, captureTimeout time.Duration) *mcp.Server {
 	// The manifest is static, so do not advertise tool-list change notifications.
 	server := mcp.NewServer(&mcp.Implementation{Name: "jetkvm-mcp", Version: version}, &mcp.ServerOptions{
 		Capabilities: &mcp.ServerCapabilities{Tools: &mcp.ToolCapabilities{}},
 	})
+	server.AddReceivingMiddleware(captureDeadlineMiddleware(captureTimeout))
 
 	addReadTool(server, &mcp.Tool{
 		Name:         ListDevicesToolName,

@@ -89,7 +89,7 @@ func toolFailure(err error, mutation bool) error {
 			failure.Outcome = toolOutcomeUnknown
 		}
 		failure.Retryable = false
-	} else if failure.Code == toolErrorTimeout || failure.Code == toolErrorCanceled || failure.Code == "device_unavailable" || failure.Code == "no_signal" {
+	} else if failure.Outcome != "not_sent" && (failure.Code == toolErrorTimeout || failure.Code == toolErrorCanceled || failure.Code == "device_unavailable" || failure.Code == "no_signal") {
 		failure.Outcome = toolOutcomeFailed
 		failure.Retryable = true
 	}
