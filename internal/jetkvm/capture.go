@@ -16,6 +16,8 @@ const (
 	defaultCaptureTimeout = 30 * time.Second
 )
 
+var errCaptureServerDeadline = errors.New("capture server deadline exceeded")
+
 type Decoder interface {
 	Decode(ctx context.Context, annexB []byte, maxWidth, maxHeight int) (pngData []byte, width, height int, err error)
 }
@@ -40,7 +42,7 @@ func (manager *Manager) captureScreen(ctx context.Context, name string, request 
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	captureCtx, cancel := context.WithTimeout(ctx, timeout)
+	captureCtx, cancel := context.WithTimeoutCause(ctx, timeout, errCaptureServerDeadline)
 	defer cancel()
 	device, err := manager.device(name)
 	if err != nil {
@@ -82,11 +84,17 @@ func (manager *Manager) captureScreen(ctx context.Context, name string, request 
 		})
 	})
 	if err != nil {
-		return mcpserver.CaptureResult{}, classifyCaptureReadFailure(ctx, captureCtx, err)
+		return mcpserver.CaptureResult{}, classifyCaptureReadFailure(captureCtx, err)
+	}
+	if err := captureContextError(captureCtx); err != nil {
+		return mcpserver.CaptureResult{}, err
 	}
 	pngData, width, height, err := manager.decoder.Decode(captureCtx, annexB, maxWidth, maxHeight)
 	if err != nil {
-		return mcpserver.CaptureResult{}, classifyCaptureReadFailure(ctx, captureCtx, err)
+		return mcpserver.CaptureResult{}, classifyCaptureReadFailure(captureCtx, err)
+	}
+	if err := captureContextError(captureCtx); err != nil {
+		return mcpserver.CaptureResult{}, err
 	}
 	if len(pngData) == 0 || len(pngData) > maxCapturePNGBytes || width < 1 || width > maxWidth || height < 1 || height > maxHeight || capturedAt.IsZero() {
 		return mcpserver.CaptureResult{}, classifyReadFailure(ErrInvalidResponse)
@@ -95,19 +103,32 @@ func (manager *Manager) captureScreen(ctx context.Context, name string, request 
 	if err != nil || config.Width != width || config.Height != height {
 		return mcpserver.CaptureResult{}, classifyReadFailure(ErrInvalidResponse)
 	}
+	if err := captureContextError(captureCtx); err != nil {
+		return mcpserver.CaptureResult{}, err
+	}
 	return mcpserver.CaptureResult{
 		Device: device.Name, CapturedAt: capturedAt.UTC(), MIMEType: "image/png",
 		Width: width, Height: height, PNG: append([]byte(nil), pngData...),
 	}, nil
 }
 
-func classifyCaptureReadFailure(callerCtx, captureCtx context.Context, err error) error {
+func classifyCaptureReadFailure(captureCtx context.Context, err error) error {
 	var operationErr *OperationError
 	if errors.As(err, &operationErr) {
-		if callerCtx.Err() == nil && errors.Is(captureCtx.Err(), context.DeadlineExceeded) && errors.Is(err, context.DeadlineExceeded) {
+		if errors.Is(context.Cause(captureCtx), errCaptureServerDeadline) && errors.Is(err, context.DeadlineExceeded) {
 			return classifyOperationError(operationErr.Cause, ToolOutcomeFailed)
 		}
 		return err
 	}
 	return classifyReadFailure(err)
+}
+
+func captureContextError(captureCtx context.Context) error {
+	if captureCtx.Err() == nil {
+		return nil
+	}
+	if errors.Is(context.Cause(captureCtx), errCaptureServerDeadline) {
+		return classifyReadFailure(context.DeadlineExceeded)
+	}
+	return classifyReadFailure(captureCtx.Err())
 }
