@@ -15,19 +15,17 @@ import (
 	"time"
 )
 
-func requireFFmpeg(t *testing.T) {
+func installFixtureFFmpeg(t *testing.T) {
 	t.Helper()
-	if _, err := exec.LookPath("ffmpeg"); err == nil {
-		return
+	directory := t.TempDir()
+	if err := os.WriteFile(filepath.Join(directory, "ffmpeg"), []byte("#!/bin/sh\nexit 127\n"), 0o700); err != nil {
+		t.Fatal(err)
 	}
-	if os.Getenv("JETKVM_REQUIRE_FFMPEG") == "1" {
-		t.Fatal("ffmpeg is required by the blocking CI regression")
-	}
-	t.Skip("ffmpeg is not installed")
+	t.Setenv("PATH", directory+string(os.PathListSeparator)+os.Getenv("PATH"))
 }
 
 func TestRunStdioMalformedJSONLClosesCleanlyAndFreshProcessRecovers(t *testing.T) {
-	requireFFmpeg(t)
+	installFixtureFFmpeg(t)
 	binary := filepath.Join(t.TempDir(), "jetkvm-mcp")
 	build := exec.Command("go", "build", "-trimpath", "-o", binary, ".")
 	if output, err := build.CombinedOutput(); err != nil {
@@ -130,7 +128,7 @@ func TestRunStdioMalformedJSONLClosesCleanlyAndFreshProcessRecovers(t *testing.T
 }
 
 func TestRunStdioCleanEOFStopsWithoutStdout(t *testing.T) {
-	requireFFmpeg(t)
+	installFixtureFFmpeg(t)
 	var stdout, stderr bytes.Buffer
 	err := run(context.Background(), []string{"--config", writeStdioFixtureConfig(t)}, strings.NewReader(""), &stdout, &stderr, os.LookupEnv)
 	if !benignStdioEOF(err) {
@@ -158,7 +156,7 @@ func benignStdioEOF(err error) bool {
 }
 
 func TestRunStdioDiscoveryUsesStdoutAndLogsToStderr(t *testing.T) {
-	requireFFmpeg(t)
+	installFixtureFFmpeg(t)
 	configPath := writeStdioFixtureConfig(t)
 	stdinReader, stdinWriter := io.Pipe()
 	stdoutReader, stdoutWriter := io.Pipe()

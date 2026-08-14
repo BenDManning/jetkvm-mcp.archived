@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/BenDManning/jetkvm-mcp/internal/protocolgate"
@@ -149,8 +150,12 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) (runErr e
 	if err := os.WriteFile(configPath, []byte("devices:\n  fixture:\n    url: http://jetkvm.example.invalid\n"), 0o600); err != nil {
 		return errors.New("write MCP gate fixture configuration")
 	}
+	fixtureEnvironment, err := writeFixtureFFmpegEnvironment(temporaryDir)
+	if err != nil {
+		return err
+	}
 
-	server, err := startHTTPServer(ctx, options.serverPath, configPath)
+	server, err := startHTTPServer(ctx, options.serverPath, configPath, fixtureEnvironment)
 	if err != nil {
 		return recordFailure(&summary, "server/http-start", err)
 	}
@@ -194,7 +199,7 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) (runErr e
 		recordPass(&summary, id)
 	}
 
-	inspectorEnvironment := append(os.Environ(),
+	inspectorEnvironment := append(fixtureEnvironment,
 		"MCP_AUTO_OPEN_ENABLED=false",
 		"MCP_STORAGE_DIR="+filepath.Join(temporaryDir, "inspector-storage"),
 		"NO_PROXY=127.0.0.1,localhost",
@@ -372,7 +377,25 @@ func runInspector(ctx context.Context, inspectorBinary string, environment []str
 	return runBinary(ctx, inspectorBinary, environment, nil, args...)
 }
 
-func startHTTPServer(ctx context.Context, serverPath, configPath string) (*runningServer, error) {
+func writeFixtureFFmpegEnvironment(temporaryDirectory string) ([]string, error) {
+	binDirectory := filepath.Join(temporaryDirectory, "fixture-bin")
+	if err := os.MkdirAll(binDirectory, 0o700); err != nil {
+		return nil, errors.New("create fixture executable directory")
+	}
+	if err := os.WriteFile(filepath.Join(binDirectory, "ffmpeg"), []byte("#!/bin/sh\nexit 127\n"), 0o700); err != nil {
+		return nil, errors.New("write fixture ffmpeg executable")
+	}
+	environment := make([]string, 0, len(os.Environ())+1)
+	for _, variable := range os.Environ() {
+		if !strings.HasPrefix(variable, "PATH=") {
+			environment = append(environment, variable)
+		}
+	}
+	environment = append(environment, "PATH="+binDirectory+string(os.PathListSeparator)+os.Getenv("PATH"))
+	return environment, nil
+}
+
+func startHTTPServer(ctx context.Context, serverPath, configPath string, environment []string) (*runningServer, error) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		return nil, errors.New("reserve loopback MCP gate address")
@@ -383,6 +406,7 @@ func startHTTPServer(ctx context.Context, serverPath, configPath string) (*runni
 	}
 	server := &runningServer{done: make(chan error, 1), endpoint: "http://" + address + "/mcp"}
 	server.command = exec.CommandContext(ctx, serverPath, "--config", configPath, "--http", address)
+	server.command.Env = environment
 	prepareCommand(server.command)
 	server.command.Stdout = &server.stdout
 	server.command.Stderr = &server.stderr
