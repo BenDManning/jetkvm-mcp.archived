@@ -433,14 +433,6 @@ func (manager *Manager) runOperation(ctx context.Context, device DeviceConfig, m
 	return operation()
 }
 
-func (manager *Manager) withDecoder(ctx context.Context, operation func() error) error {
-	if !tryAcquire(manager.decoders) {
-		return busyNotSent()
-	}
-	defer release(manager.decoders)
-	return operation()
-}
-
 func tryAcquire(permits chan struct{}) bool {
 	select {
 	case permits <- struct{}{}:

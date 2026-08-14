@@ -12,22 +12,54 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
         with:
-          go-version: '1.26.5'
+          go-version: '1.26.6'
           cache: true
-      - run: go mod verify
-      - run: go test -race ./...
-      - run: go vet ./...
-      - run: make fuzz-smoke
+      - name: Verify gofmt
+        run: make format
+      - name: Verify go mod tidy
+        run: make tidy
+      - name: Verify module checksums
+        run: make module-verify
+      - name: Test with race detector
+        run: make race
+      - name: Vet
+        run: make vet
+      - name: Staticcheck
+        run: make staticcheck
+      - name: Vulnerability analysis
+        run: make govulncheck
+      - name: Bounded fuzz smoke
+        run: make fuzz-smoke
+      - name: Produce coverage evidence
+        run: make coverage COVERAGE_DIR="${RUNNER_TEMP}/coverage"
+      - name: Upload coverage evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: go-coverage
+          path: ${{ runner.temp }}/coverage
+          if-no-files-found: warn
       - name: Verify release targets
-        run: |
-          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -o /tmp/linux-amd64 ./cmd/jetkvm-mcp
-          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -o /tmp/linux-arm64 ./cmd/jetkvm-mcp
-          CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -trimpath -o /tmp/darwin-amd64 ./cmd/jetkvm-mcp
-          CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -trimpath -o /tmp/darwin-arm64 ./cmd/jetkvm-mcp
+        run: make verify
+  minimum-go:
+    name: Minimum Go 1.25
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GOTOOLCHAIN: local
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: '1.25.0'
+          cache: true
+      - run: go version
+      - run: make ci-minimum
   protocol-gates:
     name: MCP protocol gates
     runs-on: ubuntu-latest
@@ -36,7 +68,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
         with:
-          go-version: '1.26.5'
+          go-version: '1.26.6'
           cache: true
       - uses: actions/setup-node@v4
         with:
@@ -45,10 +77,9 @@ jobs:
         run: go build -trimpath -o "${RUNNER_TEMP}/jetkvm-mcp" ./cmd/jetkvm-mcp
       - name: Run pinned conformance and Inspector gates
         run: >-
-          go run ./cmd/jetkvm-mcp-protocol-gates
-          --server-binary "${RUNNER_TEMP}/jetkvm-mcp"
-          --pins testdata/mcp-gates/pins.json
-          --artifacts "${RUNNER_TEMP}/mcp-gate-artifacts"
+          make protocol-gates
+          MCP_GATE_SERVER="${RUNNER_TEMP}/jetkvm-mcp"
+          MCP_GATE_DIR="${RUNNER_TEMP}/mcp-gate-artifacts"
       - name: Upload MCP gate evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -58,14 +89,13 @@ jobs:
           if-no-files-found: warn
   container:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
       - uses: docker/setup-qemu-action@v4
       - uses: docker/setup-buildx-action@v4
       - name: Verify container binary architectures
-        run: |
-          docker buildx build --platform linux/amd64 --target binary --output=type=local,dest=/tmp/container-amd64 .
-          docker buildx build --platform linux/arm64 --target binary --output=type=local,dest=/tmp/container-arm64 .
-          python3 -c 'import struct; assert struct.unpack("<H", open("/tmp/container-amd64/jetkvm-mcp", "rb").read(20)[18:20])[0] == 62'
-          python3 -c 'import struct; assert struct.unpack("<H", open("/tmp/container-arm64/jetkvm-mcp", "rb").read(20)[18:20])[0] == 183'
-      - run: docker buildx build --platform linux/amd64,linux/arm64 --output=type=cacheonly .
+        run: >-
+          make container-verify
+          CONTAINER_AMD64_DIR="${RUNNER_TEMP}/container-amd64"
+          CONTAINER_ARM64_DIR="${RUNNER_TEMP}/container-arm64"

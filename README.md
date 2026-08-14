@@ -228,6 +228,9 @@ conformance and Inspector checks are described in
 boundaries, physical consequences, privacy rules, implemented controls,
 deployment requirements, and residual risks are recorded in
 [`docs/threat-model.md`](docs/threat-model.md).
+The canonical GitHub Actions/local quality matrix, minimum and release Go
+lanes, analyzer pins, fuzz/protocol gates, and coverage evidence policy are in
+[`docs/ci-quality.md`](docs/ci-quality.md).
 
 ```sh
 go test -race ./...

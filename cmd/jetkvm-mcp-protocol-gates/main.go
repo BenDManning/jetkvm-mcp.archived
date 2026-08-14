@@ -260,7 +260,7 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) (runErr e
 		httpResult, ok := inspectorResults["http"][method]
 		id := "inspector/parity/" + method
 		if !ok || !bytes.Equal(stdioResult, httpResult) {
-			return recordFailure(&summary, id, errors.New("Inspector stdio and HTTP results differ"))
+			return recordFailure(&summary, id, errors.New("inspector stdio and HTTP results differ"))
 		}
 		recordPass(&summary, id)
 	}
