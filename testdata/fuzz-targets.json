@@ -1,0 +1,10 @@
+[
+  {"package":"./internal/config","target":"FuzzLoadConfig"},
+  {"package":"./internal/httporigin","target":"FuzzParseAuthority"},
+  {"package":"./internal/httporigin","target":"FuzzParseOrigin"},
+  {"package":"./internal/jetkvm","target":"FuzzDecodeRPCResponse"},
+  {"package":"./internal/jetkvm","target":"FuzzDecodeSessionDescription"},
+  {"package":"./internal/jetkvm","target":"FuzzDepacketizeH264AccessUnit"},
+  {"package":"./internal/jetkvm","target":"FuzzH264Stream"},
+  {"package":"./internal/jetkvm","target":"FuzzParseAllowedMediaURL"}
+]

@@ -222,7 +222,9 @@ secrets in either or retain the streams unsafely.
 The repository is intentionally independent from its archived predecessor. It contains no legacy Git history or remote.
 
 Protocol provenance and exact inspected upstream revisions are recorded in
-[`docs/protocol-sources.md`](docs/protocol-sources.md). Current actors, trust
+[`docs/protocol-sources.md`](docs/protocol-sources.md). Pinned official MCP
+conformance and Inspector checks are described in
+[`docs/protocol-gates.md`](docs/protocol-gates.md). Current actors, trust
 boundaries, physical consequences, privacy rules, implemented controls,
 deployment requirements, and residual risks are recorded in
 [`docs/threat-model.md`](docs/threat-model.md).
@@ -230,17 +232,23 @@ deployment requirements, and residual risks are recorded in
 ```sh
 go test -race ./...
 go vet ./...
+make fuzz-smoke
 ```
+
+`make fuzz-smoke` runs every target in the checked synthetic fuzz inventory once
+and enforces the committed corpus privacy policy. Use `make fuzz` for a longer
+30-second local run of each bounded target. Neither command uses network,
+device, or FFmpeg inputs.
 
 ### Read-only real-hardware validation
 
 After building the server, the separate validation runner can exercise one
 configured device through actual MCP stdio. It lists tools, verifies the
-configured-device discovery, device-status, virtual-media-status, and capture
-tools' read-only annotations, confirms that discovery contains the selected
-alias, validates status fields, and fully
+configured-device discovery, device-status, dedicated virtual-media-status, and
+capture tools' read-only annotations, confirms that discovery contains the
+selected alias, validates both typed status results, and fully
 decodes one PNG without writing or displaying it. It never invokes keyboard,
-mouse, virtual-media, power, wake, or raw-RPC operations.
+mouse, virtual-media mutation, power, wake, or raw-RPC operations.
 
 ```sh
 go run ./cmd/jetkvm-mcp-validate \
@@ -254,6 +262,7 @@ paths, device names, server logs, status values, error details, and image data.
 The capture call has a dedicated 30-second deadline, and its PNG buffer is
 cleared after full in-memory decoding.
 
+ <<<<<<< issue-26-mutation-validation
 ### Mutation-validation dry run
 
 Before any separately approved live mutation window, validate the checked
@@ -268,6 +277,12 @@ go run ./cmd/jetkvm-mcp-mutation-checklist \
 This source-run command only validates a closed dry-run plan. It has no device
 or MCP execution path, and even a passing report explicitly states that
 execution is not authorized.
+ =======
+The compact compatibility ledger, focused offline upstream-drift command, and
+evidence-refresh triggers are documented in
+[`docs/compatibility/`](docs/compatibility/README.md). Source review, fake-device
+tests, and unattributed historical runs do not qualify a firmware version.
+ >>>>>>> main
 
 The checked-in Dockerfile builds the Linux amd64/arm64 image. `.goreleaser.yaml` builds the four supported binary targets.
 
