@@ -144,18 +144,16 @@ func TestManagerStatusReturnsWrappedContextErrorWithoutLaterProbes(t *testing.T)
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			var ctx context.Context
-			var cancel context.CancelFunc
-			if errors.Is(test.wantErr, context.Canceled) {
-				ctx, cancel = context.WithCancel(context.Background())
-				cancel()
-			} else {
-				ctx, cancel = context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
-				defer cancel()
-			}
+			ctx := &statusProbeContext{done: make(chan struct{})}
 			session := &fakeSession{
 				results: statusProbeResults(test.extension),
-				err:     map[string]error{test.failedMethod: fmt.Errorf("wrapped caller failure: %w", test.wantErr)},
+				callHook: func(_ context.Context, method string, _ any) error {
+					if method != test.failedMethod {
+						return nil
+					}
+					ctx.cancel(test.wantErr)
+					return fmt.Errorf("wrapped caller failure: %w", test.wantErr)
+				},
 			}
 
 			status, err := testManager(t, session).Status(ctx, "lab")
@@ -170,6 +168,21 @@ func TestManagerStatusReturnsWrappedContextErrorWithoutLaterProbes(t *testing.T)
 			}
 		})
 	}
+}
+
+type statusProbeContext struct {
+	done chan struct{}
+	err  error
+}
+
+func (*statusProbeContext) Deadline() (time.Time, bool) { return time.Time{}, false }
+func (ctx *statusProbeContext) Done() <-chan struct{}   { return ctx.done }
+func (ctx *statusProbeContext) Err() error              { return ctx.err }
+func (*statusProbeContext) Value(any) any               { return nil }
+
+func (ctx *statusProbeContext) cancel(err error) {
+	ctx.err = err
+	close(ctx.done)
 }
 
 func TestManagerStatusKeepsOrdinaryProbeFailuresAsWarnings(t *testing.T) {
@@ -227,6 +240,88 @@ func TestManagerStatusKeepsInternalRequestTimeoutAsWarning(t *testing.T) {
 	wantMethods := []string{methodPing, methodLocalVersion, methodActiveExtension, methodVirtualMediaState, methodVideoState, methodUSBState, methodATXState}
 	if got := calledMethods(session.calls); !reflect.DeepEqual(got, wantMethods) {
 		t.Fatalf("methods = %v, want continued probes %v", got, wantMethods)
+	}
+}
+
+func TestManagerStatusPreservesOriginalCallerCancellationError(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	var probeErr error
+	session := &fakeSession{
+		results: statusProbeResults("atx-power"),
+		callHook: func(callCtx context.Context, method string, _ any) error {
+			if method != methodVideoState {
+				return nil
+			}
+			cancel()
+			probeErr = classifyOperationError(fmt.Errorf("video probe interrupted: %w", callCtx.Err()), ToolOutcomeUnknown)
+			return probeErr
+		},
+	}
+
+	status, err := testManager(t, session).Status(ctx, "lab")
+	if err != probeErr {
+		t.Fatalf("error = %#v, want original probe error %#v", err, probeErr)
+	}
+	if !reflect.DeepEqual(status, mcpserver.Status{}) {
+		t.Fatalf("status = %+v, want no partial success", status)
+	}
+	var classified interface{ ToolErrorOutcome() string }
+	if !errors.As(err, &classified) || classified.ToolErrorOutcome() != ToolOutcomeUnknown {
+		t.Fatalf("error = %#v, want preserved unknown outcome", err)
+	}
+}
+
+func TestManagerStatusStopsAfterSuccessfulProbeWhenCallerCanceled(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	session := &fakeSession{
+		results: statusProbeResults("atx-power"),
+		callHook: func(_ context.Context, method string, _ any) error {
+			if method == methodVideoState {
+				cancel()
+			}
+			return nil
+		},
+	}
+
+	status, err := testManager(t, session).Status(ctx, "lab")
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("error = %v, want caller cancellation", err)
+	}
+	if !reflect.DeepEqual(status, mcpserver.Status{}) {
+		t.Fatalf("status = %+v, want no partial success", status)
+	}
+	wantMethods := []string{methodPing, methodLocalVersion, methodActiveExtension, methodVirtualMediaState, methodVideoState}
+	if got := calledMethods(session.calls); !reflect.DeepEqual(got, wantMethods) {
+		t.Fatalf("methods = %v, want no probes after cancellation %v", got, wantMethods)
+	}
+}
+
+func TestManagerStatusCallerCancellationWinsOverUnrelatedProbeError(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	session := &fakeSession{
+		results: statusProbeResults("atx-power"),
+		callHook: func(_ context.Context, method string, _ any) error {
+			if method != methodVideoState {
+				return nil
+			}
+			cancel()
+			return errors.New("unrelated probe failure")
+		},
+	}
+
+	status, err := testManager(t, session).Status(ctx, "lab")
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("error = %v, want caller cancellation", err)
+	}
+	if !reflect.DeepEqual(status, mcpserver.Status{}) {
+		t.Fatalf("status = %+v, want no partial success", status)
+	}
+	wantMethods := []string{methodPing, methodLocalVersion, methodActiveExtension, methodVirtualMediaState, methodVideoState}
+	if got := calledMethods(session.calls); !reflect.DeepEqual(got, wantMethods) {
+		t.Fatalf("methods = %v, want no probes after cancellation %v", got, wantMethods)
 	}
 }
 

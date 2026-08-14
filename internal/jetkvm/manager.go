@@ -254,6 +254,9 @@ func (manager *Manager) Status(ctx context.Context, name string) (mcpserver.Stat
 			if err := session.Call(ctx, methodPing, nil, &pong); err != nil {
 				return err
 			}
+			if err := ctx.Err(); err != nil {
+				return err
+			}
 			if pong != "pong" {
 				return fmt.Errorf("%w: ping result", ErrInvalidResponse)
 			}
@@ -263,29 +266,30 @@ func (manager *Manager) Status(ctx context.Context, name string) (mcpserver.Stat
 				Application string `json:"appVersion"`
 				System      string `json:"systemVersion"`
 			}
-			if err := session.Call(ctx, methodLocalVersion, nil, &version); err != nil {
-				if err := statusProbeFailure(ctx, &status, "version unavailable"); err != nil {
-					return err
-				}
-			} else {
+			probeErr := session.Call(ctx, methodLocalVersion, nil, &version)
+			if err := statusProbeResult(ctx, &status, probeErr, "version unavailable"); err != nil {
+				return err
+			}
+			if probeErr == nil {
 				status.Application, status.System = version.Application, version.System
 			}
 
-			if err := session.Call(ctx, methodActiveExtension, nil, &status.Extension); err != nil {
-				if err := statusProbeFailure(ctx, &status, "active extension unavailable"); err != nil {
-					return err
-				}
+			probeErr = session.Call(ctx, methodActiveExtension, nil, &status.Extension)
+			if err := statusProbeResult(ctx, &status, probeErr, "active extension unavailable"); err != nil {
+				return err
 			}
 
 			var media *firmwareVirtualMediaState
-			if err := session.Call(ctx, methodVirtualMediaState, nil, &media); err != nil {
-				if err := statusProbeFailure(ctx, &status, "virtual media unavailable"); err != nil {
-					return err
+			probeErr = session.Call(ctx, methodVirtualMediaState, nil, &media)
+			if err := statusProbeResult(ctx, &status, probeErr, "virtual media unavailable"); err != nil {
+				return err
+			}
+			if probeErr == nil {
+				if projected, projectErr := publicVirtualMediaState(media); projectErr != nil {
+					status.Warnings = append(status.Warnings, "virtual media unavailable")
+				} else {
+					status.VirtualMedia = projected
 				}
-			} else if projected, projectErr := publicVirtualMediaState(media); projectErr != nil {
-				status.Warnings = append(status.Warnings, "virtual media unavailable")
-			} else {
-				status.VirtualMedia = projected
 			}
 
 			var video struct {
@@ -294,19 +298,19 @@ func (manager *Manager) Status(ctx context.Context, name string) (mcpserver.Stat
 				Height int   `json:"height"`
 				FPS    int   `json:"fps"`
 			}
-			if err := session.Call(ctx, methodVideoState, nil, &video); err != nil {
-				if err := statusProbeFailure(ctx, &status, "video unavailable"); err != nil {
-					return err
-				}
-			} else {
+			probeErr = session.Call(ctx, methodVideoState, nil, &video)
+			if err := statusProbeResult(ctx, &status, probeErr, "video unavailable"); err != nil {
+				return err
+			}
+			if probeErr == nil {
 				status.VideoReady, status.VideoWidth, status.VideoHeight, status.VideoFPS = video.Ready, video.Width, video.Height, video.FPS
 			}
 
-			if err := session.Call(ctx, methodUSBState, nil, &status.USBState); err != nil {
-				if err := statusProbeFailure(ctx, &status, "USB unavailable"); err != nil {
-					return err
-				}
-			} else {
+			probeErr = session.Call(ctx, methodUSBState, nil, &status.USBState)
+			if err := statusProbeResult(ctx, &status, probeErr, "USB unavailable"); err != nil {
+				return err
+			}
+			if probeErr == nil {
 				attached := status.USBState != "not attached" && status.USBState != ""
 				status.USBWakeAttached = &attached
 			}
@@ -316,11 +320,11 @@ func (manager *Manager) Status(ctx context.Context, name string) (mcpserver.Stat
 				var atx struct {
 					Power *bool `json:"power"`
 				}
-				if err := session.Call(ctx, methodATXState, nil, &atx); err != nil {
-					if err := statusProbeFailure(ctx, &status, "ATX state unavailable"); err != nil {
-						return err
-					}
-				} else {
+				probeErr = session.Call(ctx, methodATXState, nil, &atx)
+				if err := statusProbeResult(ctx, &status, probeErr, "ATX state unavailable"); err != nil {
+					return err
+				}
+				if probeErr == nil {
 					status.ATXPowerOn = atx.Power
 				}
 			case "dc-power":
@@ -328,11 +332,11 @@ func (manager *Manager) Status(ctx context.Context, name string) (mcpserver.Stat
 					On      *bool   `json:"isOn"`
 					Voltage float64 `json:"voltage"`
 				}
-				if err := session.Call(ctx, methodDCPowerState, nil, &dc); err != nil {
-					if err := statusProbeFailure(ctx, &status, "DC state unavailable"); err != nil {
-						return err
-					}
-				} else {
+				probeErr = session.Call(ctx, methodDCPowerState, nil, &dc)
+				if err := statusProbeResult(ctx, &status, probeErr, "DC state unavailable"); err != nil {
+					return err
+				}
+				if probeErr == nil {
 					status.DCPowerOn, status.DCVoltage = dc.On, dc.Voltage
 				}
 			}
@@ -345,11 +349,16 @@ func (manager *Manager) Status(ctx context.Context, name string) (mcpserver.Stat
 	return status, nil
 }
 
-func statusProbeFailure(ctx context.Context, status *mcpserver.Status, warning string) error {
-	if err := ctx.Err(); err != nil {
-		return err
+func statusProbeResult(ctx context.Context, status *mcpserver.Status, probeErr error, warning string) error {
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		if probeErr != nil && errors.Is(probeErr, ctxErr) {
+			return probeErr
+		}
+		return ctxErr
 	}
-	status.Warnings = append(status.Warnings, warning)
+	if probeErr != nil {
+		status.Warnings = append(status.Warnings, warning)
+	}
 	return nil
 }
 
