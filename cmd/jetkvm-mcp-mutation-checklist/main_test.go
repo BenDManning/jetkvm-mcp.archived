@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -36,6 +37,12 @@ func completePlan() map[string]any {
 			"timeout_seconds":             30,
 			"recovery_ready":              true,
 			"never_retry_unknown_outcome": true,
+		}
+		switch operation {
+		case "jetkvm_keyboard":
+			step["hid_operation"] = "type_text"
+		case "jetkvm_mouse":
+			step["hid_operation"] = "move_absolute"
 		}
 		if strings.Contains(operation, "virtual_media") {
 			step["cleanup_planned"] = true
@@ -77,6 +84,24 @@ func writePlan(t *testing.T, plan map[string]any) string {
 	return path
 }
 
+type failingWriter struct{}
+
+func (failingWriter) Write([]byte) (int, error) {
+	return 0, errors.New("output unavailable")
+}
+
+func TestOptionalStringRejectsNullAndClearsStateOnError(t *testing.T) {
+	for _, data := range []string{"null", "123"} {
+		value := optionalString{Value: "stale", Present: true}
+		if err := value.UnmarshalJSON([]byte(data)); err == nil {
+			t.Fatalf("UnmarshalJSON(%s) succeeded", data)
+		}
+		if value.Present || value.Value != "" {
+			t.Fatalf("UnmarshalJSON(%s) retained state: %+v", data, value)
+		}
+	}
+}
+
 func TestRunAcceptsCompleteDryRunAndNeverAuthorizesExecution(t *testing.T) {
 	var output bytes.Buffer
 	if code := run([]string{"--plan", writePlan(t, completePlan())}, &output); code != 0 {
@@ -98,6 +123,23 @@ func TestRunAcceptsCompleteDryRunAndNeverAuthorizesExecution(t *testing.T) {
 	}
 }
 
+func TestRunFailsWhenPassingReportCannotBeWritten(t *testing.T) {
+	if code := run([]string{"--plan", writePlan(t, completePlan())}, failingWriter{}); code == 0 {
+		t.Fatal("run exited successfully without writing the required report")
+	}
+}
+
+func TestRunFailsWhenPassingReportWouldBeDiscarded(t *testing.T) {
+	output, err := os.OpenFile(os.DevNull, os.O_WRONLY, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer output.Close()
+	if code := run([]string{"--plan", writePlan(t, completePlan())}, output); code == 0 {
+		t.Fatal("run exited successfully while discarding the required report")
+	}
+}
+
 func TestRunFailsClosedForUnsafeOrIncompletePlan(t *testing.T) {
 	for _, test := range []struct {
 		name   string
@@ -109,6 +151,21 @@ func TestRunFailsClosedForUnsafeOrIncompletePlan(t *testing.T) {
 		{name: "production target", mutate: func(plan map[string]any) { plan["target"].(map[string]any)["non_production"] = false }},
 		{name: "execution approval embedded", mutate: func(plan map[string]any) { plan["controls"].(map[string]any)["execution_approved"] = true }},
 		{name: "missing observer", mutate: func(plan map[string]any) { plan["controls"].(map[string]any)["observer_ready"] = false }},
+		{name: "missing keyboard operation", mutate: func(plan map[string]any) {
+			delete(plan["steps"].([]any)[0].(map[string]any), "hid_operation")
+		}},
+		{name: "invalid mouse operation", mutate: func(plan map[string]any) {
+			plan["steps"].([]any)[1].(map[string]any)["hid_operation"] = "press_key"
+		}},
+		{name: "hid operation on power step", mutate: func(plan map[string]any) {
+			plan["steps"].([]any)[2].(map[string]any)["hid_operation"] = "type_text"
+		}},
+		{name: "empty hid operation on power step", mutate: func(plan map[string]any) {
+			plan["steps"].([]any)[2].(map[string]any)["hid_operation"] = ""
+		}},
+		{name: "null hid operation on power step", mutate: func(plan map[string]any) {
+			plan["steps"].([]any)[2].(map[string]any)["hid_operation"] = nil
+		}},
 		{name: "missing operation", mutate: func(plan map[string]any) { plan["steps"] = plan["steps"].([]any)[1:] }},
 		{name: "duplicate operation", mutate: func(plan map[string]any) {
 			plan["steps"].([]any)[1].(map[string]any)["operation"] = expectedOperations[0]
@@ -158,6 +215,12 @@ func TestCheckedExamplePlanAndChecklistCoverEveryMutationWithoutAuthorizingExecu
 	}
 	text := string(document)
 	requiredText := append(append([]string(nil), expectedOperations...),
+		"type_text",
+		"press_key",
+		"move_absolute",
+		"move_relative",
+		"click",
+		"scroll",
 		"No execution authority",
 		"Designated expendable target",
 		"Observer and emergency stop",
@@ -171,7 +234,82 @@ func TestCheckedExamplePlanAndChecklistCoverEveryMutationWithoutAuthorizingExecu
 	}
 }
 
+func TestProductContractDeclaresMutationChecklistCompatibilitySurface(t *testing.T) {
+	root := filepath.Clean(filepath.Join("..", ".."))
+	document, err := os.ReadFile(filepath.Join(root, "docs", "product-contract.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(document)
+	for _, required := range []string{
+		"`jetkvm-mcp-mutation-checklist`",
+		"required `--plan`",
+		"`jetkvm.mutation-validation.v1`",
+		"`jetkvm.mutation-validation.report.v1`",
+		"Duplicate JSON object members",
+		"report-write failure",
+	} {
+		if !strings.Contains(text, required) {
+			t.Fatalf("product contract missing mutation-checklist surface %q", required)
+		}
+	}
+	start := strings.Index(text, "#### Mutation-checklist plan and report")
+	end := strings.Index(text, "### CLI streams and exit status")
+	if start < 0 || end < 0 || start >= end {
+		t.Fatal("product contract does not own a bounded mutation-checklist plan and report section")
+	}
+	section := text[start:end]
+	requiredFields := []string{
+		"`schema`",
+		"`mode`",
+		"`target`",
+		"`controls`",
+		"`steps`",
+		"`marked_expendable`",
+		"`identity_confirmed`",
+		"`non_production`",
+		"`observer_ready`",
+		"`recovery_ready`",
+		"`emergency_stop_ready`",
+		"`per_plan_acknowledgement`",
+		"`execution_approved`",
+		"`operation`",
+		"`hid_operation`",
+		"`consequence_acknowledged`",
+		"`preconditions_confirmed`",
+		"`postcondition_observable`",
+		"`timeout_seconds`",
+		"`never_retry_unknown_outcome`",
+		"`integrity_check_planned`",
+		"`cleanup_planned`",
+		"`type_text`",
+		"`press_key`",
+		"`move_absolute`",
+		"`move_relative`",
+		"`click`",
+		"`scroll`",
+		"`result`",
+		"`checked_steps`",
+		"`execution_authorized`",
+		"1 through 300",
+		"exactly 13",
+	}
+	for _, operation := range expectedOperations {
+		requiredFields = append(requiredFields, "`"+operation+"`")
+	}
+	for _, required := range requiredFields {
+		if !strings.Contains(section, required) {
+			t.Fatalf("product contract plan/report section missing %q", required)
+		}
+	}
+}
+
 func TestRunRejectsArgumentsMalformedAndTrailingJSON(t *testing.T) {
+	valid, err := json.Marshal(completePlan())
+	if err != nil {
+		t.Fatal(err)
+	}
+	validJSON := string(valid)
 	for _, test := range []struct {
 		name string
 		args []string
@@ -182,6 +320,9 @@ func TestRunRejectsArgumentsMalformedAndTrailingJSON(t *testing.T) {
 		{name: "extra argument", args: []string{"--plan", "unused", "extra"}, want: 2},
 		{name: "malformed", data: `{`, want: 1},
 		{name: "trailing", data: `{}` + `{}`, want: 1},
+		{name: "duplicate root member", data: strings.Replace(validJSON, `"mode":"dry_run"`, `"mode":"execute","mode":"dry_run"`, 1), want: 1},
+		{name: "duplicate nested member", data: strings.Replace(validJSON, `"marked_expendable":true`, `"marked_expendable":false,"marked_expendable":true`, 1), want: 1},
+		{name: "duplicate step member", data: strings.Replace(validJSON, `"operation":"jetkvm_keyboard"`, `"operation":"jetkvm_mouse","operation":"jetkvm_keyboard"`, 1), want: 1},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			args := test.args

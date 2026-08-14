@@ -16,6 +16,7 @@
   "steps": [
     {
       "operation": "jetkvm_keyboard",
+      "hid_operation": "type_text",
       "consequence_acknowledged": true,
       "preconditions_confirmed": true,
       "postcondition_observable": true,
@@ -25,6 +26,7 @@
     },
     {
       "operation": "jetkvm_mouse",
+      "hid_operation": "move_absolute",
       "consequence_acknowledged": true,
       "preconditions_confirmed": true,
       "postcondition_observable": true,

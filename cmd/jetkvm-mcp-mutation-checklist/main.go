@@ -35,6 +35,19 @@ var requiredOperations = map[string]struct{}{
 	"jetkvm_unmount_virtual_media":     {},
 }
 
+var allowedHIDOperations = map[string]map[string]struct{}{
+	"jetkvm_keyboard": {
+		"type_text": {},
+		"press_key": {},
+	},
+	"jetkvm_mouse": {
+		"move_absolute": {},
+		"move_relative": {},
+		"click":         {},
+		"scroll":        {},
+	},
+}
+
 type plan struct {
 	Schema   string   `json:"schema"`
 	Mode     string   `json:"mode"`
@@ -57,16 +70,36 @@ type controls struct {
 	ExecutionApproved      bool `json:"execution_approved"`
 }
 
+type optionalString struct {
+	Value   string
+	Present bool
+}
+
+func (value *optionalString) UnmarshalJSON(data []byte) error {
+	*value = optionalString{}
+	if bytes.Equal(bytes.TrimSpace(data), []byte("null")) {
+		return errors.New("null string")
+	}
+	var decoded string
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	value.Value = decoded
+	value.Present = true
+	return nil
+}
+
 type step struct {
-	Operation                string `json:"operation"`
-	ConsequenceAcknowledged  bool   `json:"consequence_acknowledged"`
-	PreconditionsConfirmed   bool   `json:"preconditions_confirmed"`
-	PostconditionObservable  bool   `json:"postcondition_observable"`
-	TimeoutSeconds           int    `json:"timeout_seconds"`
-	RecoveryReady            bool   `json:"recovery_ready"`
-	NeverRetryUnknownOutcome bool   `json:"never_retry_unknown_outcome"`
-	IntegrityCheckPlanned    *bool  `json:"integrity_check_planned,omitempty"`
-	CleanupPlanned           *bool  `json:"cleanup_planned,omitempty"`
+	Operation                string         `json:"operation"`
+	HIDOperation             optionalString `json:"hid_operation,omitempty"`
+	ConsequenceAcknowledged  bool           `json:"consequence_acknowledged"`
+	PreconditionsConfirmed   bool           `json:"preconditions_confirmed"`
+	PostconditionObservable  bool           `json:"postcondition_observable"`
+	TimeoutSeconds           int            `json:"timeout_seconds"`
+	RecoveryReady            bool           `json:"recovery_ready"`
+	NeverRetryUnknownOutcome bool           `json:"never_retry_unknown_outcome"`
+	IntegrityCheckPlanned    *bool          `json:"integrity_check_planned,omitempty"`
+	CleanupPlanned           *bool          `json:"cleanup_planned,omitempty"`
 }
 
 type report struct {
@@ -94,12 +127,21 @@ func run(args []string, output io.Writer) int {
 		emit(output, report{Schema: reportSchema, Result: "fail"})
 		return 1
 	}
-	emit(output, report{Schema: reportSchema, Result: "pass", CheckedSteps: len(value.Steps)})
+	if err := emit(output, report{Schema: reportSchema, Result: "pass", CheckedSteps: len(value.Steps)}); err != nil {
+		return 1
+	}
 	return 0
 }
 
-func emit(output io.Writer, value report) {
-	_ = json.NewEncoder(output).Encode(value)
+func emit(output io.Writer, value report) error {
+	if file, ok := output.(*os.File); ok {
+		outputInfo, outputErr := file.Stat()
+		nullInfo, nullErr := os.Stat(os.DevNull)
+		if outputErr == nil && nullErr == nil && os.SameFile(outputInfo, nullInfo) {
+			return errors.New("report output unavailable")
+		}
+	}
+	return json.NewEncoder(output).Encode(value)
 }
 
 func readPlan(path string) (plan, error) {
@@ -116,6 +158,9 @@ func readPlan(path string) (plan, error) {
 	if err != nil || len(data) > maxPlanBytes {
 		return plan{}, errors.New("invalid plan input")
 	}
+	if err := rejectDuplicateJSONMembers(data); err != nil {
+		return plan{}, errors.New("invalid plan input")
+	}
 	var value plan
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
@@ -129,8 +174,68 @@ func readPlan(path string) (plan, error) {
 	return value, nil
 }
 
+func rejectDuplicateJSONMembers(data []byte) error {
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	if err := scanJSONValue(decoder); err != nil {
+		return err
+	}
+	if _, err := decoder.Token(); err != io.EOF {
+		return errors.New("invalid JSON input")
+	}
+	return nil
+}
+
+func scanJSONValue(decoder *json.Decoder) error {
+	token, err := decoder.Token()
+	if err != nil {
+		return err
+	}
+	delimiter, composite := token.(json.Delim)
+	if !composite {
+		return nil
+	}
+	switch delimiter {
+	case '{':
+		seen := make(map[string]struct{})
+		for decoder.More() {
+			keyToken, err := decoder.Token()
+			if err != nil {
+				return err
+			}
+			key, ok := keyToken.(string)
+			if !ok {
+				return errors.New("invalid JSON object member")
+			}
+			if _, duplicate := seen[key]; duplicate {
+				return errors.New("duplicate JSON object member")
+			}
+			seen[key] = struct{}{}
+			if err := scanJSONValue(decoder); err != nil {
+				return err
+			}
+		}
+		closing, err := decoder.Token()
+		if err != nil || closing != json.Delim('}') {
+			return errors.New("invalid JSON object")
+		}
+	case '[':
+		for decoder.More() {
+			if err := scanJSONValue(decoder); err != nil {
+				return err
+			}
+		}
+		closing, err := decoder.Token()
+		if err != nil || closing != json.Delim(']') {
+			return errors.New("invalid JSON array")
+		}
+	default:
+		return errors.New("invalid JSON delimiter")
+	}
+	return nil
+}
+
 func openPlanFile(path string) (*os.File, error) {
-	descriptor, err := unix.Open(path, unix.O_RDONLY|unix.O_CLOEXEC|unix.O_NOFOLLOW, 0)
+	descriptor, err := unix.Open(path, unix.O_RDONLY|unix.O_CLOEXEC|unix.O_NOFOLLOW|unix.O_NONBLOCK, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -169,11 +274,26 @@ func validatePlan(value plan) error {
 			!current.RecoveryReady || !current.NeverRetryUnknownOutcome || current.TimeoutSeconds < 1 || current.TimeoutSeconds > 300 {
 			return errors.New("incomplete mutation step")
 		}
+		if !validHIDOperation(current) {
+			return errors.New("invalid HID operation")
+		}
 		if !validMediaControls(current) {
 			return errors.New("invalid media controls")
 		}
 	}
 	return nil
+}
+
+func validHIDOperation(value step) bool {
+	allowed, isHID := allowedHIDOperations[value.Operation]
+	if !isHID {
+		return !value.HIDOperation.Present
+	}
+	if !value.HIDOperation.Present {
+		return false
+	}
+	_, valid := allowed[value.HIDOperation.Value]
+	return valid
 }
 
 func validMediaControls(value step) bool {
