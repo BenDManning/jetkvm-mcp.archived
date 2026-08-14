@@ -128,11 +128,11 @@ func TestManagerStatusProjectsOrdinaryDeviceState(t *testing.T) {
 
 func TestManagerStatusReturnsWrappedContextErrorWithoutLaterProbes(t *testing.T) {
 	tests := []struct {
-		name        string
-		extension   string
+		name         string
+		extension    string
 		failedMethod string
-		wantErr     error
-		wantMethods []string
+		wantErr      error
+		wantMethods  []string
 	}{
 		{name: "version cancellation", extension: "atx-power", failedMethod: methodLocalVersion, wantErr: context.Canceled, wantMethods: []string{methodPing, methodLocalVersion}},
 		{name: "active extension deadline", extension: "atx-power", failedMethod: methodActiveExtension, wantErr: context.DeadlineExceeded, wantMethods: []string{methodPing, methodLocalVersion, methodActiveExtension}},
@@ -144,12 +144,21 @@ func TestManagerStatusReturnsWrappedContextErrorWithoutLaterProbes(t *testing.T)
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			var ctx context.Context
+			var cancel context.CancelFunc
+			if errors.Is(test.wantErr, context.Canceled) {
+				ctx, cancel = context.WithCancel(context.Background())
+				cancel()
+			} else {
+				ctx, cancel = context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+				defer cancel()
+			}
 			session := &fakeSession{
 				results: statusProbeResults(test.extension),
-				err:     map[string]error{test.failedMethod: fmt.Errorf("wrapped probe failure: %w", test.wantErr)},
+				err:     map[string]error{test.failedMethod: fmt.Errorf("wrapped caller failure: %w", test.wantErr)},
 			}
 
-			status, err := testManager(t, session).Status(context.Background(), "lab")
+			status, err := testManager(t, session).Status(ctx, "lab")
 			if !errors.Is(err, test.wantErr) {
 				t.Fatalf("error = %v, want %v", err, test.wantErr)
 			}
@@ -197,6 +206,27 @@ func TestManagerStatusKeepsOrdinaryProbeFailuresAsWarnings(t *testing.T) {
 				t.Fatalf("methods = %v, want %v", got, test.wantMethods)
 			}
 		})
+	}
+}
+
+func TestManagerStatusKeepsInternalRequestTimeoutAsWarning(t *testing.T) {
+	session := &fakeSession{
+		results: statusProbeResults("atx-power"),
+		err: map[string]error{
+			methodVideoState: classifyOperationError(context.DeadlineExceeded, ToolOutcomeUnknown),
+		},
+	}
+
+	status, err := testManager(t, session).Status(context.Background(), "lab")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !status.Connected || !reflect.DeepEqual(status.Warnings, []string{"video unavailable"}) {
+		t.Fatalf("status = %+v, want connected partial status with video warning", status)
+	}
+	wantMethods := []string{methodPing, methodLocalVersion, methodActiveExtension, methodVirtualMediaState, methodVideoState, methodUSBState, methodATXState}
+	if got := calledMethods(session.calls); !reflect.DeepEqual(got, wantMethods) {
+		t.Fatalf("methods = %v, want continued probes %v", got, wantMethods)
 	}
 }
 
