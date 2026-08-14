@@ -48,8 +48,18 @@ func (provider *WebRTCProvider) WithSession(ctx context.Context, device DeviceCo
 	if err != nil {
 		return err
 	}
-	defer connected.Close()
+	return withConnectedSession(ctx, connected, operation)
+}
+
+func withConnectedSession(ctx context.Context, connected *connectedSession, operation func(Session) error) error {
+	defer connected.CloseContext(ctx)
 	return operation(connected)
+}
+
+func closeConnectedOnError(ctx context.Context, connected *connectedSession, returnErr *error) {
+	if returnErr != nil && *returnErr != nil {
+		connected.CloseContext(ctx)
+	}
 }
 
 func (provider *WebRTCProvider) connect(ctx context.Context, device DeviceConfig, profile SessionProfile) (_ *connectedSession, returnErr error) {
@@ -76,11 +86,7 @@ func (provider *WebRTCProvider) connect(ctx context.Context, device DeviceConfig
 	if profile == SessionProfileVideo {
 		connected.video = newVideoReceiver()
 	}
-	defer func() {
-		if returnErr != nil {
-			connected.Close()
-		}
-	}()
+	defer closeConnectedOnError(ctx, connected, &returnErr)
 
 	var onTrack func(*webrtc.TrackRemote, *webrtc.RTPReceiver)
 	if profile == SessionProfileVideo {
@@ -240,8 +246,15 @@ func (session *connectedSession) CaptureH264(ctx context.Context) ([]byte, time.
 }
 
 func (session *connectedSession) Close() {
+	session.CloseContext(context.Background())
+}
+
+func (session *connectedSession) CloseContext(ctx context.Context) {
 	if session == nil {
 		return
+	}
+	if ctx == nil {
+		ctx = context.Background()
 	}
 	session.closeOnce.Do(func() {
 		session.pumpMu.Lock()
@@ -263,7 +276,15 @@ func (session *connectedSession) Close() {
 		if session.httpClient != nil {
 			session.httpClient.CloseIdleConnections()
 		}
-		session.pumps.Wait()
+		pumpsDone := make(chan struct{})
+		go func() {
+			session.pumps.Wait()
+			close(pumpsDone)
+		}()
+		select {
+		case <-pumpsDone:
+		case <-ctx.Done():
+		}
 	})
 }
 

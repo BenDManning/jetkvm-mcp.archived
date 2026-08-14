@@ -36,24 +36,24 @@
     {
       "meta": null,
       "name": "jetkvm_capture_screen",
-      "title": "",
-      "description": "Capture one fresh PNG from the host display attached to a configured JetKVM.",
+      "title": "Capture host screen",
+      "description": "Capture one fresh private PNG from the host display attached to a configured JetKVM. The result can contain any visible host secret and is returned only to the MCP caller, not written to disk. This read has no unknown mutation outcome; follow a failure's retryable flag before retrying.",
       "icons": null,
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
           "device": {
-            "description": "JetKVM device name from the server configuration",
+            "description": "configured JetKVM device name whose host display will be captured",
             "type": "string"
           },
           "max_height": {
-            "description": "maximum PNG height; omit to use the configured default",
+            "description": "maximum private PNG height from 1 through 2160; omit to use the configured default",
             "maximum": 2160,
             "minimum": 1,
             "type": "integer"
           },
           "max_width": {
-            "description": "maximum PNG width; omit to use the configured default",
+            "description": "maximum private PNG width from 1 through 3840; omit to use the configured default",
             "maximum": 3840,
             "minimum": 1,
             "type": "integer"
@@ -68,21 +68,27 @@
         "additionalProperties": false,
         "properties": {
           "capturedAt": {
+            "description": "time the private PNG was captured",
             "type": "string"
           },
           "device": {
+            "description": "configured device identifier",
             "type": "string"
           },
           "height": {
+            "description": "private PNG height in pixels",
             "type": "integer"
           },
           "mimeType": {
+            "description": "private PNG image MIME type",
             "type": "string"
           },
           "sizeBytes": {
+            "description": "private PNG byte count",
             "type": "integer"
           },
           "width": {
+            "description": "private PNG width in pixels",
             "type": "integer"
           }
         },
@@ -106,14 +112,14 @@
     {
       "meta": null,
       "name": "jetkvm_force_host_power_off",
-      "title": "",
-      "description": "Hold the attached host's ATX power button to force it off.",
+      "title": "Force host power off",
+      "description": "Hold the physical ATX power button of a configured attached host to force it off; this can interrupt work and cause data loss. If a mutation reports outcome unknown, do not blindly retry; inspect status first.",
       "icons": null,
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
           "device": {
-            "description": "JetKVM device name from the server configuration",
+            "description": "configured JetKVM device name",
             "type": "string"
           }
         },
@@ -126,15 +132,19 @@
         "additionalProperties": false,
         "properties": {
           "action": {
+            "description": "submitted power or wake action",
             "type": "string"
           },
           "device": {
+            "description": "configured device identifier",
             "type": "string"
           },
           "status": {
+            "description": "completed means the appliance RPC returned, not independent physical-state proof",
             "type": "string"
           },
           "target": {
+            "description": "configured Wake-on-LAN target identifier when applicable",
             "type": "string"
           }
         },
@@ -155,14 +165,14 @@
     {
       "meta": null,
       "name": "jetkvm_get_status",
-      "title": "",
-      "description": "Read the current status of a configured JetKVM and its attached host.",
+      "title": "Get JetKVM status",
+      "description": "Read private current appliance and attached-host status from a configured JetKVM without changing it. Status can expose power, video, USB, version, warning, and redacted media state. This read has no unknown mutation outcome; follow a failure's retryable flag before retrying.",
       "icons": null,
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
           "device": {
-            "description": "JetKVM device name from the server configuration",
+            "description": "configured JetKVM device name",
             "type": "string"
           }
         },
@@ -175,63 +185,79 @@
         "additionalProperties": false,
         "properties": {
           "activeExtension": {
+            "description": "private active appliance extension when reported",
             "type": "string"
           },
           "applicationVersion": {
+            "description": "private appliance application version when reported",
             "type": "string"
           },
           "atxPowerOn": {
+            "description": "private observed ATX host power state when reported",
             "type": [
               "null",
               "boolean"
             ]
           },
           "connected": {
+            "description": "whether the appliance status read connected",
             "type": "boolean"
           },
           "dcPowerOn": {
+            "description": "private observed DC output state when reported",
             "type": [
               "null",
               "boolean"
             ]
           },
           "dcVoltage": {
+            "description": "private observed DC voltage when reported",
             "type": "number"
           },
           "device": {
+            "description": "configured device identifier",
             "type": "string"
           },
           "systemVersion": {
+            "description": "private appliance system version when reported",
             "type": "string"
           },
           "usbState": {
+            "description": "private observed USB state when reported",
             "type": "string"
           },
           "usbWakeAttached": {
+            "description": "private observed USB wake attachment state when reported",
             "type": [
               "null",
               "boolean"
             ]
           },
           "videoFPS": {
+            "description": "private observed host video frame rate when reported",
             "type": "integer"
           },
           "videoHeight": {
+            "description": "private observed host video height when reported",
             "type": "integer"
           },
           "videoReady": {
+            "description": "private observed host video availability when reported",
             "type": [
               "null",
               "boolean"
             ]
           },
           "videoWidth": {
+            "description": "private observed host video width when reported",
             "type": "integer"
           },
           "virtualMedia": {
             "additionalProperties": false,
+            "description": "redacted observed virtual-media state when reported",
             "properties": {
               "mode": {
+                "description": "reported read_only or read_write mode when available",
                 "enum": [
                   "read_only",
                   "read_write"
@@ -239,9 +265,11 @@
                 "type": "string"
               },
               "mounted": {
+                "description": "whether firmware reports a mounted medium",
                 "type": "boolean"
               },
               "sourceType": {
+                "description": "redacted media source class; never a URL, path, or filename",
                 "enum": [
                   "http",
                   "storage"
@@ -255,6 +283,7 @@
             "type": "object"
           },
           "warnings": {
+            "description": "private appliance warnings when reported",
             "items": {
               "type": "string"
             },
@@ -280,14 +309,14 @@
     {
       "meta": null,
       "name": "jetkvm_get_virtual_media_status",
-      "title": "",
-      "description": "Read the current virtual-media mount state of a configured JetKVM without changing it. Requires only a configured device. Returns the firmware-reported mount state from this read; it does not prove that a later mutation is safe.",
+      "title": "Get virtual-media status",
+      "description": "Read the current virtual-media mount state of a configured JetKVM without changing it. The result is a redacted source class and mode, never a URL, path, filename, or raw firmware fields. This read has no unknown mutation outcome; follow a failure's retryable flag before retrying.",
       "icons": null,
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
           "device": {
-            "description": "JetKVM device name from the server configuration",
+            "description": "configured JetKVM device name",
             "type": "string"
           }
         },
@@ -300,9 +329,11 @@
         "additionalProperties": false,
         "properties": {
           "device": {
+            "description": "configured device identifier",
             "type": "string"
           },
           "mode": {
+            "description": "reported read_only or read_write mode when available",
             "enum": [
               "read_only",
               "read_write"
@@ -310,9 +341,11 @@
             "type": "string"
           },
           "mounted": {
+            "description": "reported mount state",
             "type": "boolean"
           },
           "operation": {
+            "description": "submitted or observed virtual-media operation",
             "enum": [
               "status",
               "mount_url",
@@ -323,6 +356,7 @@
             "type": "string"
           },
           "sourceType": {
+            "description": "redacted media source class; never a URL, path, or filename",
             "enum": [
               "http",
               "storage"
@@ -330,6 +364,7 @@
             "type": "string"
           },
           "status": {
+            "description": "observed for status, completed for an acknowledged mutation; neither independently proves final device state",
             "enum": [
               "observed",
               "completed"
@@ -355,8 +390,8 @@
     {
       "meta": null,
       "name": "jetkvm_keyboard",
-      "title": "",
-      "description": "Type bounded text or press one named key through JetKVM USB HID.",
+      "title": "Send keyboard input",
+      "description": "Send private bounded US-ASCII text or one named key through USB HID to a configured attached host; it can enter credentials, execute commands, or alter host data. Input is transient and not logged. If a mutation reports outcome unknown, do not blindly retry; inspect host state first.",
       "icons": null,
       "inputSchema": {
         "additionalProperties": false,
@@ -411,17 +446,17 @@
         ],
         "properties": {
           "device": {
-            "description": "JetKVM device name from the server configuration",
+            "description": "configured JetKVM device name whose attached host receives HID input",
             "type": "string"
           },
           "key": {
-            "description": "named key or one printable character for press_key",
+            "description": "named key or one printable character for press_key; this host-control intent is private operational data",
             "minLength": 1,
             "pattern": "[!-~]",
             "type": "string"
           },
           "modifiers": {
-            "description": "optional ctrl, alt, shift, meta modifiers",
+            "description": "optional ctrl, alt, shift, meta modifiers for press_key; this host-control intent is private operational data",
             "items": {
               "enum": [
                 "ctrl",
@@ -437,7 +472,7 @@
             ]
           },
           "operation": {
-            "description": "typed keyboard operation",
+            "description": "HID operation: type_text or press_key",
             "enum": [
               "type_text",
               "press_key"
@@ -445,7 +480,7 @@
             "type": "string"
           },
           "text": {
-            "description": "text to type for type_text",
+            "description": "private US-ASCII text for type_text, at most 4096 bytes; it is sent transiently and not logged",
             "maxLength": 4096,
             "minLength": 1,
             "pattern": "^[\t\\n\\r\\x20-\\x7E]+$",
@@ -462,12 +497,15 @@
         "additionalProperties": false,
         "properties": {
           "device": {
+            "description": "configured device identifier",
             "type": "string"
           },
           "operation": {
+            "description": "submitted HID keyboard operation, not typed text",
             "type": "string"
           },
           "status": {
+            "description": "completed means the HID RPC returned, not independent host-state proof",
             "type": "string"
           }
         },
@@ -488,8 +526,8 @@
     {
       "meta": null,
       "name": "jetkvm_list_devices",
-      "title": "",
-      "description": "List configured JetKVM aliases and configuration-derived tool availability flags without contacting a device. Flags report only whether required local configuration exists; they do not qualify firmware or prove hardware support.",
+      "title": "List configured JetKVM devices",
+      "description": "List configured JetKVM aliases and configuration-derived availability flags without contacting a device. Results contain private deployment identifiers but omit URLs, credentials, origins, media paths, and Wake-on-LAN details. This read has no unknown mutation outcome; follow a failure's retryable flag before retrying.",
       "icons": null,
       "inputSchema": {
         "additionalProperties": false,
@@ -499,22 +537,28 @@
         "additionalProperties": false,
         "properties": {
           "devices": {
+            "description": "configured device aliases in deterministic order",
             "items": {
               "additionalProperties": false,
               "properties": {
                 "capabilities": {
                   "additionalProperties": false,
+                  "description": "configuration-derived availability flags, not firmware qualification",
                   "properties": {
                     "mountVirtualMediaFile": {
+                      "description": "whether a configured local media directory exists",
                       "type": "boolean"
                     },
                     "mountVirtualMediaURL": {
+                      "description": "whether required URL-mount configuration exists",
                       "type": "boolean"
                     },
                     "uploadVirtualMediaFile": {
+                      "description": "whether a configured local media directory exists",
                       "type": "boolean"
                     },
                     "wakeHostLAN": {
+                      "description": "whether configured Wake-on-LAN targets exist",
                       "type": "boolean"
                     }
                   },
@@ -527,6 +571,7 @@
                   "type": "object"
                 },
                 "device": {
+                  "description": "configured device alias",
                   "type": "string"
                 }
               },
@@ -557,18 +602,18 @@
     {
       "meta": null,
       "name": "jetkvm_mount_virtual_media_file",
-      "title": "",
-      "description": "Upload one confined local media file and replace the configured JetKVM's current mount. Requires a configured media directory and a non-empty relative path confined beneath it. Success means upload and mount RPCs completed, not that an external observer verified the mount; inspect status before another mutation.",
+      "title": "Mount virtual media from file",
+      "description": "Upload one private confined local media file and replace the configured JetKVM's current mount. Requires a configured media directory and a non-empty relative path beneath it. If a mutation reports outcome unknown, do not blindly retry; inspect status first.",
       "icons": null,
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
           "device": {
-            "description": "JetKVM device name from the server configuration",
+            "description": "configured JetKVM device name with a media directory",
             "type": "string"
           },
           "mode": {
-            "description": "read_only or read_write; defaults to read_only",
+            "description": "read_only or read_write mount mode; defaults to read_only",
             "enum": [
               "read_only",
               "read_write"
@@ -576,7 +621,7 @@
             "type": "string"
           },
           "path": {
-            "description": "relative path below the device's configured media directory",
+            "description": "private relative local-media path confined below the device's configured media directory",
             "maxLength": 4096,
             "minLength": 1,
             "type": "string"
@@ -592,9 +637,11 @@
         "additionalProperties": false,
         "properties": {
           "device": {
+            "description": "configured device identifier",
             "type": "string"
           },
           "mode": {
+            "description": "reported read_only or read_write mode when available",
             "enum": [
               "read_only",
               "read_write"
@@ -602,9 +649,11 @@
             "type": "string"
           },
           "mounted": {
+            "description": "reported mount state",
             "type": "boolean"
           },
           "operation": {
+            "description": "submitted or observed virtual-media operation",
             "enum": [
               "status",
               "mount_url",
@@ -615,6 +664,7 @@
             "type": "string"
           },
           "sourceType": {
+            "description": "redacted media source class; never a URL, path, or filename",
             "enum": [
               "http",
               "storage"
@@ -622,6 +672,7 @@
             "type": "string"
           },
           "status": {
+            "description": "observed for status, completed for an acknowledged mutation; neither independently proves final device state",
             "enum": [
               "observed",
               "completed"
@@ -647,18 +698,18 @@
     {
       "meta": null,
       "name": "jetkvm_mount_virtual_media_url",
-      "title": "",
-      "description": "Ask the configured JetKVM appliance to fetch an HTTP(S) URL whose scheme, host, and effective port match a configured exact origin, then replace its current virtual-media mount. URL mounting is unavailable without an allowed origin. Success acknowledges the firmware RPC but does not independently verify the resulting mount; inspect status before deciding whether another mutation is safe.",
+      "title": "Mount virtual media from URL",
+      "description": "Ask the configured JetKVM appliance to fetch a private HTTP(S) URL whose scheme, host, and effective port match a configured exact origin, then replace its current virtual-media mount. URL mounting is unavailable without an allowed origin. If a mutation reports outcome unknown, do not blindly retry; inspect status first.",
       "icons": null,
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
           "device": {
-            "description": "JetKVM device name from the server configuration",
+            "description": "configured JetKVM device name with an allowed media URL origin",
             "type": "string"
           },
           "mode": {
-            "description": "read_only or read_write; defaults to read_only",
+            "description": "read_only or read_write mount mode; defaults to read_only",
             "enum": [
               "read_only",
               "read_write"
@@ -666,7 +717,7 @@
             "type": "string"
           },
           "url": {
-            "description": "HTTP(S) media URL fetched by the configured JetKVM",
+            "description": "private HTTP(S) media URL; the appliance fetches it only when its origin matches configured exact scheme, host, and effective port",
             "maxLength": 4096,
             "minLength": 1,
             "type": "string"
@@ -682,9 +733,11 @@
         "additionalProperties": false,
         "properties": {
           "device": {
+            "description": "configured device identifier",
             "type": "string"
           },
           "mode": {
+            "description": "reported read_only or read_write mode when available",
             "enum": [
               "read_only",
               "read_write"
@@ -692,9 +745,11 @@
             "type": "string"
           },
           "mounted": {
+            "description": "reported mount state",
             "type": "boolean"
           },
           "operation": {
+            "description": "submitted or observed virtual-media operation",
             "enum": [
               "status",
               "mount_url",
@@ -705,6 +760,7 @@
             "type": "string"
           },
           "sourceType": {
+            "description": "redacted media source class; never a URL, path, or filename",
             "enum": [
               "http",
               "storage"
@@ -712,6 +768,7 @@
             "type": "string"
           },
           "status": {
+            "description": "observed for status, completed for an acknowledged mutation; neither independently proves final device state",
             "enum": [
               "observed",
               "completed"
@@ -737,8 +794,8 @@
     {
       "meta": null,
       "name": "jetkvm_mouse",
-      "title": "",
-      "description": "Move, click, or scroll the host pointer through JetKVM USB HID.",
+      "title": "Send mouse input",
+      "description": "Move, click, or scroll a configured attached host's pointer through USB HID; clicks can activate destructive host UI actions. If a mutation reports outcome unknown, do not blindly retry; inspect host state first.",
       "icons": null,
       "inputSchema": {
         "additionalProperties": false,
@@ -942,7 +999,7 @@
         ],
         "properties": {
           "button": {
-            "description": "left, middle, or right button for click",
+            "description": "left, middle, or right button for click; can activate host UI actions",
             "enum": [
               "left",
               "middle",
@@ -951,23 +1008,23 @@
             "type": "string"
           },
           "device": {
-            "description": "JetKVM device name from the server configuration",
+            "description": "configured JetKVM device name whose attached host receives HID input",
             "type": "string"
           },
           "dx": {
-            "description": "relative horizontal movement",
+            "description": "relative horizontal movement for move_relative",
             "maximum": 127,
             "minimum": -128,
             "type": "integer"
           },
           "dy": {
-            "description": "relative vertical movement",
+            "description": "relative vertical movement for move_relative",
             "maximum": 127,
             "minimum": -128,
             "type": "integer"
           },
           "operation": {
-            "description": "typed mouse operation",
+            "description": "HID operation: move_absolute, move_relative, click, or scroll",
             "enum": [
               "move_absolute",
               "move_relative",
@@ -977,25 +1034,25 @@
             "type": "string"
           },
           "wheel_x": {
-            "description": "horizontal wheel movement",
+            "description": "horizontal wheel movement for scroll",
             "maximum": 127,
             "minimum": -128,
             "type": "integer"
           },
           "wheel_y": {
-            "description": "vertical wheel movement",
+            "description": "vertical wheel movement for scroll",
             "maximum": 127,
             "minimum": -128,
             "type": "integer"
           },
           "x": {
-            "description": "absolute x coordinate from 0 through 32767",
+            "description": "absolute x coordinate from 0 through 32767 for move_absolute",
             "maximum": 32767,
             "minimum": 0,
             "type": "integer"
           },
           "y": {
-            "description": "absolute y coordinate from 0 through 32767",
+            "description": "absolute y coordinate from 0 through 32767 for move_absolute",
             "maximum": 32767,
             "minimum": 0,
             "type": "integer"
@@ -1011,12 +1068,15 @@
         "additionalProperties": false,
         "properties": {
           "device": {
+            "description": "configured device identifier",
             "type": "string"
           },
           "operation": {
+            "description": "submitted HID mouse operation",
             "type": "string"
           },
           "status": {
+            "description": "completed means the HID RPC returned, not independent host-state proof",
             "type": "string"
           }
         },
@@ -1037,14 +1097,14 @@
     {
       "meta": null,
       "name": "jetkvm_press_host_power_button",
-      "title": "",
-      "description": "Briefly press the attached host's ATX power button.",
+      "title": "Press host power button",
+      "description": "Briefly press the physical ATX power button of a configured attached host; host firmware or OS behavior may change power state. If a mutation reports outcome unknown, do not blindly retry; inspect status first.",
       "icons": null,
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
           "device": {
-            "description": "JetKVM device name from the server configuration",
+            "description": "configured JetKVM device name",
             "type": "string"
           }
         },
@@ -1057,15 +1117,19 @@
         "additionalProperties": false,
         "properties": {
           "action": {
+            "description": "submitted power or wake action",
             "type": "string"
           },
           "device": {
+            "description": "configured device identifier",
             "type": "string"
           },
           "status": {
+            "description": "completed means the appliance RPC returned, not independent physical-state proof",
             "type": "string"
           },
           "target": {
+            "description": "configured Wake-on-LAN target identifier when applicable",
             "type": "string"
           }
         },
@@ -1086,14 +1150,14 @@
     {
       "meta": null,
       "name": "jetkvm_press_host_reset_button",
-      "title": "",
-      "description": "Briefly press the attached host's reset button.",
+      "title": "Press host reset button",
+      "description": "Briefly press the physical reset button of a configured attached host; this can interrupt work or corrupt data. If a mutation reports outcome unknown, do not blindly retry; inspect status first.",
       "icons": null,
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
           "device": {
-            "description": "JetKVM device name from the server configuration",
+            "description": "configured JetKVM device name",
             "type": "string"
           }
         },
@@ -1106,15 +1170,19 @@
         "additionalProperties": false,
         "properties": {
           "action": {
+            "description": "submitted power or wake action",
             "type": "string"
           },
           "device": {
+            "description": "configured device identifier",
             "type": "string"
           },
           "status": {
+            "description": "completed means the appliance RPC returned, not independent physical-state proof",
             "type": "string"
           },
           "target": {
+            "description": "configured Wake-on-LAN target identifier when applicable",
             "type": "string"
           }
         },
@@ -1135,14 +1203,14 @@
     {
       "meta": null,
       "name": "jetkvm_turn_host_dc_power_off",
-      "title": "",
-      "description": "Turn off the JetKVM-controlled DC output for the attached host.",
+      "title": "Turn host DC power off",
+      "description": "Disable the physical JetKVM-controlled DC output for a configured attached host, which can interrupt work and cause data loss. The request is intended to converge, but if its outcome is unknown do not blindly retry; inspect status first.",
       "icons": null,
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
           "device": {
-            "description": "JetKVM device name from the server configuration",
+            "description": "configured JetKVM device name",
             "type": "string"
           }
         },
@@ -1155,15 +1223,19 @@
         "additionalProperties": false,
         "properties": {
           "action": {
+            "description": "submitted power or wake action",
             "type": "string"
           },
           "device": {
+            "description": "configured device identifier",
             "type": "string"
           },
           "status": {
+            "description": "completed means the appliance RPC returned, not independent physical-state proof",
             "type": "string"
           },
           "target": {
+            "description": "configured Wake-on-LAN target identifier when applicable",
             "type": "string"
           }
         },
@@ -1184,14 +1256,14 @@
     {
       "meta": null,
       "name": "jetkvm_turn_host_dc_power_on",
-      "title": "",
-      "description": "Turn on the JetKVM-controlled DC output for the attached host.",
+      "title": "Turn host DC power on",
+      "description": "Enable the physical JetKVM-controlled DC output for a configured attached host, which may boot equipment. The request is intended to converge, but if its outcome is unknown do not blindly retry; inspect status first.",
       "icons": null,
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
           "device": {
-            "description": "JetKVM device name from the server configuration",
+            "description": "configured JetKVM device name",
             "type": "string"
           }
         },
@@ -1204,15 +1276,19 @@
         "additionalProperties": false,
         "properties": {
           "action": {
+            "description": "submitted power or wake action",
             "type": "string"
           },
           "device": {
+            "description": "configured device identifier",
             "type": "string"
           },
           "status": {
+            "description": "completed means the appliance RPC returned, not independent physical-state proof",
             "type": "string"
           },
           "target": {
+            "description": "configured Wake-on-LAN target identifier when applicable",
             "type": "string"
           }
         },
@@ -1233,14 +1309,14 @@
     {
       "meta": null,
       "name": "jetkvm_unmount_virtual_media",
-      "title": "",
-      "description": "Unmount the configured JetKVM's current virtual media. Requires only a configured device; the request is valid even when no media is mounted. Success acknowledges the firmware RPC but does not independently verify that media is absent; inspect status before another mutation.",
+      "title": "Unmount virtual media",
+      "description": "Unmount a configured JetKVM's current virtual media. The request is valid even when no media is mounted and is intended to converge. If a mutation reports outcome unknown, do not blindly retry; inspect status first.",
       "icons": null,
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
           "device": {
-            "description": "JetKVM device name from the server configuration",
+            "description": "configured JetKVM device name",
             "type": "string"
           }
         },
@@ -1253,9 +1329,11 @@
         "additionalProperties": false,
         "properties": {
           "device": {
+            "description": "configured device identifier",
             "type": "string"
           },
           "mode": {
+            "description": "reported read_only or read_write mode when available",
             "enum": [
               "read_only",
               "read_write"
@@ -1263,9 +1341,11 @@
             "type": "string"
           },
           "mounted": {
+            "description": "reported mount state",
             "type": "boolean"
           },
           "operation": {
+            "description": "submitted or observed virtual-media operation",
             "enum": [
               "status",
               "mount_url",
@@ -1276,6 +1356,7 @@
             "type": "string"
           },
           "sourceType": {
+            "description": "redacted media source class; never a URL, path, or filename",
             "enum": [
               "http",
               "storage"
@@ -1283,6 +1364,7 @@
             "type": "string"
           },
           "status": {
+            "description": "observed for status, completed for an acknowledged mutation; neither independently proves final device state",
             "enum": [
               "observed",
               "completed"
@@ -1308,18 +1390,18 @@
     {
       "meta": null,
       "name": "jetkvm_upload_virtual_media_file",
-      "title": "",
-      "description": "Upload one confined local media file to the configured JetKVM without mounting it. Requires a configured media directory and a non-empty relative path confined beneath it. Success means the upload completed without a mount request; the appliance retains the stored file outside this process.",
+      "title": "Upload virtual-media file",
+      "description": "Upload one private confined local media file to appliance storage on a configured JetKVM without mounting it. Requires a configured media directory and a non-empty relative path beneath it; appliance storage retention is outside this process. If a mutation reports outcome unknown, do not blindly retry; inspect status first.",
       "icons": null,
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
           "device": {
-            "description": "JetKVM device name from the server configuration",
+            "description": "configured JetKVM device name with a media directory",
             "type": "string"
           },
           "path": {
-            "description": "relative path below the device's configured media directory",
+            "description": "private relative local-media path confined below the device's configured media directory",
             "maxLength": 4096,
             "minLength": 1,
             "type": "string"
@@ -1335,9 +1417,11 @@
         "additionalProperties": false,
         "properties": {
           "device": {
+            "description": "configured device identifier",
             "type": "string"
           },
           "mode": {
+            "description": "reported read_only or read_write mode when available",
             "enum": [
               "read_only",
               "read_write"
@@ -1345,9 +1429,11 @@
             "type": "string"
           },
           "mounted": {
+            "description": "reported mount state",
             "type": "boolean"
           },
           "operation": {
+            "description": "submitted or observed virtual-media operation",
             "enum": [
               "status",
               "mount_url",
@@ -1358,6 +1444,7 @@
             "type": "string"
           },
           "sourceType": {
+            "description": "redacted media source class; never a URL, path, or filename",
             "enum": [
               "http",
               "storage"
@@ -1365,6 +1452,7 @@
             "type": "string"
           },
           "status": {
+            "description": "observed for status, completed for an acknowledged mutation; neither independently proves final device state",
             "enum": [
               "observed",
               "completed"
@@ -1390,22 +1478,22 @@
     {
       "meta": null,
       "name": "jetkvm_virtual_media",
-      "title": "",
-      "description": "Deprecated compatibility tool for virtual-media status, mount, unmount, and upload operations; use the one-purpose jetkvm_*_virtual_media* tools instead.",
+      "title": "Virtual media (deprecated)",
+      "description": "Deprecated compatibility tool for configured virtual-media status, mount, unmount, and upload operations; use the one-purpose jetkvm_*_virtual_media* tools instead. Status is read-only, while mount and upload can alter appliance storage or network state. If a mutation reports outcome unknown, do not blindly retry; inspect status first.",
       "icons": null,
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
           "device": {
-            "description": "JetKVM device name from the server configuration",
+            "description": "configured JetKVM device name",
             "type": "string"
           },
           "mode": {
-            "description": "read_only or read_write; defaults to read_only",
+            "description": "read_only or read_write mount mode; defaults to read_only",
             "type": "string"
           },
           "operation": {
-            "description": "typed virtual-media operation",
+            "description": "deprecated compatibility operation: status, mount_url, mount_file, unmount, or upload",
             "enum": [
               "status",
               "mount_url",
@@ -1416,7 +1504,7 @@
             "type": "string"
           },
           "source": {
-            "description": "URL or configured-media-directory path required by the selected operation",
+            "description": "private URL or configured-media-directory relative path required by the selected operation; never returned in media state",
             "type": "string"
           }
         },
@@ -1430,9 +1518,11 @@
         "additionalProperties": false,
         "properties": {
           "device": {
+            "description": "configured device identifier",
             "type": "string"
           },
           "mode": {
+            "description": "reported read_only or read_write mode when available",
             "enum": [
               "read_only",
               "read_write"
@@ -1440,9 +1530,11 @@
             "type": "string"
           },
           "mounted": {
+            "description": "reported mount state",
             "type": "boolean"
           },
           "operation": {
+            "description": "submitted or observed virtual-media operation",
             "enum": [
               "status",
               "mount_url",
@@ -1453,6 +1545,7 @@
             "type": "string"
           },
           "sourceType": {
+            "description": "redacted media source class; never a URL, path, or filename",
             "enum": [
               "http",
               "storage"
@@ -1460,6 +1553,7 @@
             "type": "string"
           },
           "status": {
+            "description": "observed for status, completed for an acknowledged mutation; neither independently proves final device state",
             "enum": [
               "observed",
               "completed"
@@ -1485,18 +1579,18 @@
     {
       "meta": null,
       "name": "jetkvm_wake_host_lan",
-      "title": "",
-      "description": "Send Wake-on-LAN to a named target configured for this JetKVM.",
+      "title": "Wake host over LAN",
+      "description": "Make the configured JetKVM send a Wake-on-LAN network magic packet to a named configured target; callers cannot supply an arbitrary MAC address. The request is intended to converge, but if its outcome is unknown do not blindly retry; inspect status first.",
       "icons": null,
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
           "device": {
-            "description": "JetKVM device name from the server configuration",
+            "description": "configured JetKVM device name",
             "type": "string"
           },
           "target": {
-            "description": "Configured Wake-on-LAN target name",
+            "description": "configured Wake-on-LAN target name; it does not accept arbitrary network destinations",
             "type": "string"
           }
         },
@@ -1510,15 +1604,19 @@
         "additionalProperties": false,
         "properties": {
           "action": {
+            "description": "submitted power or wake action",
             "type": "string"
           },
           "device": {
+            "description": "configured device identifier",
             "type": "string"
           },
           "status": {
+            "description": "completed means the appliance RPC returned, not independent physical-state proof",
             "type": "string"
           },
           "target": {
+            "description": "configured Wake-on-LAN target identifier when applicable",
             "type": "string"
           }
         },
@@ -1539,14 +1637,14 @@
     {
       "meta": null,
       "name": "jetkvm_wake_host_usb",
-      "title": "",
-      "description": "Wake the attached host through JetKVM USB HID.",
+      "title": "Wake host over USB",
+      "description": "Send a USB HID wake action to a configured attached host, which may resume or boot it. The request is intended to converge, but if its outcome is unknown do not blindly retry; inspect status first.",
       "icons": null,
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
           "device": {
-            "description": "JetKVM device name from the server configuration",
+            "description": "configured JetKVM device name",
             "type": "string"
           }
         },
@@ -1559,15 +1657,19 @@
         "additionalProperties": false,
         "properties": {
           "action": {
+            "description": "submitted power or wake action",
             "type": "string"
           },
           "device": {
+            "description": "configured device identifier",
             "type": "string"
           },
           "status": {
+            "description": "completed means the appliance RPC returned, not independent physical-state proof",
             "type": "string"
           },
           "target": {
+            "description": "configured Wake-on-LAN target identifier when applicable",
             "type": "string"
           }
         },

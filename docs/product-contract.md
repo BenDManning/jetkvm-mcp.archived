@@ -150,6 +150,12 @@ intentional breaking output-contract change relative to v0.1.0 and therefore
 requires the next release carrying it to use the major version `v1.0.0` or
 later under this contract's pre-1.0 SemVer rules.
 
+Each `jetkvm_capture_screen` operation has a server-owned 30-second maximum,
+including fresh video-session setup, fresh-frame wait, and local PNG decode.
+This bound applies even when a caller provides no deadline; an earlier caller
+cancellation or deadline takes precedence. Expiry is returned through the
+normal read-error timeout result.
+
 Virtual-media URL mounting is also intentionally deny-by-default. Each device
 must configure one or more `media_url_allowed_origins`; omitting the field makes
 URL mounting unavailable while leaving status and local-file operations subject
