@@ -150,6 +150,12 @@ func TestRunFailsClosedForUnsafeOrIncompletePlan(t *testing.T) {
 		{name: "unconfirmed identity", mutate: func(plan map[string]any) { plan["target"].(map[string]any)["identity_confirmed"] = false }},
 		{name: "production target", mutate: func(plan map[string]any) { plan["target"].(map[string]any)["non_production"] = false }},
 		{name: "execution approval embedded", mutate: func(plan map[string]any) { plan["controls"].(map[string]any)["execution_approved"] = true }},
+		{name: "execution approval omitted", mutate: func(plan map[string]any) {
+			delete(plan["controls"].(map[string]any), "execution_approved")
+		}},
+		{name: "execution approval null", mutate: func(plan map[string]any) {
+			plan["controls"].(map[string]any)["execution_approved"] = nil
+		}},
 		{name: "missing observer", mutate: func(plan map[string]any) { plan["controls"].(map[string]any)["observer_ready"] = false }},
 		{name: "missing keyboard operation", mutate: func(plan map[string]any) {
 			delete(plan["steps"].([]any)[0].(map[string]any), "hid_operation")
@@ -178,8 +184,14 @@ func TestRunFailsClosedForUnsafeOrIncompletePlan(t *testing.T) {
 			delete(plan["steps"].([]any)[9].(map[string]any), "integrity_check_planned")
 		}},
 		{name: "mount without cleanup", mutate: func(plan map[string]any) { delete(plan["steps"].([]any)[10].(map[string]any), "cleanup_planned") }},
+		{name: "mount URL with null integrity", mutate: func(plan map[string]any) {
+			plan["steps"].([]any)[10].(map[string]any)["integrity_check_planned"] = nil
+		}},
 		{name: "mount file without integrity", mutate: func(plan map[string]any) {
 			delete(plan["steps"].([]any)[11].(map[string]any), "integrity_check_planned")
+		}},
+		{name: "power step with null cleanup", mutate: func(plan map[string]any) {
+			plan["steps"].([]any)[2].(map[string]any)["cleanup_planned"] = nil
 		}},
 		{name: "deprecated combined tool", mutate: func(plan map[string]any) {
 			plan["steps"].([]any)[0].(map[string]any)["operation"] = "jetkvm_virtual_media"
@@ -293,6 +305,7 @@ func TestProductContractDeclaresMutationChecklistCompatibilitySurface(t *testing
 		"`execution_authorized`",
 		"1 through 300",
 		"exactly 13",
+		"Member names are case-sensitive.",
 	}
 	for _, operation := range expectedOperations {
 		requiredFields = append(requiredFields, "`"+operation+"`")
@@ -300,6 +313,29 @@ func TestProductContractDeclaresMutationChecklistCompatibilitySurface(t *testing
 	for _, required := range requiredFields {
 		if !strings.Contains(section, required) {
 			t.Fatalf("product contract plan/report section missing %q", required)
+		}
+	}
+}
+
+func TestREADMEContainsMergedOperationalGuidanceWithoutConflictMarkers(t *testing.T) {
+	root := filepath.Clean(filepath.Join("..", ".."))
+	document, err := os.ReadFile(filepath.Join(root, "README.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(document)
+	for _, marker := range []string{"<<<<<<<", "=======", ">>>>>>>"} {
+		if strings.Contains(text, marker) {
+			t.Fatalf("README contains merge marker %q", marker)
+		}
+	}
+	for _, required := range []string{
+		"### Mutation-validation dry run",
+		"docs/mutation-validation.md",
+		"docs/compatibility/README.md",
+	} {
+		if !strings.Contains(text, required) {
+			t.Fatalf("README missing merged operational guidance %q", required)
 		}
 	}
 }
@@ -323,6 +359,8 @@ func TestRunRejectsArgumentsMalformedAndTrailingJSON(t *testing.T) {
 		{name: "duplicate root member", data: strings.Replace(validJSON, `"mode":"dry_run"`, `"mode":"execute","mode":"dry_run"`, 1), want: 1},
 		{name: "duplicate nested member", data: strings.Replace(validJSON, `"marked_expendable":true`, `"marked_expendable":false,"marked_expendable":true`, 1), want: 1},
 		{name: "duplicate step member", data: strings.Replace(validJSON, `"operation":"jetkvm_keyboard"`, `"operation":"jetkvm_mouse","operation":"jetkvm_keyboard"`, 1), want: 1},
+		{name: "case variant member", data: strings.Replace(validJSON, `"execution_approved":false`, `"Execution_Approved":false`, 1), want: 1},
+		{name: "conflicting case variant members", data: strings.Replace(validJSON, `"execution_approved":false`, `"execution_approved":true,"Execution_Approved":false`, 1), want: 1},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			args := test.args

@@ -48,6 +48,31 @@ var allowedHIDOperations = map[string]map[string]struct{}{
 	},
 }
 
+var allowedPlanMemberNames = map[string]struct{}{
+	"schema":                      {},
+	"mode":                        {},
+	"target":                      {},
+	"controls":                    {},
+	"steps":                       {},
+	"marked_expendable":           {},
+	"identity_confirmed":          {},
+	"non_production":              {},
+	"observer_ready":              {},
+	"recovery_ready":              {},
+	"emergency_stop_ready":        {},
+	"per_plan_acknowledgement":    {},
+	"execution_approved":          {},
+	"operation":                   {},
+	"hid_operation":               {},
+	"consequence_acknowledged":    {},
+	"preconditions_confirmed":     {},
+	"postcondition_observable":    {},
+	"timeout_seconds":             {},
+	"never_retry_unknown_outcome": {},
+	"integrity_check_planned":     {},
+	"cleanup_planned":             {},
+}
+
 type plan struct {
 	Schema   string   `json:"schema"`
 	Mode     string   `json:"mode"`
@@ -63,11 +88,28 @@ type target struct {
 }
 
 type controls struct {
-	ObserverReady          bool `json:"observer_ready"`
-	RecoveryReady          bool `json:"recovery_ready"`
-	EmergencyStopReady     bool `json:"emergency_stop_ready"`
-	PerPlanAcknowledgement bool `json:"per_plan_acknowledgement"`
-	ExecutionApproved      bool `json:"execution_approved"`
+	ObserverReady          bool         `json:"observer_ready"`
+	RecoveryReady          bool         `json:"recovery_ready"`
+	EmergencyStopReady     bool         `json:"emergency_stop_ready"`
+	PerPlanAcknowledgement bool         `json:"per_plan_acknowledgement"`
+	ExecutionApproved      optionalBool `json:"execution_approved"`
+}
+
+type optionalBool struct {
+	Value   bool
+	Present bool
+}
+
+func (value *optionalBool) UnmarshalJSON(data []byte) error {
+	*value = optionalBool{}
+	if bytes.Equal(bytes.TrimSpace(data), []byte("null")) {
+		return errors.New("null boolean")
+	}
+	if err := json.Unmarshal(data, &value.Value); err != nil {
+		return err
+	}
+	value.Present = true
+	return nil
 }
 
 type optionalString struct {
@@ -98,8 +140,8 @@ type step struct {
 	TimeoutSeconds           int            `json:"timeout_seconds"`
 	RecoveryReady            bool           `json:"recovery_ready"`
 	NeverRetryUnknownOutcome bool           `json:"never_retry_unknown_outcome"`
-	IntegrityCheckPlanned    *bool          `json:"integrity_check_planned,omitempty"`
-	CleanupPlanned           *bool          `json:"cleanup_planned,omitempty"`
+	IntegrityCheckPlanned    optionalBool   `json:"integrity_check_planned,omitempty"`
+	CleanupPlanned           optionalBool   `json:"cleanup_planned,omitempty"`
 }
 
 type report struct {
@@ -158,7 +200,7 @@ func readPlan(path string) (plan, error) {
 	if err != nil || len(data) > maxPlanBytes {
 		return plan{}, errors.New("invalid plan input")
 	}
-	if err := rejectDuplicateJSONMembers(data); err != nil {
+	if err := rejectUnsafeJSONMembers(data); err != nil {
 		return plan{}, errors.New("invalid plan input")
 	}
 	var value plan
@@ -174,7 +216,7 @@ func readPlan(path string) (plan, error) {
 	return value, nil
 }
 
-func rejectDuplicateJSONMembers(data []byte) error {
+func rejectUnsafeJSONMembers(data []byte) error {
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	if err := scanJSONValue(decoder); err != nil {
 		return err
@@ -208,6 +250,9 @@ func scanJSONValue(decoder *json.Decoder) error {
 			}
 			if _, duplicate := seen[key]; duplicate {
 				return errors.New("duplicate JSON object member")
+			}
+			if _, allowed := allowedPlanMemberNames[key]; !allowed {
+				return errors.New("unknown JSON object member")
 			}
 			seen[key] = struct{}{}
 			if err := scanJSONValue(decoder); err != nil {
@@ -255,7 +300,7 @@ func validatePlan(value plan) error {
 		return errors.New("invalid target controls")
 	}
 	if !value.Controls.ObserverReady || !value.Controls.RecoveryReady || !value.Controls.EmergencyStopReady ||
-		!value.Controls.PerPlanAcknowledgement || value.Controls.ExecutionApproved {
+		!value.Controls.PerPlanAcknowledgement || !value.Controls.ExecutionApproved.Present || value.Controls.ExecutionApproved.Value {
 		return errors.New("invalid execution controls")
 	}
 	if len(value.Steps) != len(requiredOperations) {
@@ -297,13 +342,13 @@ func validHIDOperation(value step) bool {
 }
 
 func validMediaControls(value step) bool {
-	trueValue := func(pointer *bool) bool { return pointer != nil && *pointer }
+	trueValue := func(control optionalBool) bool { return control.Present && control.Value }
 	switch value.Operation {
 	case "jetkvm_upload_virtual_media_file", "jetkvm_mount_virtual_media_file":
 		return trueValue(value.IntegrityCheckPlanned) && trueValue(value.CleanupPlanned)
 	case "jetkvm_mount_virtual_media_url", "jetkvm_unmount_virtual_media":
-		return value.IntegrityCheckPlanned == nil && trueValue(value.CleanupPlanned)
+		return !value.IntegrityCheckPlanned.Present && trueValue(value.CleanupPlanned)
 	default:
-		return value.IntegrityCheckPlanned == nil && value.CleanupPlanned == nil
+		return !value.IntegrityCheckPlanned.Present && !value.CleanupPlanned.Present
 	}
 }

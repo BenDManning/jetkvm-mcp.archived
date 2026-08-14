@@ -262,7 +262,6 @@ paths, device names, server logs, status values, error details, and image data.
 The capture call has a dedicated 30-second deadline, and its PNG buffer is
 cleared after full in-memory decoding.
 
- <<<<<<< issue-26-mutation-validation
 ### Mutation-validation dry run
 
 Before any separately approved live mutation window, validate the checked
@@ -277,12 +276,11 @@ go run ./cmd/jetkvm-mcp-mutation-checklist \
 This source-run command only validates a closed dry-run plan. It has no device
 or MCP execution path, and even a passing report explicitly states that
 execution is not authorized.
- =======
+
 The compact compatibility ledger, focused offline upstream-drift command, and
 evidence-refresh triggers are documented in
 [`docs/compatibility/`](docs/compatibility/README.md). Source review, fake-device
 tests, and unattributed historical runs do not qualify a firmware version.
- >>>>>>> main
 
 The checked-in Dockerfile builds the Linux amd64/arm64 image. `.goreleaser.yaml` builds the four supported binary targets.
 

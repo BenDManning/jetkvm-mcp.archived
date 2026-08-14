@@ -50,7 +50,7 @@ arguments. Its value names one regular file of at most 64 KiB. Empty input,
 final-component symlinks, non-regular files, and unknown fields are rejected.
 Duplicate JSON object members are rejected, as are trailing JSON values and
 more than one top-level value. The file is exactly one JSON object with these
-required root members:
+required root members. Member names are case-sensitive.
 
 | Member | Type and required value |
 |---|---|
