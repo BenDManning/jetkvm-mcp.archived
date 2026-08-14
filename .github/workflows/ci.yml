@@ -21,6 +21,7 @@ jobs:
       - run: go mod verify
       - run: go test -race ./...
       - run: go vet ./...
+      - run: make fuzz-smoke
       - name: Verify release targets
         run: |
           CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -o /tmp/linux-amd64 ./cmd/jetkvm-mcp

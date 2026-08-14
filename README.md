@@ -230,7 +230,13 @@ deployment requirements, and residual risks are recorded in
 ```sh
 go test -race ./...
 go vet ./...
+make fuzz-smoke
 ```
+
+`make fuzz-smoke` runs every target in the checked synthetic fuzz inventory once
+and enforces the committed corpus privacy policy. Use `make fuzz` for a longer
+30-second local run of each bounded target. Neither command uses network,
+device, or FFmpeg inputs.
 
 ### Read-only real-hardware validation
 

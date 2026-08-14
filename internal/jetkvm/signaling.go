@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"strings"
 
 	"github.com/pion/interceptor"
 	"github.com/pion/webrtc/v4"
@@ -55,6 +56,9 @@ func decodeSessionDescription(encoded string) (webrtc.SessionDescription, error)
 	}
 	var description webrtc.SessionDescription
 	if err := json.Unmarshal(raw, &description); err != nil {
+		return webrtc.SessionDescription{}, errors.New("invalid session description")
+	}
+	if (description.Type != webrtc.SDPTypeOffer && description.Type != webrtc.SDPTypeAnswer) || strings.TrimSpace(description.SDP) == "" {
 		return webrtc.SessionDescription{}, errors.New("invalid session description")
 	}
 	return description, nil
