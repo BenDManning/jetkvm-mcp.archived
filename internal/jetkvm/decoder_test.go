@@ -70,6 +70,30 @@ func TestFFmpegDecoderRejectsMalformedOutput(t *testing.T) {
 	}
 }
 
+func TestFFmpegDecoderKeepsCleanupWithinCallerDeadline(t *testing.T) {
+	directory := t.TempDir()
+	executable := filepath.Join(directory, "ffmpeg-fixture")
+	if err := os.WriteFile(executable, []byte("#!/bin/sh\nsleep 2 &\nwait\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	decoder, err := newFFmpegDecoder(executable, 5*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const budget = 500 * time.Millisecond
+	ctx, cancel := context.WithTimeout(context.Background(), budget)
+	defer cancel()
+	started := time.Now()
+	_, _, _, err = decoder.Decode(ctx, []byte{0, 0, 0, 1, 0x65}, 800, 600)
+	elapsed := time.Since(started)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("error = %v, want deadline exceeded", err)
+	}
+	if elapsed > budget+150*time.Millisecond {
+		t.Fatalf("decode elapsed = %v, want cleanup within %v caller budget", elapsed, budget)
+	}
+}
+
 func TestValidateDecodedPNGStopsWhenContextEndsBetweenReads(t *testing.T) {
 	ctx := newCancelOnSecondReadContext()
 

@@ -16,6 +16,7 @@ import (
 const (
 	maxAnnexBBytes  = 4 << 20
 	maxFFmpegStderr = 16 << 10
+	ffmpegWaitDelay = 250 * time.Millisecond
 )
 
 var errDecoderOutputLimit = errors.New("decoder output limit exceeded")
@@ -65,7 +66,7 @@ func (decoder *ffmpegDecoder) Decode(ctx context.Context, annexB []byte, maxWidt
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	decodeCtx, cancel := context.WithTimeout(ctx, decoder.timeout)
+	decodeCtx, cancel := ffmpegDecodeContext(ctx, decoder.timeout)
 	defer cancel()
 	command := exec.CommandContext(decodeCtx, decoder.executable, args...)
 	command.Env = []string{"LANG=C", "LC_ALL=C", "PATH=/usr/bin:/bin"}
@@ -74,7 +75,7 @@ func (decoder *ffmpegDecoder) Decode(ctx context.Context, annexB []byte, maxWidt
 	stderr := &boundedBuffer{limit: maxFFmpegStderr, discardOverflow: true}
 	command.Stdout = stdout
 	command.Stderr = stderr
-	command.WaitDelay = 250 * time.Millisecond
+	command.WaitDelay = ffmpegWaitDelay
 	if err := command.Run(); err != nil {
 		if errors.Is(decodeCtx.Err(), context.Canceled) || errors.Is(decodeCtx.Err(), context.DeadlineExceeded) {
 			return nil, 0, 0, decodeCtx.Err()
@@ -85,6 +86,14 @@ func (decoder *ffmpegDecoder) Decode(ctx context.Context, annexB []byte, maxWidt
 		return nil, 0, 0, ErrInvalidResponse
 	}
 	return validateDecodedPNG(decodeCtx, stdout.Bytes(), maxWidth, maxHeight)
+}
+
+func ffmpegDecodeContext(ctx context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {
+	deadline := time.Now().Add(timeout)
+	if callerDeadline, ok := ctx.Deadline(); ok && callerDeadline.Before(deadline) {
+		deadline = callerDeadline
+	}
+	return context.WithDeadline(ctx, deadline.Add(-ffmpegWaitDelay))
 }
 
 func buildFFmpegArgs(maxWidth, maxHeight int) ([]string, error) {
