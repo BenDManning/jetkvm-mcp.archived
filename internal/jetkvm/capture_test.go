@@ -197,6 +197,50 @@ func TestCaptureScreenServerDeadlineDuringSessionSetupUsesReadTimeout(t *testing
 	}
 }
 
+func TestCaptureScreenCallerCancellationDuringSessionSetupStaysNotSent(t *testing.T) {
+	provider := &captureTestProvider{setup: func(ctx context.Context) error {
+		<-ctx.Done()
+		return ctx.Err()
+	}}
+	manager := newCaptureTestManagerWithProvider(t, provider, &fakeDecoder{})
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, err := manager.captureScreen(ctx, "lab", mcpserver.CaptureRequest{}, time.Second)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("error = %v, want caller cancellation", err)
+	}
+	var classified interface {
+		ToolErrorCode() string
+		ToolErrorOutcome() string
+	}
+	if !errors.As(err, &classified) || classified.ToolErrorCode() != "canceled" || classified.ToolErrorOutcome() != ToolOutcomeNotSent {
+		t.Fatalf("error = %#v, want canceled/not_sent", err)
+	}
+}
+
+func TestCaptureScreenCallerDeadlineDuringSessionSetupStaysNotSent(t *testing.T) {
+	provider := &captureTestProvider{setup: func(ctx context.Context) error {
+		<-ctx.Done()
+		return ctx.Err()
+	}}
+	manager := newCaptureTestManagerWithProvider(t, provider, &fakeDecoder{})
+	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+	defer cancel()
+
+	_, err := manager.captureScreen(ctx, "lab", mcpserver.CaptureRequest{}, time.Second)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("error = %v, want caller deadline", err)
+	}
+	var classified interface {
+		ToolErrorCode() string
+		ToolErrorOutcome() string
+	}
+	if !errors.As(err, &classified) || classified.ToolErrorCode() != "timeout" || classified.ToolErrorOutcome() != ToolOutcomeNotSent {
+		t.Fatalf("error = %#v, want timeout/not_sent", err)
+	}
+}
+
 func TestCaptureScreenEarlierCallerCancellationWins(t *testing.T) {
 	receiver := newVideoReceiver()
 	defer receiver.Close()

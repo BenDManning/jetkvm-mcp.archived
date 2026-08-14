@@ -82,11 +82,11 @@ func (manager *Manager) captureScreen(ctx context.Context, name string, request 
 		})
 	})
 	if err != nil {
-		return mcpserver.CaptureResult{}, classifyCaptureReadFailure(err)
+		return mcpserver.CaptureResult{}, classifyCaptureReadFailure(ctx, captureCtx, err)
 	}
 	pngData, width, height, err := manager.decoder.Decode(captureCtx, annexB, maxWidth, maxHeight)
 	if err != nil {
-		return mcpserver.CaptureResult{}, classifyCaptureReadFailure(err)
+		return mcpserver.CaptureResult{}, classifyCaptureReadFailure(ctx, captureCtx, err)
 	}
 	if len(pngData) == 0 || len(pngData) > maxCapturePNGBytes || width < 1 || width > maxWidth || height < 1 || height > maxHeight || capturedAt.IsZero() {
 		return mcpserver.CaptureResult{}, classifyReadFailure(ErrInvalidResponse)
@@ -101,10 +101,13 @@ func (manager *Manager) captureScreen(ctx context.Context, name string, request 
 	}, nil
 }
 
-func classifyCaptureReadFailure(err error) error {
+func classifyCaptureReadFailure(callerCtx, captureCtx context.Context, err error) error {
 	var operationErr *OperationError
-	if errors.As(err, &operationErr) && (errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)) {
-		return classifyOperationError(operationErr.Cause, ToolOutcomeFailed)
+	if errors.As(err, &operationErr) {
+		if callerCtx.Err() == nil && errors.Is(captureCtx.Err(), context.DeadlineExceeded) && errors.Is(err, context.DeadlineExceeded) {
+			return classifyOperationError(operationErr.Cause, ToolOutcomeFailed)
+		}
+		return err
 	}
 	return classifyReadFailure(err)
 }
