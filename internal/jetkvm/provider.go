@@ -56,6 +56,12 @@ func withConnectedSession(ctx context.Context, connected *connectedSession, oper
 	return operation(connected)
 }
 
+func closeConnectedOnError(ctx context.Context, connected *connectedSession, returnErr *error) {
+	if returnErr != nil && *returnErr != nil {
+		connected.CloseContext(ctx)
+	}
+}
+
 func (provider *WebRTCProvider) connect(ctx context.Context, device DeviceConfig, profile SessionProfile) (_ *connectedSession, returnErr error) {
 	if profile != SessionProfileData && profile != SessionProfileVideo {
 		return nil, errors.New("invalid session profile")
@@ -80,11 +86,7 @@ func (provider *WebRTCProvider) connect(ctx context.Context, device DeviceConfig
 	if profile == SessionProfileVideo {
 		connected.video = newVideoReceiver()
 	}
-	defer func() {
-		if returnErr != nil {
-			connected.Close()
-		}
-	}()
+	defer closeConnectedOnError(ctx, connected, &returnErr)
 
 	var onTrack func(*webrtc.TrackRemote, *webrtc.RTPReceiver)
 	if profile == SessionProfileVideo {

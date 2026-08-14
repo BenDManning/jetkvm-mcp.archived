@@ -2,6 +2,7 @@ package mcpserver
 
 import (
 	"context"
+	"encoding/json"
 	"net/http/httptest"
 	"strings"
 	"sync"
@@ -20,6 +21,20 @@ type cancellationDevice struct {
 }
 
 type deadlineCaptureDevice struct{ recordingDevice }
+
+type notSentCancellationError struct{}
+
+type deadlineBlockingJSON struct{ ctx context.Context }
+
+func (value deadlineBlockingJSON) MarshalJSON() ([]byte, error) {
+	<-value.ctx.Done()
+	return []byte(`{}`), nil
+}
+
+func (notSentCancellationError) Error() string            { return "capture canceled before dispatch" }
+func (notSentCancellationError) ToolErrorCode() string    { return "canceled" }
+func (notSentCancellationError) ToolErrorOutcome() string { return "not_sent" }
+func (notSentCancellationError) ToolErrorRetryable() bool { return false }
 
 func (*deadlineCaptureDevice) CaptureScreen(ctx context.Context, _ string, _ CaptureRequest) (CaptureResult, error) {
 	<-ctx.Done()
@@ -108,5 +123,74 @@ func TestCaptureDeadlineCoversMCPResultConstruction(t *testing.T) {
 	text, ok := result.Content[0].(*mcp.TextContent)
 	if !ok || !strings.Contains(text.Text, `"code":"timeout"`) || !strings.Contains(text.Text, `"outcome":"failed"`) {
 		t.Fatalf("tool result = %#v, want timeout/failed", result.Content)
+	}
+}
+
+func TestCaptureDeadlineMiddlewarePreservesCallerNotSentOutcome(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	result := new(mcp.CallToolResult)
+	result.SetError(toolFailure(notSentCancellationError{}, false))
+	handler := captureDeadlineMiddleware(time.Second)(func(context.Context, string, mcp.Request) (mcp.Result, error) {
+		cancel()
+		return result, nil
+	})
+	request := &mcp.CallToolRequest{Params: &mcp.CallToolParamsRaw{Name: CaptureScreenToolName}}
+
+	got, err := handler(ctx, "tools/call", request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	callResult, ok := got.(*mcp.CallToolResult)
+	if !ok || len(callResult.Content) != 1 {
+		t.Fatalf("result = %#v, want call-tool failure", got)
+	}
+	text, ok := callResult.Content[0].(*mcp.TextContent)
+	if !ok {
+		t.Fatalf("content = %#v, want text failure", callResult.Content)
+	}
+	var failure toolError
+	if err := json.Unmarshal([]byte(text.Text), &failure); err != nil {
+		t.Fatal(err)
+	}
+	if failure.Code != toolErrorCanceled || failure.Outcome != "not_sent" || failure.Retryable {
+		t.Fatalf("failure = %#v, want canceled/not_sent/non-retryable", failure)
+	}
+}
+
+func TestCaptureDeadlineCoversResponseSerialization(t *testing.T) {
+	handler := captureDeadlineMiddleware(10 * time.Millisecond)(func(ctx context.Context, _ string, _ mcp.Request) (mcp.Result, error) {
+		return &mcp.CallToolResult{
+			Content:           []mcp.Content{&mcp.TextContent{Text: "capture"}},
+			StructuredContent: deadlineBlockingJSON{ctx: ctx},
+		}, nil
+	})
+	request := &mcp.CallToolRequest{Params: &mcp.CallToolParamsRaw{Name: CaptureScreenToolName}}
+
+	result, err := handler(context.Background(), "tools/call", request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := json.Marshal(result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var wire struct {
+		IsError bool `json:"isError"`
+		Content []struct {
+			Text string `json:"text"`
+		} `json:"content"`
+	}
+	if err := json.Unmarshal(encoded, &wire); err != nil {
+		t.Fatal(err)
+	}
+	if !wire.IsError || len(wire.Content) != 1 {
+		t.Fatalf("result = %s, want timeout tool failure", encoded)
+	}
+	var failure toolError
+	if err := json.Unmarshal([]byte(wire.Content[0].Text), &failure); err != nil {
+		t.Fatal(err)
+	}
+	if failure.Code != toolErrorTimeout || failure.Outcome != toolOutcomeFailed {
+		t.Fatalf("failure = %#v, want timeout/failed", failure)
 	}
 }

@@ -274,6 +274,27 @@ func TestWebRTCProviderTeardownDoesNotOutliveOperationDeadline(t *testing.T) {
 	}
 }
 
+func TestFailedWebRTCSetupCleanupHonorsSetupContext(t *testing.T) {
+	setupCtx, cancelSetup := context.WithCancel(context.Background())
+	cancelSetup()
+	connectedCtx, cancelConnected := context.WithCancel(context.Background())
+	connected := &connectedSession{ctx: connectedCtx, cancel: cancelConnected}
+	connected.pumps.Add(1)
+	defer connected.pumps.Done()
+	returnErr := errors.New("setup failed")
+	done := make(chan struct{})
+	go func() {
+		closeConnectedOnError(setupCtx, connected, &returnErr)
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("failed setup cleanup outlived the setup context")
+	}
+}
+
 type testSignal struct {
 	connection *websocket.Conn
 	mu         sync.Mutex

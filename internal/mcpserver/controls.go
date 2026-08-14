@@ -2,6 +2,7 @@ package mcpserver
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -13,6 +14,8 @@ import (
 
 // CaptureScreenTimeout bounds the complete MCP screenshot operation.
 const CaptureScreenTimeout = 30 * time.Second
+
+var errCaptureScreenDeadline = errors.New("capture screen deadline exceeded")
 
 const (
 	CaptureScreenToolName          = "jetkvm_capture_screen"
@@ -341,6 +344,46 @@ func addControlTools(server *mcp.Server, device Device) {
 	})
 }
 
+type captureDeadlineResult struct {
+	mcp.ResultBase
+	ctx    context.Context
+	cancel context.CancelFunc
+	result *mcp.CallToolResult
+}
+
+func (result *captureDeadlineResult) SetMeta(meta map[string]any) {
+	result.ResultBase.SetMeta(meta)
+	result.result.SetMeta(meta)
+}
+
+func (result *captureDeadlineResult) MarshalJSON() ([]byte, error) {
+	if result.ctx.Err() != nil {
+		return result.marshalContextFailure()
+	}
+	encoded, err := json.Marshal(result.result)
+	if err != nil {
+		result.cancel()
+		return nil, err
+	}
+	if result.ctx.Err() == nil {
+		result.cancel()
+		return encoded, nil
+	}
+
+	return result.marshalContextFailure()
+}
+
+func (result *captureDeadlineResult) marshalContextFailure() ([]byte, error) {
+	failure := new(mcp.CallToolResult)
+	if errors.Is(context.Cause(result.ctx), errCaptureScreenDeadline) {
+		failure.SetError(toolFailure(context.DeadlineExceeded, false))
+	} else {
+		failure.SetError(toolFailure(result.ctx.Err(), false))
+	}
+	result.cancel()
+	return json.Marshal(failure)
+}
+
 func captureDeadlineMiddleware(timeout time.Duration) mcp.Middleware {
 	return func(next mcp.MethodHandler) mcp.MethodHandler {
 		return func(ctx context.Context, method string, request mcp.Request) (mcp.Result, error) {
@@ -348,15 +391,18 @@ func captureDeadlineMiddleware(timeout time.Duration) mcp.Middleware {
 			if method != "tools/call" || !ok || params.Name != CaptureScreenToolName {
 				return next(ctx, method, request)
 			}
-			captureCtx, cancel := context.WithTimeout(ctx, timeout)
-			defer cancel()
+			captureCtx, cancel := context.WithTimeoutCause(ctx, timeout, errCaptureScreenDeadline)
 			result, err := next(captureCtx, method, request)
-			if captureCtx.Err() == nil {
+			if err != nil || result == nil {
+				cancel()
 				return result, err
 			}
-			failure := new(mcp.CallToolResult)
-			failure.SetError(toolFailure(captureCtx.Err(), false))
-			return failure, nil
+			callResult, ok := result.(*mcp.CallToolResult)
+			if !ok || (captureCtx.Err() != nil && !errors.Is(context.Cause(captureCtx), errCaptureScreenDeadline)) {
+				cancel()
+				return result, nil
+			}
+			return &captureDeadlineResult{ctx: captureCtx, cancel: cancel, result: callResult}, nil
 		}
 	}
 }
