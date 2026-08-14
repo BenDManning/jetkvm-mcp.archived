@@ -142,10 +142,10 @@ func ValidateInspectorResult(method string, output []byte, fixtureSafeTool strin
 		Result json.RawMessage `json:"result"`
 	}
 	if err := decoder.Decode(&envelope); err != nil || len(envelope.Result) == 0 {
-		return errors.New("Inspector did not return a JSON result envelope")
+		return errors.New("inspector did not return a JSON result envelope")
 	}
 	if err := decoder.Decode(new(any)); !errors.Is(err, io.EOF) {
-		return errors.New("Inspector returned more than one JSON value")
+		return errors.New("inspector returned more than one JSON value")
 	}
 
 	switch method {
@@ -159,12 +159,12 @@ func ValidateInspectorResult(method string, output []byte, fixtureSafeTool strin
 			Capabilities    map[string]any `json:"capabilities"`
 		}
 		if err := json.Unmarshal(envelope.Result, &result); err != nil {
-			return errors.New("Inspector initialize result lacks required MCP fields")
+			return errors.New("inspector initialize result lacks required MCP fields")
 		}
 		toolsCapability, toolsAdvertised := result.Capabilities["tools"]
 		_, toolsCapabilityIsObject := toolsCapability.(map[string]any)
 		if result.ServerInfo.Name == "" || result.ServerInfo.Version == "" || result.ProtocolVersion != reviewedProtocolVersion || !toolsAdvertised || !toolsCapabilityIsObject {
-			return errors.New("Inspector initialize result lacks required MCP fields")
+			return errors.New("inspector initialize result lacks required MCP fields")
 		}
 		return nil
 	case "tools/list":
@@ -174,42 +174,42 @@ func ValidateInspectorResult(method string, output []byte, fixtureSafeTool strin
 			} `json:"tools"`
 		}
 		if err := json.Unmarshal(envelope.Result, &result); err != nil || len(result.Tools) == 0 {
-			return errors.New("Inspector tools/list result lacks tools")
+			return errors.New("inspector tools/list result lacks tools")
 		}
 		for _, tool := range result.Tools {
 			if tool.Name == fixtureSafeTool {
 				return nil
 			}
 		}
-		return errors.New("Inspector tools/list result lacks the fixture-safe tool")
+		return errors.New("inspector tools/list result lacks the fixture-safe tool")
 	case "tools/call:" + fixtureSafeTool:
 		var result struct {
 			Content           []json.RawMessage `json:"content"`
 			StructuredContent json.RawMessage   `json:"structuredContent"`
 		}
 		if err := json.Unmarshal(envelope.Result, &result); err != nil || len(result.Content) != 1 || len(result.StructuredContent) == 0 {
-			return errors.New("Inspector fixture-safe tool result lacks typed content")
+			return errors.New("inspector fixture-safe tool result lacks typed content")
 		}
 		var content struct {
 			Type string `json:"type"`
 			Text string `json:"text"`
 		}
 		if err := decodeInspectorJSON(result.Content[0], &content); err != nil || content.Type != "text" || content.Text == "" {
-			return errors.New("Inspector fixture-safe tool result has invalid content")
+			return errors.New("inspector fixture-safe tool result has invalid content")
 		}
 		var contentDevices, structuredDevices inspectorDeviceList
 		if err := decodeInspectorJSON([]byte(content.Text), &contentDevices); err != nil {
-			return errors.New("Inspector fixture-safe tool text does not contain the typed result")
+			return errors.New("inspector fixture-safe tool text does not contain the typed result")
 		}
 		if err := decodeInspectorJSON(result.StructuredContent, &structuredDevices); err != nil {
-			return errors.New("Inspector fixture-safe tool structured content is invalid")
+			return errors.New("inspector fixture-safe tool structured content is invalid")
 		}
 		if !validInspectorFixtureDeviceList(contentDevices) || !validInspectorFixtureDeviceList(structuredDevices) {
-			return errors.New("Inspector fixture-safe tool result differs from the configured fixture")
+			return errors.New("inspector fixture-safe tool result differs from the configured fixture")
 		}
 		return nil
 	default:
-		return errors.New("Inspector method is outside the reviewed gate")
+		return errors.New("inspector method is outside the reviewed gate")
 	}
 }
 
@@ -242,21 +242,21 @@ func CanonicalInspectorResult(output []byte) ([]byte, error) {
 		Result json.RawMessage `json:"result"`
 	}
 	if err := decoder.Decode(&envelope); err != nil {
-		return nil, errors.New("Inspector did not return JSON")
+		return nil, errors.New("inspector did not return JSON")
 	}
 	if err := decoder.Decode(new(any)); !errors.Is(err, io.EOF) {
-		return nil, errors.New("Inspector returned more than one JSON value")
+		return nil, errors.New("inspector returned more than one JSON value")
 	}
 	if len(envelope.Result) == 0 || bytes.Equal(envelope.Result, []byte("null")) {
-		return nil, errors.New("Inspector result is missing")
+		return nil, errors.New("inspector result is missing")
 	}
 	var result any
 	if err := json.Unmarshal(envelope.Result, &result); err != nil {
-		return nil, errors.New("Inspector result is invalid")
+		return nil, errors.New("inspector result is invalid")
 	}
 	canonical, err := json.Marshal(result)
 	if err != nil {
-		return nil, errors.New("Inspector result cannot be canonicalized")
+		return nil, errors.New("inspector result cannot be canonicalized")
 	}
 	return canonical, nil
 }
