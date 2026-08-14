@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"reflect"
 	"strings"
@@ -322,6 +324,47 @@ func TestManagerStatusCallerCancellationWinsOverUnrelatedProbeError(t *testing.T
 	wantMethods := []string{methodPing, methodLocalVersion, methodActiveExtension, methodVirtualMediaState, methodVideoState}
 	if got := calledMethods(session.calls); !reflect.DeepEqual(got, wantMethods) {
 		t.Fatalf("methods = %v, want no probes after cancellation %v", got, wantMethods)
+	}
+}
+
+func TestManagerStatusCancellationDuringProviderSetupStaysNotSent(t *testing.T) {
+	started := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, request *http.Request) {
+		close(started)
+		<-request.Context().Done()
+	}))
+	defer server.Close()
+
+	base, err := url.Parse(server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager, err := NewManager(
+		[]DeviceConfig{{Name: "lab", BaseURL: *base}},
+		NewWebRTCProvider(WebRTCProviderOptions{}),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		_, err := manager.Status(ctx, "lab")
+		done <- err
+	}()
+
+	<-started
+	cancel()
+	err = <-done
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("error = %#v, want caller cancellation", err)
+	}
+	var classified interface {
+		ToolErrorCode() string
+		ToolErrorOutcome() string
+	}
+	if !errors.As(err, &classified) || classified.ToolErrorCode() != "canceled" || classified.ToolErrorOutcome() != ToolOutcomeNotSent {
+		t.Fatalf("error = %#v, want canceled/not_sent", err)
 	}
 }
 

@@ -392,6 +392,9 @@ func (manager *Manager) withSession(ctx context.Context, device DeviceConfig, pr
 		return operation(session)
 	})
 	if err != nil && !invoked {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return classifyOperationError(ctxErr, ToolOutcomeNotSent)
+		}
 		var classified interface{ ToolErrorOutcome() string }
 		if errors.As(err, &classified) {
 			return err
