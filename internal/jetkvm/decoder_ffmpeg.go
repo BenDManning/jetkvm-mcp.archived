@@ -84,7 +84,7 @@ func (decoder *ffmpegDecoder) Decode(ctx context.Context, annexB []byte, maxWidt
 		}
 		return nil, 0, 0, ErrInvalidResponse
 	}
-	return validateDecodedPNG(stdout.Bytes(), maxWidth, maxHeight)
+	return validateDecodedPNG(decodeCtx, stdout.Bytes(), maxWidth, maxHeight)
 }
 
 func buildFFmpegArgs(maxWidth, maxHeight int) ([]string, error) {
@@ -101,16 +101,31 @@ func buildFFmpegArgs(maxWidth, maxHeight int) ([]string, error) {
 	}, nil
 }
 
-func validateDecodedPNG(data []byte, maxWidth, maxHeight int) ([]byte, int, int, error) {
+func validateDecodedPNG(ctx context.Context, data []byte, maxWidth, maxHeight int) ([]byte, int, int, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, 0, 0, err
+	}
 	if len(data) == 0 || len(data) > maxCapturePNGBytes {
 		return nil, 0, 0, ErrInvalidResponse
 	}
-	config, err := png.DecodeConfig(bytes.NewReader(data))
+	config, err := png.DecodeConfig(&contextReader{ctx: ctx, reader: bytes.NewReader(data)})
+	if contextErr := ctx.Err(); contextErr != nil {
+		return nil, 0, 0, contextErr
+	}
 	if err != nil || config.Width < 1 || config.Width > maxWidth || config.Height < 1 || config.Height > maxHeight || int64(config.Width)*int64(config.Height) > 8_294_400 {
 		return nil, 0, 0, ErrInvalidResponse
 	}
-	if _, err := png.Decode(bytes.NewReader(data)); err != nil {
+	if _, err := png.Decode(&contextReader{ctx: ctx, reader: bytes.NewReader(data)}); err != nil {
+		if contextErr := ctx.Err(); contextErr != nil {
+			return nil, 0, 0, contextErr
+		}
 		return nil, 0, 0, ErrInvalidResponse
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, 0, 0, err
 	}
 	return append([]byte(nil), data...), config.Width, config.Height, nil
 }

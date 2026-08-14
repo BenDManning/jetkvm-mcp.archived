@@ -69,3 +69,37 @@ func TestFFmpegDecoderRejectsMalformedOutput(t *testing.T) {
 		t.Fatalf("error = %v", err)
 	}
 }
+
+func TestValidateDecodedPNGStopsWhenContextEndsBetweenReads(t *testing.T) {
+	ctx := newCancelOnSecondReadContext()
+
+	_, _, _, err := validateDecodedPNG(ctx, testPNG(t, 2, 1), 800, 600)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("error = %v, want context cancellation", err)
+	}
+	if ctx.calls < 2 {
+		t.Fatalf("context read checks = %d, want at least 2", ctx.calls)
+	}
+}
+
+type cancelOnSecondReadContext struct {
+	calls int
+}
+
+func newCancelOnSecondReadContext() *cancelOnSecondReadContext {
+	return &cancelOnSecondReadContext{}
+}
+
+func (ctx *cancelOnSecondReadContext) Deadline() (time.Time, bool) { return time.Time{}, false }
+
+func (*cancelOnSecondReadContext) Done() <-chan struct{} { return nil }
+
+func (ctx *cancelOnSecondReadContext) Err() error {
+	ctx.calls++
+	if ctx.calls >= 2 {
+		return context.Canceled
+	}
+	return nil
+}
+
+func (*cancelOnSecondReadContext) Value(any) any { return nil }
