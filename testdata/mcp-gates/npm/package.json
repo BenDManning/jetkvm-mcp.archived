@@ -1,0 +1,9 @@
+{
+  "name": "jetkvm-mcp-protocol-gates",
+  "private": true,
+  "version": "1.0.0",
+  "dependencies": {
+    "@modelcontextprotocol/conformance": "0.2.0-alpha.11",
+    "@modelcontextprotocol/inspector": "2.2.0"
+  }
+}

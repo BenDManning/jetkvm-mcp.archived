@@ -222,7 +222,9 @@ secrets in either or retain the streams unsafely.
 The repository is intentionally independent from its archived predecessor. It contains no legacy Git history or remote.
 
 Protocol provenance and exact inspected upstream revisions are recorded in
-[`docs/protocol-sources.md`](docs/protocol-sources.md). Current actors, trust
+[`docs/protocol-sources.md`](docs/protocol-sources.md). Pinned official MCP
+conformance and Inspector checks are described in
+[`docs/protocol-gates.md`](docs/protocol-gates.md). Current actors, trust
 boundaries, physical consequences, privacy rules, implemented controls,
 deployment requirements, and residual risks are recorded in
 [`docs/threat-model.md`](docs/threat-model.md).
