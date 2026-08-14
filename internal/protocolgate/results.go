@@ -158,7 +158,12 @@ func ValidateInspectorResult(method string, output []byte, fixtureSafeTool strin
 			ProtocolVersion string         `json:"protocolVersion"`
 			Capabilities    map[string]any `json:"capabilities"`
 		}
-		if err := json.Unmarshal(envelope.Result, &result); err != nil || result.ServerInfo.Name == "" || result.ServerInfo.Version == "" || result.ProtocolVersion != reviewedProtocolVersion || result.Capabilities == nil {
+		if err := json.Unmarshal(envelope.Result, &result); err != nil {
+			return errors.New("Inspector initialize result lacks required MCP fields")
+		}
+		toolsCapability, toolsAdvertised := result.Capabilities["tools"]
+		_, toolsCapabilityIsObject := toolsCapability.(map[string]any)
+		if result.ServerInfo.Name == "" || result.ServerInfo.Version == "" || result.ProtocolVersion != reviewedProtocolVersion || !toolsAdvertised || !toolsCapabilityIsObject {
 			return errors.New("Inspector initialize result lacks required MCP fields")
 		}
 		return nil

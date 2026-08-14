@@ -122,6 +122,27 @@ func TestValidateInspectorResult(t *testing.T) {
 	if err := ValidateInspectorResult("initialize", oldRevision, "jetkvm_list_devices"); err == nil {
 		t.Fatal("unsupported negotiated protocol revision was accepted")
 	}
+	for name, capabilities := range map[string]any{
+		"missing tools": map[string]any{},
+		"unrelated capability": map[string]any{
+			"resources": map[string]any{},
+		},
+		"null tools": map[string]any{"tools": nil},
+	} {
+		t.Run(name, func(t *testing.T) {
+			input, err := json.Marshal(map[string]any{"result": map[string]any{
+				"serverInfo":      map[string]any{"name": "jetkvm-mcp", "version": "dev"},
+				"protocolVersion": "2026-07-28",
+				"capabilities":    capabilities,
+			}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := ValidateInspectorResult("initialize", input, "jetkvm_list_devices"); err == nil {
+				t.Fatal("initialize result without an advertised tools capability was accepted")
+			}
+		})
+	}
 	for name, input := range map[string]string{
 		"null content":       `{"result":{"content":[null],"structuredContent":{"devices":[{"device":"fixture","capabilities":{"mountVirtualMediaURL":false,"mountVirtualMediaFile":false,"uploadVirtualMediaFile":false,"wakeHostLAN":false}}]}}}`,
 		"missing fixture":    `{"result":{"content":[{"type":"text","text":"{\"devices\":[]}"}],"structuredContent":{"devices":[]}}}`,
