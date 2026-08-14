@@ -146,35 +146,45 @@ The server does not emit CORS response headers. An admitted same-origin `OPTIONS
 
 ## MCP tools
 
-- `jetkvm_list_devices`
-- `jetkvm_get_status`
-- `jetkvm_capture_screen`
-- `jetkvm_keyboard`
-- `jetkvm_mouse`
-- `jetkvm_get_virtual_media_status`
-- `jetkvm_mount_virtual_media_url`
-- `jetkvm_mount_virtual_media_file`
-- `jetkvm_unmount_virtual_media`
-- `jetkvm_upload_virtual_media_file`
-- `jetkvm_virtual_media` (deprecated compatibility surface; migrate to the one-purpose tools above)
-- `jetkvm_press_host_power_button`
-- `jetkvm_force_host_power_off`
-- `jetkvm_press_host_reset_button`
-- `jetkvm_turn_host_dc_power_on`
-- `jetkvm_turn_host_dc_power_off`
-- `jetkvm_wake_host_usb`
-- `jetkvm_wake_host_lan`
+Tool annotations are client-facing consequence hints, not authorization. All
+tool execution failures use the structured `code`, `outcome`, and `retryable`
+taxonomy. `outcome: unknown` means a mutation may have reached the appliance or
+host: **Do not blindly retry** it; inspect status or host state first.
 
-`jetkvm_list_devices` returns configured device aliases in deterministic order
-with configuration-derived availability flags for URL mounting, local-file
-mounting and upload, and Wake-on-LAN. It does not open a device session or
-probe hardware. It omits device URLs, credentials, allowed origins, media
-directories, and Wake-on-LAN target details.
+| Tool | Arguments and consequence | Retry |
+| --- | --- | --- |
+| `jetkvm_list_devices` | No arguments. Lists configured aliases and configuration-derived availability flags; it does not open a device session and omits URLs, credentials, origins, media roots, and WOL details. | Read-only; follow `retryable`. |
+| `jetkvm_get_status` | `device` selects a configured device. Returns private appliance/host power, video, USB, version, warning, and redacted media state. | Read-only; follow `retryable`. |
+| `jetkvm_capture_screen` | `device`, optional `max_width`/`max_height`. Returns a fresh private PNG that can contain visible host secrets; it is not written to disk. | Read-only; follow `retryable`. |
+| `jetkvm_keyboard` | `device`, `operation`, and operation-specific key/text fields. Sends private host-control intent through USB HID; typed text can enter credentials or commands. | Mutation; do not retry `outcome: unknown`. |
+| `jetkvm_mouse` | `device`, `operation`, and operation-specific pointer fields. Sends USB HID movement/clicks/scrolling that can activate host UI actions. | Mutation; do not retry `outcome: unknown`. |
+| `jetkvm_get_virtual_media_status` | `device`. Returns redacted mount state (`http`/`storage` source class and mode), never URLs, paths, filenames, or raw firmware fields. | Read-only; follow `retryable`. |
+| `jetkvm_mount_virtual_media_url` | `device`, `url`, optional `mode`. The appliance fetches a private HTTP(S) URL and replaces its mount; its exact origin must be configured. | Mutation; do not retry `outcome: unknown`. |
+| `jetkvm_mount_virtual_media_file` | `device`, confined relative `path`, optional `mode`. Reads local media below the configured media root, uploads it, and replaces the mount. | Mutation; do not retry `outcome: unknown`. |
+| `jetkvm_unmount_virtual_media` | `device`. Requests removal of the current mount; valid even when no media is mounted. | Mutation; do not retry `outcome: unknown`. |
+| `jetkvm_upload_virtual_media_file` | `device`, confined relative `path`. Reads local media and uploads it to appliance storage without mounting it. | Mutation; do not retry `outcome: unknown`. |
+| `jetkvm_virtual_media` | Deprecated compatibility surface: `device`, `operation`, optional `source`/`mode`. It combines status and all media mutations; migrate to the one-purpose tools. | Status is read-only; do not retry an unknown mutation. |
+| `jetkvm_press_host_power_button` | `device`. Briefly presses physical ATX power; host response depends on firmware/OS state. | Mutation; do not retry `outcome: unknown`. |
+| `jetkvm_force_host_power_off` | `device`. Holds physical ATX power and can interrupt work or cause data loss. | Mutation; do not retry `outcome: unknown`. |
+| `jetkvm_press_host_reset_button` | `device`. Presses physical reset and can interrupt work or corrupt data. | Mutation; do not retry `outcome: unknown`. |
+| `jetkvm_turn_host_dc_power_on` | `device`. Enables configured DC output and may boot equipment. | Intended to converge; do not retry `outcome: unknown`. |
+| `jetkvm_turn_host_dc_power_off` | `device`. Disables configured DC output and can interrupt work or cause data loss. | Intended to converge; do not retry `outcome: unknown`. |
+| `jetkvm_wake_host_usb` | `device`. Sends a USB HID wake action that may resume or boot the host. | Intended to converge; do not retry `outcome: unknown`. |
+| `jetkvm_wake_host_lan` | `device`, configured `target`. Makes the appliance send a WOL network packet to that named configured target; callers cannot provide arbitrary destinations. | Intended to converge; do not retry `outcome: unknown`. |
 
-Status and virtual-media results are typed and redacted. They report whether
-media is mounted, whether its source class is `http` or `storage`, and its
-normalized mode when available; they do not echo URLs, local paths, filenames,
-query strings, fragments, or raw firmware JSON.
+For `jetkvm_keyboard` `type_text`, `text` is limited to 4096 bytes of
+US-ASCII. Treat typed text, key intent, local paths, media URLs, screenshots,
+and returned status as private operational data.
+
+Safe discovery and observation examples (shown as MCP tool-call parameters):
+
+```json
+{"name":"jetkvm_list_devices","arguments":{}}
+```
+
+```json
+{"name":"jetkvm_get_status","arguments":{"device":"lab"}}
+```
 
 ## Local diagnostic RPC
 
