@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"image"
 	"image/color"
 	"image/png"
+	"maps"
 	"reflect"
 	"testing"
 
@@ -80,6 +82,27 @@ func TestValidateConfiguredDeviceDiscovery(t *testing.T) {
 	}
 }
 
+func TestValidateStatusRejectsUnknownAndFractionalFields(t *testing.T) {
+	valid := map[string]any{
+		"device": "lab", "connected": true, "videoWidth": float64(1920),
+	}
+	if err := validateStatus(valid, "lab"); err != nil {
+		t.Fatal(err)
+	}
+	for name, value := range map[string]any{
+		"unknown":     true,
+		"videoWidth":  float64(1.5),
+		"videoHeight": float64(1.5),
+		"videoFPS":    float64(1.5),
+	} {
+		invalid := maps.Clone(valid)
+		invalid[name] = value
+		if err := validateStatus(invalid, "lab"); err == nil {
+			t.Fatalf("accepted invalid status field %q", name)
+		}
+	}
+}
+
 type configuredDeviceCaller struct {
 	params *mcp.CallToolParams
 	result *mcp.CallToolResult
@@ -149,6 +172,79 @@ func TestValidateSessionRejectsMissingAliasBeforeDeviceCalls(t *testing.T) {
 	}
 }
 
+type readOnlyValidationSession struct {
+	t     *testing.T
+	calls []string
+	png   []byte
+}
+
+func newReadOnlyValidationSession(t *testing.T) *readOnlyValidationSession {
+	t.Helper()
+	var encoded bytes.Buffer
+	if err := png.Encode(&encoded, image.NewNRGBA(image.Rect(0, 0, 1, 1))); err != nil {
+		t.Fatal(err)
+	}
+	return &readOnlyValidationSession{t: t, png: encoded.Bytes()}
+}
+
+func (*readOnlyValidationSession) ListTools(context.Context, *mcp.ListToolsParams) (*mcp.ListToolsResult, error) {
+	no := false
+	annotations := func() *mcp.ToolAnnotations {
+		return &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: &no, IdempotentHint: true, OpenWorldHint: &no}
+	}
+	return &mcp.ListToolsResult{Tools: []*mcp.Tool{
+		{Name: deviceListTool, Annotations: annotations()},
+		{Name: statusTool, Annotations: annotations()},
+		{Name: captureTool, Annotations: annotations()},
+		{Name: mediaStatusTool, Annotations: annotations()},
+	}}, nil
+}
+
+func (session *readOnlyValidationSession) CallTool(_ context.Context, params *mcp.CallToolParams) (*mcp.CallToolResult, error) {
+	session.calls = append(session.calls, params.Name)
+	switch params.Name {
+	case deviceListTool:
+		return &mcp.CallToolResult{StructuredContent: map[string]any{"devices": []any{
+			map[string]any{"device": "lab", "capabilities": map[string]any{
+				"mountVirtualMediaURL": false, "mountVirtualMediaFile": false, "uploadVirtualMediaFile": false, "wakeHostLAN": false,
+			}},
+		}}}, nil
+	case statusTool:
+		return &mcp.CallToolResult{StructuredContent: map[string]any{"device": "lab", "connected": true}}, nil
+	case mediaStatusTool:
+		return &mcp.CallToolResult{StructuredContent: map[string]any{
+			"device": "lab", "operation": "status", "mounted": false, "status": "observed",
+		}}, nil
+	case captureTool:
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.ImageContent{MIMEType: "image/png", Data: append([]byte(nil), session.png...)}},
+			StructuredContent: map[string]any{
+				"device": "lab", "capturedAt": "2026-08-14T00:00:00Z", "mimeType": "image/png",
+				"width": float64(1), "height": float64(1), "sizeBytes": float64(len(session.png)),
+			},
+		}, nil
+	default:
+		session.t.Fatalf("validator called unexpected tool %q", params.Name)
+		return nil, errors.New("unexpected tool")
+	}
+}
+
+func TestValidateSessionCallsOnlyHardcodedReadOnlyToolsIncludingMediaStatus(t *testing.T) {
+	session := newReadOnlyValidationSession(t)
+	report := validateSession(context.Background(), session, "lab")
+	if report.Result != "pass" {
+		t.Fatalf("report = %#v", report)
+	}
+	wantCalls := []string{deviceListTool, statusTool, mediaStatusTool, captureTool}
+	if !reflect.DeepEqual(session.calls, wantCalls) {
+		t.Fatalf("tool calls = %v, want %v", session.calls, wantCalls)
+	}
+	wantChecks := []string{"tools_list", "devices", "status", "media_status", "capture"}
+	if !reflect.DeepEqual(report.Checks, wantChecks) {
+		t.Fatalf("checks = %v, want %v", report.Checks, wantChecks)
+	}
+}
+
 func TestValidateStatusStructure(t *testing.T) {
 	valid := map[string]any{"device": "lab", "connected": true, "videoWidth": float64(1920), "warnings": []any{"signal settling"}, "virtualMedia": map[string]any{"mounted": true, "sourceType": "http", "mode": "read_only"}}
 	if err := validateStatus(valid, "lab"); err != nil {
@@ -167,6 +263,33 @@ func TestValidateStatusStructure(t *testing.T) {
 	} {
 		if err := validateStatus(value, "lab"); err == nil {
 			t.Fatalf("accepted status %#v", value)
+		}
+	}
+}
+
+func TestValidateVirtualMediaStatusStructure(t *testing.T) {
+	valid := []map[string]any{
+		{"device": "lab", "operation": "status", "mounted": false, "status": "observed"},
+		{"device": "lab", "operation": "status", "mounted": true, "sourceType": "http", "mode": "read_only", "status": "observed"},
+		{"device": "lab", "operation": "status", "mounted": true, "sourceType": "storage", "mode": "read_write", "status": "observed"},
+	}
+	for _, value := range valid {
+		if err := validateVirtualMediaStatus(value, "lab"); err != nil {
+			t.Fatalf("validateVirtualMediaStatus(%#v) = %v", value, err)
+		}
+	}
+
+	invalid := []map[string]any{
+		{"device": "other", "operation": "status", "mounted": false, "status": "observed"},
+		{"device": "lab", "operation": "mount_url", "mounted": false, "status": "observed"},
+		{"device": "lab", "operation": "status", "mounted": false, "status": "completed"},
+		{"device": "lab", "operation": "status", "mounted": false, "sourceType": "http", "status": "observed"},
+		{"device": "lab", "operation": "status", "mounted": true, "sourceType": "private-url", "mode": "read_only", "status": "observed"},
+		{"device": "lab", "operation": "status", "mounted": true, "sourceType": "http", "mode": "read_only", "status": "observed", "source": "private.iso"},
+	}
+	for _, value := range invalid {
+		if err := validateVirtualMediaStatus(value, "lab"); err == nil {
+			t.Fatalf("accepted virtual-media status %#v", value)
 		}
 	}
 }
@@ -193,12 +316,27 @@ func TestDecodeCaptureFullyDecodesPNG(t *testing.T) {
 		t.Fatal("decoded PNG buffer was not cleared")
 	}
 
-	truncated := encoded.Bytes()[:encoded.Len()-4]
+	validPNG := append([]byte(nil), encoded.Bytes()...)
+	truncated := append([]byte(nil), validPNG[:len(validPNG)-4]...)
 	if _, err := decodeCapture(&mcp.CallToolResult{
 		Content:           []mcp.Content{&mcp.ImageContent{MIMEType: "image/png", Data: truncated}},
 		StructuredContent: map[string]any{"device": "lab", "capturedAt": "2026-08-10T03:00:00Z", "mimeType": "image/png", "width": float64(2), "height": float64(3), "sizeBytes": float64(len(truncated))},
 	}, "lab"); err == nil {
 		t.Fatal("accepted a truncated PNG")
+	}
+	for _, result := range []*mcp.CallToolResult{
+		{
+			Content:           []mcp.Content{&mcp.ImageContent{MIMEType: "image/png", Data: append([]byte(nil), validPNG...)}},
+			StructuredContent: map[string]any{"device": "lab", "capturedAt": "2026-08-10T03:00:00Z", "mimeType": "image/png", "width": float64(2), "height": float64(3), "sizeBytes": float64(len(validPNG)), "future": "private"},
+		},
+		{
+			Content:           []mcp.Content{&mcp.TextContent{Text: "private"}, &mcp.ImageContent{MIMEType: "image/png", Data: append([]byte(nil), validPNG...)}},
+			StructuredContent: map[string]any{"device": "lab", "capturedAt": "2026-08-10T03:00:00Z", "mimeType": "image/png", "width": float64(2), "height": float64(3), "sizeBytes": float64(len(validPNG))},
+		},
+	} {
+		if _, err := decodeCapture(result, "lab"); err == nil {
+			t.Fatal("accepted capture with unreviewed result fields or content")
+		}
 	}
 }
 

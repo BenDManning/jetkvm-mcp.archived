@@ -17,6 +17,13 @@ The browser-to-appliance JetKVM protocol is observed behavior rather than a prom
 
 JetKVM upstream is GPLv2. This project uses upstream source as protocol evidence and does not copy upstream implementation.
 
+The machine-checked reviewed-surface manifest, compact evidence ledger, and
+offline drift procedure are maintained in
+[`docs/compatibility/`](compatibility/README.md). A focused comparison on
+2026-08-14 found changes on every declared surface between the inspected commit
+and upstream `fe77acd5f00300a4ab9acd5da57d7bb0916351d9`; that result requires
+source review and does not move this inspected pin or establish incompatibility.
+
 The local debug CLI permits exactly `ping`, `getLocalVersion`, and
 `getActiveExtension` without an unsafe acknowledgement because those handlers
 were source-reviewed at the pinned commit as read-only. Method names alone are

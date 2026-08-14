@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"image/png"
 	"io"
+	"math"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -111,7 +112,7 @@ func runValidation(ctx context.Context, opts options) validationReport {
 }
 
 func validateSession(ctx context.Context, session validationSession, device string) validationReport {
-	checks := make([]string, 0, 4)
+	checks := make([]string, 0, 5)
 	fail := func(stage string) validationReport {
 		return validationReport{Result: "fail", Checks: checks, Failed: stage}
 	}
@@ -135,6 +136,16 @@ func validateSession(ctx context.Context, session validationSession, device stri
 		return fail("status")
 	}
 	checks = append(checks, "status")
+
+	mediaStatus, err := session.CallTool(ctx, &mcp.CallToolParams{Name: mediaStatusTool, Arguments: map[string]any{"device": device}})
+	if err != nil || mediaStatus.IsError {
+		return fail("media_status")
+	}
+	mediaStatusObject, ok := mediaStatus.StructuredContent.(map[string]any)
+	if !ok || validateVirtualMediaStatus(mediaStatusObject, device) != nil {
+		return fail("media_status")
+	}
+	checks = append(checks, "media_status")
 
 	captureCtx, cancelCapture := context.WithTimeout(ctx, captureTimeout)
 	defer cancelCapture()
@@ -225,6 +236,17 @@ func validateConfiguredDevices(result map[string]any, selected string) error {
 }
 
 func validateStatus(status map[string]any, device string) error {
+	allowed := map[string]bool{
+		"device": true, "connected": true, "applicationVersion": true, "systemVersion": true,
+		"activeExtension": true, "usbState": true, "virtualMedia": true, "atxPowerOn": true,
+		"dcPowerOn": true, "videoReady": true, "usbWakeAttached": true, "dcVoltage": true,
+		"videoWidth": true, "videoHeight": true, "videoFPS": true, "warnings": true,
+	}
+	for name := range status {
+		if !allowed[name] {
+			return errors.New("unexpected status field")
+		}
+	}
 	if value, ok := status["device"].(string); !ok || value == "" || value != device {
 		return errors.New("invalid device field")
 	}
@@ -251,9 +273,15 @@ func validateStatus(status map[string]any, device string) error {
 			}
 		}
 	}
-	for _, name := range []string{"dcVoltage", "videoWidth", "videoHeight", "videoFPS"} {
+	if value, exists := status["dcVoltage"]; exists {
+		if _, ok := value.(float64); !ok {
+			return errors.New("invalid dcVoltage field")
+		}
+	}
+	for _, name := range []string{"videoWidth", "videoHeight", "videoFPS"} {
 		if value, exists := status[name]; exists {
-			if _, ok := value.(float64); !ok {
+			number, ok := value.(float64)
+			if !ok || math.Trunc(number) != number {
 				return fmt.Errorf("invalid %s field", name)
 			}
 		}
@@ -297,10 +325,43 @@ func validateVirtualMediaState(media map[string]any) error {
 	return nil
 }
 
+func validateVirtualMediaStatus(result map[string]any, device string) error {
+	if value, ok := result["device"].(string); !ok || value != device {
+		return errors.New("invalid virtual-media device")
+	}
+	if value, ok := result["operation"].(string); !ok || value != "status" {
+		return errors.New("invalid virtual-media operation")
+	}
+	if value, ok := result["status"].(string); !ok || value != "observed" {
+		return errors.New("invalid virtual-media status")
+	}
+	media := make(map[string]any, 3)
+	allowed := map[string]bool{
+		"device": true, "operation": true, "mounted": true,
+		"sourceType": true, "mode": true, "status": true,
+	}
+	for name, value := range result {
+		if !allowed[name] {
+			return errors.New("unexpected virtual-media status field")
+		}
+		if name == "mounted" || name == "sourceType" || name == "mode" {
+			media[name] = value
+		}
+	}
+	return validateVirtualMediaState(media)
+}
+
 func decodeCapture(result *mcp.CallToolResult, device string) (captureMetadata, error) {
 	object, ok := result.StructuredContent.(map[string]any)
-	if !ok {
+	if !ok || len(object) != 6 {
 		return captureMetadata{}, errors.New("invalid capture metadata")
+	}
+	for name := range object {
+		switch name {
+		case "device", "capturedAt", "mimeType", "width", "height", "sizeBytes":
+		default:
+			return captureMetadata{}, errors.New("unexpected capture metadata field")
+		}
 	}
 	if value, ok := object["device"].(string); !ok || value == "" || value != device {
 		return captureMetadata{}, errors.New("invalid capture device")
@@ -322,17 +383,14 @@ func decodeCapture(result *mcp.CallToolResult, device string) (captureMetadata, 
 		return captureMetadata{}, errors.New("invalid capture dimensions")
 	}
 
-	var pngData []byte
-	for _, content := range result.Content {
-		imageContent, ok := content.(*mcp.ImageContent)
-		if !ok {
-			continue
-		}
-		if pngData != nil || imageContent.MIMEType != "image/png" {
-			return captureMetadata{}, errors.New("invalid image content")
-		}
-		pngData = imageContent.Data
+	if len(result.Content) != 1 {
+		return captureMetadata{}, errors.New("invalid capture content count")
 	}
+	imageContent, ok := result.Content[0].(*mcp.ImageContent)
+	if !ok || imageContent.MIMEType != "image/png" {
+		return captureMetadata{}, errors.New("invalid image content")
+	}
+	pngData := imageContent.Data
 	if len(pngData) != size {
 		return captureMetadata{}, errors.New("capture size mismatch")
 	}
