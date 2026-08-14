@@ -4,7 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"reflect"
 	"strings"
@@ -122,6 +125,259 @@ func TestManagerStatusProjectsOrdinaryDeviceState(t *testing.T) {
 	wantMethods := []string{"ping", "getLocalVersion", "getActiveExtension", "getVirtualMediaState", "getVideoState", "getUSBState", "getATXState"}
 	if got := calledMethods(session.calls); !reflect.DeepEqual(got, wantMethods) {
 		t.Fatalf("methods = %v, want %v", got, wantMethods)
+	}
+}
+
+func TestManagerStatusReturnsWrappedContextErrorWithoutLaterProbes(t *testing.T) {
+	tests := []struct {
+		name         string
+		extension    string
+		failedMethod string
+		wantErr      error
+		wantMethods  []string
+	}{
+		{name: "version cancellation", extension: "atx-power", failedMethod: methodLocalVersion, wantErr: context.Canceled, wantMethods: []string{methodPing, methodLocalVersion}},
+		{name: "active extension deadline", extension: "atx-power", failedMethod: methodActiveExtension, wantErr: context.DeadlineExceeded, wantMethods: []string{methodPing, methodLocalVersion, methodActiveExtension}},
+		{name: "virtual media cancellation", extension: "atx-power", failedMethod: methodVirtualMediaState, wantErr: context.Canceled, wantMethods: []string{methodPing, methodLocalVersion, methodActiveExtension, methodVirtualMediaState}},
+		{name: "video deadline", extension: "atx-power", failedMethod: methodVideoState, wantErr: context.DeadlineExceeded, wantMethods: []string{methodPing, methodLocalVersion, methodActiveExtension, methodVirtualMediaState, methodVideoState}},
+		{name: "USB cancellation", extension: "atx-power", failedMethod: methodUSBState, wantErr: context.Canceled, wantMethods: []string{methodPing, methodLocalVersion, methodActiveExtension, methodVirtualMediaState, methodVideoState, methodUSBState}},
+		{name: "ATX deadline", extension: "atx-power", failedMethod: methodATXState, wantErr: context.DeadlineExceeded, wantMethods: []string{methodPing, methodLocalVersion, methodActiveExtension, methodVirtualMediaState, methodVideoState, methodUSBState, methodATXState}},
+		{name: "DC cancellation", extension: "dc-power", failedMethod: methodDCPowerState, wantErr: context.Canceled, wantMethods: []string{methodPing, methodLocalVersion, methodActiveExtension, methodVirtualMediaState, methodVideoState, methodUSBState, methodDCPowerState}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			ctx := &statusProbeContext{done: make(chan struct{})}
+			session := &fakeSession{
+				results: statusProbeResults(test.extension),
+				callHook: func(_ context.Context, method string, _ any) error {
+					if method != test.failedMethod {
+						return nil
+					}
+					ctx.cancel(test.wantErr)
+					return fmt.Errorf("wrapped caller failure: %w", test.wantErr)
+				},
+			}
+
+			status, err := testManager(t, session).Status(ctx, "lab")
+			if !errors.Is(err, test.wantErr) {
+				t.Fatalf("error = %v, want %v", err, test.wantErr)
+			}
+			if !reflect.DeepEqual(status, mcpserver.Status{}) {
+				t.Fatalf("status = %+v, want no partial success", status)
+			}
+			if got := calledMethods(session.calls); !reflect.DeepEqual(got, test.wantMethods) {
+				t.Fatalf("methods = %v, want %v", got, test.wantMethods)
+			}
+		})
+	}
+}
+
+type statusProbeContext struct {
+	done chan struct{}
+	err  error
+}
+
+func (*statusProbeContext) Deadline() (time.Time, bool) { return time.Time{}, false }
+func (ctx *statusProbeContext) Done() <-chan struct{}   { return ctx.done }
+func (ctx *statusProbeContext) Err() error              { return ctx.err }
+func (*statusProbeContext) Value(any) any               { return nil }
+
+func (ctx *statusProbeContext) cancel(err error) {
+	ctx.err = err
+	close(ctx.done)
+}
+
+func TestManagerStatusKeepsOrdinaryProbeFailuresAsWarnings(t *testing.T) {
+	tests := []struct {
+		name         string
+		extension    string
+		failedMethod string
+		warning      string
+		wantMethods  []string
+	}{
+		{name: "version", extension: "atx-power", failedMethod: methodLocalVersion, warning: "version unavailable", wantMethods: []string{methodPing, methodLocalVersion, methodActiveExtension, methodVirtualMediaState, methodVideoState, methodUSBState, methodATXState}},
+		{name: "active extension", extension: "atx-power", failedMethod: methodActiveExtension, warning: "active extension unavailable", wantMethods: []string{methodPing, methodLocalVersion, methodActiveExtension, methodVirtualMediaState, methodVideoState, methodUSBState}},
+		{name: "virtual media", extension: "atx-power", failedMethod: methodVirtualMediaState, warning: "virtual media unavailable", wantMethods: []string{methodPing, methodLocalVersion, methodActiveExtension, methodVirtualMediaState, methodVideoState, methodUSBState, methodATXState}},
+		{name: "video", extension: "atx-power", failedMethod: methodVideoState, warning: "video unavailable", wantMethods: []string{methodPing, methodLocalVersion, methodActiveExtension, methodVirtualMediaState, methodVideoState, methodUSBState, methodATXState}},
+		{name: "USB", extension: "atx-power", failedMethod: methodUSBState, warning: "USB unavailable", wantMethods: []string{methodPing, methodLocalVersion, methodActiveExtension, methodVirtualMediaState, methodVideoState, methodUSBState, methodATXState}},
+		{name: "ATX", extension: "atx-power", failedMethod: methodATXState, warning: "ATX state unavailable", wantMethods: []string{methodPing, methodLocalVersion, methodActiveExtension, methodVirtualMediaState, methodVideoState, methodUSBState, methodATXState}},
+		{name: "DC", extension: "dc-power", failedMethod: methodDCPowerState, warning: "DC state unavailable", wantMethods: []string{methodPing, methodLocalVersion, methodActiveExtension, methodVirtualMediaState, methodVideoState, methodUSBState, methodDCPowerState}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			session := &fakeSession{
+				results: statusProbeResults(test.extension),
+				err:     map[string]error{test.failedMethod: errors.New("ordinary probe failure")},
+			}
+
+			status, err := testManager(t, session).Status(context.Background(), "lab")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !status.Connected || !reflect.DeepEqual(status.Warnings, []string{test.warning}) {
+				t.Fatalf("status = %+v, want connected status with warning %q", status, test.warning)
+			}
+			if got := calledMethods(session.calls); !reflect.DeepEqual(got, test.wantMethods) {
+				t.Fatalf("methods = %v, want %v", got, test.wantMethods)
+			}
+		})
+	}
+}
+
+func TestManagerStatusKeepsInternalRequestTimeoutAsWarning(t *testing.T) {
+	session := &fakeSession{
+		results: statusProbeResults("atx-power"),
+		err: map[string]error{
+			methodVideoState: classifyOperationError(context.DeadlineExceeded, ToolOutcomeUnknown),
+		},
+	}
+
+	status, err := testManager(t, session).Status(context.Background(), "lab")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !status.Connected || !reflect.DeepEqual(status.Warnings, []string{"video unavailable"}) {
+		t.Fatalf("status = %+v, want connected partial status with video warning", status)
+	}
+	wantMethods := []string{methodPing, methodLocalVersion, methodActiveExtension, methodVirtualMediaState, methodVideoState, methodUSBState, methodATXState}
+	if got := calledMethods(session.calls); !reflect.DeepEqual(got, wantMethods) {
+		t.Fatalf("methods = %v, want continued probes %v", got, wantMethods)
+	}
+}
+
+func TestManagerStatusPreservesOriginalCallerCancellationError(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	var probeErr error
+	session := &fakeSession{
+		results: statusProbeResults("atx-power"),
+		callHook: func(callCtx context.Context, method string, _ any) error {
+			if method != methodVideoState {
+				return nil
+			}
+			cancel()
+			probeErr = classifyOperationError(fmt.Errorf("video probe interrupted: %w", callCtx.Err()), ToolOutcomeUnknown)
+			return probeErr
+		},
+	}
+
+	status, err := testManager(t, session).Status(ctx, "lab")
+	if err != probeErr {
+		t.Fatalf("error = %#v, want original probe error %#v", err, probeErr)
+	}
+	if !reflect.DeepEqual(status, mcpserver.Status{}) {
+		t.Fatalf("status = %+v, want no partial success", status)
+	}
+	var classified interface{ ToolErrorOutcome() string }
+	if !errors.As(err, &classified) || classified.ToolErrorOutcome() != ToolOutcomeUnknown {
+		t.Fatalf("error = %#v, want preserved unknown outcome", err)
+	}
+}
+
+func TestManagerStatusStopsAfterSuccessfulProbeWhenCallerCanceled(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	session := &fakeSession{
+		results: statusProbeResults("atx-power"),
+		callHook: func(_ context.Context, method string, _ any) error {
+			if method == methodVideoState {
+				cancel()
+			}
+			return nil
+		},
+	}
+
+	status, err := testManager(t, session).Status(ctx, "lab")
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("error = %v, want caller cancellation", err)
+	}
+	if !reflect.DeepEqual(status, mcpserver.Status{}) {
+		t.Fatalf("status = %+v, want no partial success", status)
+	}
+	wantMethods := []string{methodPing, methodLocalVersion, methodActiveExtension, methodVirtualMediaState, methodVideoState}
+	if got := calledMethods(session.calls); !reflect.DeepEqual(got, wantMethods) {
+		t.Fatalf("methods = %v, want no probes after cancellation %v", got, wantMethods)
+	}
+}
+
+func TestManagerStatusCallerCancellationWinsOverUnrelatedProbeError(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	session := &fakeSession{
+		results: statusProbeResults("atx-power"),
+		callHook: func(_ context.Context, method string, _ any) error {
+			if method != methodVideoState {
+				return nil
+			}
+			cancel()
+			return errors.New("unrelated probe failure")
+		},
+	}
+
+	status, err := testManager(t, session).Status(ctx, "lab")
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("error = %v, want caller cancellation", err)
+	}
+	if !reflect.DeepEqual(status, mcpserver.Status{}) {
+		t.Fatalf("status = %+v, want no partial success", status)
+	}
+	wantMethods := []string{methodPing, methodLocalVersion, methodActiveExtension, methodVirtualMediaState, methodVideoState}
+	if got := calledMethods(session.calls); !reflect.DeepEqual(got, wantMethods) {
+		t.Fatalf("methods = %v, want no probes after cancellation %v", got, wantMethods)
+	}
+}
+
+func TestManagerStatusCancellationDuringProviderSetupStaysNotSent(t *testing.T) {
+	started := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, request *http.Request) {
+		close(started)
+		<-request.Context().Done()
+	}))
+	defer server.Close()
+
+	base, err := url.Parse(server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager, err := NewManager(
+		[]DeviceConfig{{Name: "lab", BaseURL: *base}},
+		NewWebRTCProvider(WebRTCProviderOptions{}),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		_, err := manager.Status(ctx, "lab")
+		done <- err
+	}()
+
+	<-started
+	cancel()
+	err = <-done
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("error = %#v, want caller cancellation", err)
+	}
+	var classified interface {
+		ToolErrorCode() string
+		ToolErrorOutcome() string
+	}
+	if !errors.As(err, &classified) || classified.ToolErrorCode() != "canceled" || classified.ToolErrorOutcome() != ToolOutcomeNotSent {
+		t.Fatalf("error = %#v, want canceled/not_sent", err)
+	}
+}
+
+func statusProbeResults(extension string) map[string]any {
+	return map[string]any{
+		methodPing:              "pong",
+		methodLocalVersion:      map[string]any{"appVersion": "0.6.0", "systemVersion": "1.2.3"},
+		methodActiveExtension:   extension,
+		methodVirtualMediaState: nil,
+		methodVideoState:        map[string]any{"ready": true, "width": 1920, "height": 1080, "fps": 30},
+		methodUSBState:          "not attached",
+		methodATXState:          map[string]any{"power": true},
+		methodDCPowerState:      map[string]any{"isOn": true, "voltage": 12.0},
 	}
 }
 
