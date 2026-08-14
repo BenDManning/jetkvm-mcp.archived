@@ -3,6 +3,7 @@ package mcpserver
 import (
 	"context"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -16,6 +17,16 @@ type cancellationDevice struct {
 	canceled    chan struct{}
 	release     chan struct{}
 	releaseOnce sync.Once
+}
+
+type deadlineCaptureDevice struct{ recordingDevice }
+
+func (*deadlineCaptureDevice) CaptureScreen(ctx context.Context, _ string, _ CaptureRequest) (CaptureResult, error) {
+	<-ctx.Done()
+	return CaptureResult{
+		Device: "lab", CapturedAt: time.Now().UTC(), MIMEType: "image/png",
+		Width: 1, Height: 1, PNG: []byte{1},
+	}, nil
 }
 
 func (device *cancellationDevice) Release() {
@@ -72,5 +83,30 @@ func TestHTTPClientCancellationReachesToolHandler(t *testing.T) {
 	case <-callDone:
 	case <-time.After(time.Second):
 		t.Fatal("client call did not stop")
+	}
+}
+
+func TestCaptureDeadlineCoversMCPResultConstruction(t *testing.T) {
+	clientTransport, serverTransport := mcp.NewInMemoryTransports()
+	serverSession, err := newServer(&deadlineCaptureDevice{}, "test", 10*time.Millisecond).Connect(context.Background(), serverTransport, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer serverSession.Close()
+	clientSession, err := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "test"}, nil).Connect(context.Background(), clientTransport, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer clientSession.Close()
+
+	result, err := clientSession.CallTool(context.Background(), &mcp.CallToolParams{
+		Name: CaptureScreenToolName, Arguments: map[string]any{"device": "lab"},
+	})
+	if err != nil || result == nil || !result.IsError {
+		t.Fatalf("CallTool = %#v, %v, want timeout tool result", result, err)
+	}
+	text, ok := result.Content[0].(*mcp.TextContent)
+	if !ok || !strings.Contains(text.Text, `"code":"timeout"`) || !strings.Contains(text.Text, `"outcome":"failed"`) {
+		t.Fatalf("tool result = %#v, want timeout/failed", result.Content)
 	}
 }

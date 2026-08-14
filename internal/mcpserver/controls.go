@@ -11,6 +11,9 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
+// CaptureScreenTimeout bounds the complete MCP screenshot operation.
+const CaptureScreenTimeout = 30 * time.Second
+
 const (
 	CaptureScreenToolName          = "jetkvm_capture_screen"
 	KeyboardToolName               = "jetkvm_keyboard"
@@ -211,7 +214,11 @@ func addControlTools(server *mcp.Server, device Device) {
 			Device: capture.Device, CapturedAt: capture.CapturedAt, MIMEType: capture.MIMEType,
 			Width: capture.Width, Height: capture.Height, SizeBytes: len(capture.PNG),
 		}
-		return &mcp.CallToolResult{Content: []mcp.Content{&mcp.ImageContent{MIMEType: capture.MIMEType, Data: append([]byte(nil), capture.PNG...)}}}, output, nil
+		imageData := append([]byte(nil), capture.PNG...)
+		if err := ctx.Err(); err != nil {
+			return nil, CaptureOutput{}, err
+		}
+		return &mcp.CallToolResult{Content: []mcp.Content{&mcp.ImageContent{MIMEType: capture.MIMEType, Data: imageData}}}, output, nil
 	})
 
 	addMutationTool(server, &mcp.Tool{
@@ -332,6 +339,26 @@ func addControlTools(server *mcp.Server, device Device) {
 		result, err := device.VirtualMedia(ctx, input.Device, request)
 		return nil, result, err
 	})
+}
+
+func captureDeadlineMiddleware(timeout time.Duration) mcp.Middleware {
+	return func(next mcp.MethodHandler) mcp.MethodHandler {
+		return func(ctx context.Context, method string, request mcp.Request) (mcp.Result, error) {
+			params, ok := request.GetParams().(*mcp.CallToolParamsRaw)
+			if method != "tools/call" || !ok || params.Name != CaptureScreenToolName {
+				return next(ctx, method, request)
+			}
+			captureCtx, cancel := context.WithTimeout(ctx, timeout)
+			defer cancel()
+			result, err := next(captureCtx, method, request)
+			if captureCtx.Err() == nil {
+				return result, err
+			}
+			failure := new(mcp.CallToolResult)
+			failure.SetError(toolFailure(captureCtx.Err(), false))
+			return failure, nil
+		}
+	}
 }
 
 func captureSchema() *jsonschema.Schema {

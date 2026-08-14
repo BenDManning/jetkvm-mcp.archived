@@ -11,10 +11,7 @@ import (
 	"github.com/BenDManning/jetkvm-mcp/internal/mcpserver"
 )
 
-const (
-	maxCapturePNGBytes    = 32 << 20
-	defaultCaptureTimeout = 30 * time.Second
-)
+const maxCapturePNGBytes = 32 << 20
 
 var errCaptureServerDeadline = errors.New("capture server deadline exceeded")
 
@@ -35,7 +32,7 @@ func WithDecoder(decoder Decoder) ManagerOption {
 }
 
 func (manager *Manager) CaptureScreen(ctx context.Context, name string, request mcpserver.CaptureRequest) (mcpserver.CaptureResult, error) {
-	return manager.captureScreen(ctx, name, request, defaultCaptureTimeout)
+	return manager.captureScreen(ctx, name, request, mcpserver.CaptureScreenTimeout)
 }
 
 func (manager *Manager) captureScreen(ctx context.Context, name string, request mcpserver.CaptureRequest, timeout time.Duration) (mcpserver.CaptureResult, error) {
@@ -135,6 +132,9 @@ func classifyCaptureReadFailure(captureCtx context.Context, err error) error {
 				return classifyReadFailure(context.DeadlineExceeded)
 			}
 			return classifyOperationError(captureCtx.Err(), ToolOutcomeNotSent)
+		}
+		if captureCtx.Err() != nil && !errors.Is(err, captureCtx.Err()) {
+			return captureContextError(captureCtx)
 		}
 		return err
 	}

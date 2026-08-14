@@ -170,8 +170,8 @@ func TestCaptureScreenAppliesServerOwnedDefaultDeadline(t *testing.T) {
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("error = %v, want probe cancellation", err)
 	}
-	if remaining <= 0 || remaining > defaultCaptureTimeout {
-		t.Fatalf("default deadline remaining = %v, want within (0, %v]", remaining, defaultCaptureTimeout)
+	if remaining <= 0 || remaining > mcpserver.CaptureScreenTimeout {
+		t.Fatalf("default deadline remaining = %v, want within (0, %v]", remaining, mcpserver.CaptureScreenTimeout)
 	}
 }
 
@@ -552,6 +552,26 @@ func TestCaptureScreenContextWinsOverRawDecoderError(t *testing.T) {
 	}
 }
 
+func TestCaptureScreenContextWinsOverConcurrentClassifiedRPCError(t *testing.T) {
+	session := &captureTestSession{call: func(ctx context.Context) error {
+		<-ctx.Done()
+		return classifyOperationError(ErrInvalidResponse, ToolOutcomeUnknown)
+	}}
+	manager := newCaptureTestManager(t, session, &fakeDecoder{})
+
+	result, err := manager.captureScreen(context.Background(), "lab", mcpserver.CaptureRequest{}, 10*time.Millisecond)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("result = %+v error = %v, want server deadline", result, err)
+	}
+	var classified interface {
+		ToolErrorCode() string
+		ToolErrorOutcome() string
+	}
+	if !errors.As(err, &classified) || classified.ToolErrorCode() != "timeout" || classified.ToolErrorOutcome() != ToolOutcomeFailed {
+		t.Fatalf("error = %#v, want timeout/failed", err)
+	}
+}
+
 func TestCaptureScreenCanProceedAfterTimedOutCapture(t *testing.T) {
 	receiver := newVideoReceiver()
 	defer receiver.Close()
@@ -597,9 +617,13 @@ type captureTestSession struct {
 	receiver   *videoReceiver
 	h264       []byte
 	capturedAt time.Time
+	call       func(context.Context) error
 }
 
-func (session *captureTestSession) Call(_ context.Context, method string, _ any, result any) error {
+func (session *captureTestSession) Call(ctx context.Context, method string, _ any, result any) error {
+	if session.call != nil {
+		return session.call(ctx)
+	}
 	if method != methodVideoState {
 		return errors.New("unexpected method")
 	}

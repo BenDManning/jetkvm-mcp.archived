@@ -48,6 +48,10 @@ func (provider *WebRTCProvider) WithSession(ctx context.Context, device DeviceCo
 	if err != nil {
 		return err
 	}
+	return withConnectedSession(ctx, connected, operation)
+}
+
+func withConnectedSession(ctx context.Context, connected *connectedSession, operation func(Session) error) error {
 	defer connected.CloseContext(ctx)
 	return operation(connected)
 }

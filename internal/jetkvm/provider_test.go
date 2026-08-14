@@ -5,7 +5,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -228,68 +227,50 @@ func TestWebRTCProviderAuthenticatesSignalsAndCallsRPC(t *testing.T) {
 
 func TestWebRTCProviderTeardownDoesNotOutliveOperationDeadline(t *testing.T) {
 	fixture := newWebRTCProviderFixture(t)
-	const operationTimeout = 250 * time.Millisecond
-	ctx, cancel := context.WithTimeout(context.Background(), operationTimeout)
-	defer cancel()
+	setupCtx, cancelSetup := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancelSetup()
+	connected, err := fixture.provider.connect(setupCtx, fixture.device, SessionProfileData)
+	if err != nil {
+		t.Fatal(err)
+	}
 	releasePump := make(chan struct{})
 	pumpExited := make(chan struct{})
-	connectedCh := make(chan *connectedSession, 1)
-	type terminalResult struct {
-		err     error
-		elapsed time.Duration
-	}
-	resultCh := make(chan terminalResult, 1)
-	started := time.Now()
+	connected.pumpMu.Lock()
+	connected.pumps.Add(1)
+	connected.pumpMu.Unlock()
 	go func() {
-		err := fixture.provider.WithSession(ctx, fixture.device, SessionProfileData, func(session Session) error {
-			connected, ok := session.(*connectedSession)
-			if !ok {
-				return fmt.Errorf("session type = %T, want connected session", session)
-			}
-			connected.pumpMu.Lock()
-			connected.pumps.Add(1)
-			connected.pumpMu.Unlock()
-			connectedCh <- connected
-			go func() {
-				defer connected.pumps.Done()
-				defer close(pumpExited)
-				<-releasePump
-			}()
-			<-ctx.Done()
-			return ctx.Err()
+		defer connected.pumps.Done()
+		defer close(pumpExited)
+		<-releasePump
+	}()
+	const teardownTimeout = 50 * time.Millisecond
+	teardownCtx, cancelTeardown := context.WithTimeout(context.Background(), teardownTimeout)
+	defer cancelTeardown()
+	resultCh := make(chan error, 1)
+	go func() {
+		resultCh <- withConnectedSession(teardownCtx, connected, func(Session) error {
+			<-teardownCtx.Done()
+			return teardownCtx.Err()
 		})
-		resultCh <- terminalResult{err: err, elapsed: time.Since(started)}
 	}()
 
-	var connected *connectedSession
 	select {
-	case connected = <-connectedCh:
-	case terminal := <-resultCh:
-		t.Fatalf("session setup failed before teardown probe: %v", terminal.err)
-	case <-time.After(operationTimeout):
-		t.Fatal("session setup did not reach teardown probe")
-	}
-
-	select {
-	case terminal := <-resultCh:
+	case err := <-resultCh:
 		close(releasePump)
 		<-pumpExited
-		if !errors.Is(terminal.err, context.DeadlineExceeded) {
-			t.Fatalf("error = %v, want operation deadline", terminal.err)
-		}
-		if terminal.elapsed > operationTimeout+150*time.Millisecond {
-			t.Fatalf("provider returned after %v, want teardown bounded by %v operation deadline", terminal.elapsed, operationTimeout)
+		if !errors.Is(err, context.DeadlineExceeded) {
+			t.Fatalf("error = %v, want operation deadline", err)
 		}
 		select {
 		case <-connected.ctx.Done():
 		default:
 			t.Fatal("bounded teardown did not cancel the connected session")
 		}
-	case <-time.After(operationTimeout + 200*time.Millisecond):
+	case <-time.After(teardownTimeout + 200*time.Millisecond):
 		close(releasePump)
 		<-pumpExited
-		terminal := <-resultCh
-		t.Fatalf("provider remained blocked in teardown for %v after operation deadline (error %v)", terminal.elapsed-operationTimeout, terminal.err)
+		err := <-resultCh
+		t.Fatalf("provider remained blocked after operation deadline: %v", err)
 	}
 }
 
