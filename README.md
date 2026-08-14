@@ -262,6 +262,21 @@ paths, device names, server logs, status values, error details, and image data.
 The capture call has a dedicated 30-second deadline, and its PNG buffer is
 cleared after full in-memory decoding.
 
+### Mutation-validation dry run
+
+Before any separately approved live mutation window, validate the checked
+offline plan and follow the [mutation validation
+checklist](docs/mutation-validation.md):
+
+```sh
+go run ./cmd/jetkvm-mcp-mutation-checklist \
+  --plan testdata/mutation-validation-plan.json
+```
+
+This source-run command only validates a closed dry-run plan. It has no device
+or MCP execution path, and even a passing report explicitly states that
+execution is not authorized.
+
 The compact compatibility ledger, focused offline upstream-drift command, and
 evidence-refresh triggers are documented in
 [`docs/compatibility/`](docs/compatibility/README.md). Source review, fake-device

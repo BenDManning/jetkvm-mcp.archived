@@ -36,6 +36,71 @@ read-only qualification tooling. Its documented flags, exit behavior, and
 sanitized JSON report are compatibility surfaces, but it is not included in
 the binary archives or container and has no packaged-artifact guarantee.
 
+The separately maintained `jetkvm-mcp-mutation-checklist` command is source-run,
+offline, dry-run-only plan validation with no MCP client, device transport, or
+mutation path. The command and checked plan are not included in binary archives
+or the container and have no packaged-artifact guarantee. The [mutation
+validation checklist](mutation-validation.md) owns the operator procedure; the
+compatibility surface is declared below.
+
+#### Mutation-checklist plan and report
+
+The command accepts only the required `--plan` flag and no positional
+arguments. Its value names one regular file of at most 64 KiB. Empty input,
+final-component symlinks, non-regular files, and unknown fields are rejected.
+Duplicate JSON object members are rejected, as are trailing JSON values and
+more than one top-level value. The file is exactly one JSON object with these
+required root members. Member names are case-sensitive.
+
+| Member | Type and required value |
+|---|---|
+| `schema` | String exactly `jetkvm.mutation-validation.v1`. |
+| `mode` | String exactly `dry_run`. No live or execute mode exists. |
+| `target` | Object with the required booleans declared below. |
+| `controls` | Object with the required booleans declared below. |
+| `steps` | Array containing exactly 13 step objects: every operation in the closed inventory exactly once. |
+
+The `target` object requires `marked_expendable`, `identity_confirmed`, and
+`non_production`, all boolean `true`. The `controls` object requires
+`observer_ready`, `recovery_ready`, `emergency_stop_ready`, and
+`per_plan_acknowledgement` as boolean `true`, and `execution_approved` as boolean
+`false`. No target identifier or other free-form target data is accepted.
+
+The closed operation inventory is:
+
+- `jetkvm_keyboard` and `jetkvm_mouse`;
+- `jetkvm_press_host_power_button`, `jetkvm_press_host_reset_button`,
+  `jetkvm_force_host_power_off`, `jetkvm_turn_host_dc_power_on`, and
+  `jetkvm_turn_host_dc_power_off`;
+- `jetkvm_wake_host_lan` and `jetkvm_wake_host_usb`; and
+- `jetkvm_upload_virtual_media_file`, `jetkvm_mount_virtual_media_url`,
+  `jetkvm_mount_virtual_media_file`, and `jetkvm_unmount_virtual_media`.
+
+Every step requires string `operation`; boolean `consequence_acknowledged`,
+`preconditions_confirmed`, `postcondition_observable`, `recovery_ready`, and
+`never_retry_unknown_outcome`, all `true`; and integer `timeout_seconds`. The
+timeout must be from 1 through 300. A `jetkvm_keyboard` step also requires string
+`hid_operation` set to `type_text` or `press_key`. A `jetkvm_mouse` step requires
+`hid_operation` set to `move_absolute`, `move_relative`, `click`, or `scroll`.
+Every non-HID step must omit `hid_operation`; an empty string or JSON null is not
+omission.
+
+Media controls are operation-specific. `jetkvm_upload_virtual_media_file` and
+`jetkvm_mount_virtual_media_file` require boolean `integrity_check_planned` and
+`cleanup_planned`, both `true`. `jetkvm_mount_virtual_media_url` and
+`jetkvm_unmount_virtual_media` require `cleanup_planned` as `true` and must omit
+`integrity_check_planned`. All other steps must omit both media-control members.
+False and JSON null do not satisfy a required media control.
+
+The command writes one sanitized JSON object with these members and no others:
+
+| Member | Type and value |
+|---|---|
+| `schema` | String exactly `jetkvm.mutation-validation.report.v1`. |
+| `result` | String `pass` or `fail`. |
+| `checked_steps` | Integer 13 on `pass`, otherwise 0. |
+| `execution_authorized` | Boolean always `false`. |
+
 ### CLI streams and exit status
 
 Normal server diagnostics, serving notices, and errors use stderr. While
@@ -48,10 +113,16 @@ writes exactly `configuration valid` followed by a newline to stdout and exits
 CLI write a `jetkvm-mcp:` diagnostic to stderr and exit 1. Flag errors preserve
 the safe flag name without echoing its supplied value.
 
-The validator writes one sanitized JSON report to stdout; stderr is reserved for
-any validator diagnostics, and child-server stderr is deliberately discarded.
-It exits 0 for a passing validation, 1 for a validation failure, and 2 for an
-argument or required-input failure detected before validation.
+Each source-run validator writes one sanitized JSON report to stdout; stderr is
+reserved for validator diagnostics, and qualification child-server stderr is
+deliberately discarded. `jetkvm-mcp-validate` exits 0 for a passing
+qualification, 1 for a validation failure, and 2 for an argument or
+required-input failure detected before validation.
+`jetkvm-mcp-mutation-checklist` exits 0 only after a passing report is written,
+1 for invalid plan input, failed plan validation, a null report sink, or a
+report-write failure, and 2 for flag, missing-`--plan`, or extra-argument
+errors. A report-write failure may leave partial or no stdout, but never exits
+0.
 
 ## Versions and release support
 
@@ -108,6 +179,7 @@ or point-in-time protocol observations.
 | YAML configuration | Declared: the current strict, unversioned grammar; no schema-version field or migration engine | Loader tests cover the grammar. The exact example is [`config.example.yaml`](../config.example.yaml); unknown fields, empty or over-1 MiB input, multiple YAML documents, unsafe admission limits, and device-URL user information/query/fragment components are rejected. Device URL path prefixes remain supported. |
 | Server CLI | Declared: help, `--config`, optional `--http`, `--version`, offline `config validate`, and `debug rpc` with its documented flags, streams, and JSON result | Parser and integration tests exercise these entry points. `debug rpc` permits only `ping`, `getLocalVersion`, and `getActiveExtension` by default; every other method requires per-invocation `--unsafe-acknowledge-risk`. Free-form diagnostic wording is not stable unless documented as structured output. |
 | Validator CLI | Declared source-run interface: required `--binary`, `--config`, and `--device`; sanitized JSON and exit status | Unit tests exercise argument and report shape. Physical qualification is absent until retained evidence satisfies the policy below. No validator binary is distributed. |
+| Mutation-checklist CLI | Declared source-run interface: required `--plan`; strict `jetkvm.mutation-validation.v1` plan with concrete HID subtypes; sanitized `jetkvm.mutation-validation.report.v1` JSON and exit status | Unit tests exercise strict decoding, bounded regular-file input, plan inventory and controls, report shape, output failures, and the checked synthetic plan. It has no execution path and grants no mutation authority. No checklist binary is distributed. |
 | MCP tools, results, errors, and annotations | Declared: the 18 current tools, their schemas, structured results/content, tool-result error semantics, and annotations | [`server.go`](../internal/mcpserver/server.go), [`controls.go`](../internal/mcpserver/controls.go), and their tests are the executable source of truth. Execution failures use tool results with `IsError`, not protocol errors. `jetkvm_list_devices` returns sorted configured aliases and configuration-derived availability flags; it does not open a device session or qualify firmware capabilities. `jetkvm_virtual_media` is retained as a deprecated compatibility surface; clients should migrate each operation to the corresponding one-purpose `jetkvm_*_virtual_media*` tool. |
 | Binary artifacts | Intended: one `jetkvm-mcp` binary in `jetkvm-mcp_<version>_<os>_<arch>.tar.gz` for each declared native target, plus `checksums.txt` | [GoReleaser configuration](../.goreleaser.yaml) and CI establish naming and cross-build evidence, not publication or runtime qualification. |
 | Container artifacts | Intended: Linux amd64 and arm64, one `jetkvm-mcp` entry point, bundled FFmpeg, UID/GID 10001 | The [Dockerfile](../Dockerfile) and CI establish build intent. No image name, registry channel, publication, indefinite availability, or per-platform runtime qualification is promised. |
