@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"image"
 	"image/color"
 	"image/png"
@@ -238,6 +239,59 @@ func TestCaptureScreenCallerDeadlineDuringSessionSetupStaysNotSent(t *testing.T)
 	}
 	if !errors.As(err, &classified) || classified.ToolErrorCode() != "timeout" || classified.ToolErrorOutcome() != ToolOutcomeNotSent {
 		t.Fatalf("error = %#v, want timeout/not_sent", err)
+	}
+}
+
+func TestCaptureScreenRestoresCallerContextErasedDuringSessionSetup(t *testing.T) {
+	tests := []struct {
+		name     string
+		context  func() (context.Context, context.CancelFunc)
+		wantErr  error
+		wantCode string
+	}{
+		{
+			name: "cancellation",
+			context: func() (context.Context, context.CancelFunc) {
+				ctx, cancel := context.WithCancel(context.Background())
+				cancel()
+				return ctx, cancel
+			},
+			wantErr:  context.Canceled,
+			wantCode: "canceled",
+		},
+		{
+			name: "deadline",
+			context: func() (context.Context, context.CancelFunc) {
+				return context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+			},
+			wantErr:  context.DeadlineExceeded,
+			wantCode: "timeout",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			provider := &captureTestProvider{setup: func(ctx context.Context) error {
+				if ctx.Err() == nil {
+					t.Fatal("session setup did not receive completed caller context")
+				}
+				return fmt.Errorf("%w: device probe", ErrDeviceUnreachable)
+			}}
+			manager := newCaptureTestManagerWithProvider(t, provider, &fakeDecoder{})
+			ctx, cancel := test.context()
+			defer cancel()
+
+			_, err := manager.captureScreen(ctx, "lab", mcpserver.CaptureRequest{}, time.Second)
+			if !errors.Is(err, test.wantErr) {
+				t.Fatalf("error = %v, want %v", err, test.wantErr)
+			}
+			var classified interface {
+				ToolErrorCode() string
+				ToolErrorOutcome() string
+			}
+			if !errors.As(err, &classified) || classified.ToolErrorCode() != test.wantCode || classified.ToolErrorOutcome() != ToolOutcomeNotSent {
+				t.Fatalf("error = %#v, want %s/not_sent", err, test.wantCode)
+			}
+		})
 	}
 }
 

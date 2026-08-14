@@ -118,6 +118,12 @@ func classifyCaptureReadFailure(captureCtx context.Context, err error) error {
 		if errors.Is(context.Cause(captureCtx), errCaptureServerDeadline) && errors.Is(err, context.DeadlineExceeded) {
 			return classifyOperationError(operationErr.Cause, ToolOutcomeFailed)
 		}
+		if captureCtx.Err() != nil && operationErr.Outcome == ToolOutcomeNotSent && !errors.Is(err, captureCtx.Err()) {
+			if errors.Is(context.Cause(captureCtx), errCaptureServerDeadline) {
+				return classifyReadFailure(context.DeadlineExceeded)
+			}
+			return classifyOperationError(captureCtx.Err(), ToolOutcomeNotSent)
+		}
 		return err
 	}
 	return classifyReadFailure(err)
