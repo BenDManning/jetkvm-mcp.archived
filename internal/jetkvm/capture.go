@@ -102,17 +102,26 @@ func (manager *Manager) captureScreen(ctx context.Context, name string, request 
 	if len(pngData) == 0 || len(pngData) > maxCapturePNGBytes || width < 1 || width > maxWidth || height < 1 || height > maxHeight || capturedAt.IsZero() {
 		return mcpserver.CaptureResult{}, classifyReadFailure(ErrInvalidResponse)
 	}
-	config, err := png.DecodeConfig(bytes.NewReader(pngData))
-	if err != nil || config.Width != width || config.Height != height {
-		return mcpserver.CaptureResult{}, classifyReadFailure(ErrInvalidResponse)
-	}
+	config, err := png.DecodeConfig(&contextReader{ctx: captureCtx, reader: bytes.NewReader(pngData)})
 	if err := captureContextError(captureCtx); err != nil {
 		return mcpserver.CaptureResult{}, err
 	}
-	return mcpserver.CaptureResult{
+	if err != nil || config.Width != width || config.Height != height {
+		return mcpserver.CaptureResult{}, classifyReadFailure(ErrInvalidResponse)
+	}
+	result := mcpserver.CaptureResult{
 		Device: device.Name, CapturedAt: capturedAt.UTC(), MIMEType: "image/png",
-		Width: width, Height: height, PNG: append([]byte(nil), pngData...),
-	}, nil
+		Width: width, Height: height,
+	}
+	return finalizeCaptureResult(captureCtx, result, pngData)
+}
+
+func finalizeCaptureResult(ctx context.Context, result mcpserver.CaptureResult, pngData []byte) (mcpserver.CaptureResult, error) {
+	result.PNG = append([]byte(nil), pngData...)
+	if err := captureContextError(ctx); err != nil {
+		return mcpserver.CaptureResult{}, err
+	}
+	return result, nil
 }
 
 func classifyCaptureReadFailure(captureCtx context.Context, err error) error {

@@ -276,6 +276,19 @@ func TestCaptureScreenExpiredAtEntryDoesNotDispatchOrSucceed(t *testing.T) {
 	}
 }
 
+func TestFinalizeCaptureResultRejectsCompletedContextAfterCopy(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	result, err := finalizeCaptureResult(ctx, mcpserver.CaptureResult{Device: "lab"}, []byte{1, 2, 3})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("error = %v, want caller cancellation", err)
+	}
+	if result.Device != "" || len(result.PNG) != 0 {
+		t.Fatalf("result = %+v, want no success result", result)
+	}
+}
+
 func TestCaptureScreenRestoresCallerContextErasedDuringSessionSetup(t *testing.T) {
 	tests := []struct {
 		name     string
