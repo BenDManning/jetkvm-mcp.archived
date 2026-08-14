@@ -48,7 +48,7 @@ func (provider *WebRTCProvider) WithSession(ctx context.Context, device DeviceCo
 	if err != nil {
 		return err
 	}
-	defer connected.Close()
+	defer connected.CloseContext(ctx)
 	return operation(connected)
 }
 
@@ -240,8 +240,15 @@ func (session *connectedSession) CaptureH264(ctx context.Context) ([]byte, time.
 }
 
 func (session *connectedSession) Close() {
+	session.CloseContext(context.Background())
+}
+
+func (session *connectedSession) CloseContext(ctx context.Context) {
 	if session == nil {
 		return
+	}
+	if ctx == nil {
+		ctx = context.Background()
 	}
 	session.closeOnce.Do(func() {
 		session.pumpMu.Lock()
@@ -263,7 +270,15 @@ func (session *connectedSession) Close() {
 		if session.httpClient != nil {
 			session.httpClient.CloseIdleConnections()
 		}
-		session.pumps.Wait()
+		pumpsDone := make(chan struct{})
+		go func() {
+			session.pumps.Wait()
+			close(pumpsDone)
+		}()
+		select {
+		case <-pumpsDone:
+		case <-ctx.Done():
+		}
 	})
 }
 
