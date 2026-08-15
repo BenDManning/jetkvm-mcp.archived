@@ -13,6 +13,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/BenDManning/jetkvm-mcp/internal/mcpserver"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 func installFixtureFFmpeg(t *testing.T) {
@@ -235,4 +238,122 @@ func TestRunStdioDiscoveryUsesStdoutAndLogsToStderr(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("stdio runtime did not stop")
 	}
+}
+
+func TestRunStdioOperationTelemetryKeepsStdoutProtocolOnly(t *testing.T) {
+	binDir := t.TempDir()
+	ffmpegPath := filepath.Join(binDir, "ffmpeg")
+	if err := os.WriteFile(ffmpegPath, []byte("#!/bin/sh\nexit 127\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	configPath := filepath.Join(t.TempDir(), "config.yaml")
+	const privateSentinel = "PRIVATE-device-url-token-path-firmware-rpc-child"
+	if err := os.WriteFile(configPath, []byte("devices:\n  "+privateSentinel+":\n    url: http://private.invalid\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	stdinReader, stdinWriter := io.Pipe()
+	stdoutReader, stdoutWriter := io.Pipe()
+	var stdout, stderr bytes.Buffer
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	done := make(chan error, 1)
+	go func() {
+		done <- run(ctx, []string{"--config", configPath}, stdinReader, stdoutWriter, &stderr, os.LookupEnv)
+	}()
+	client := mcp.NewClient(&mcp.Implementation{Name: "stdio-telemetry-test", Version: "test"}, nil)
+	clientSession, err := client.Connect(ctx, &mcp.IOTransport{
+		Reader: io.NopCloser(io.TeeReader(stdoutReader, &stdout)),
+		Writer: stdinWriter,
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := clientSession.CallTool(ctx, &mcp.CallToolParams{Name: mcpserver.ListDevicesToolName})
+	if err != nil || result == nil || result.IsError {
+		t.Fatalf("CallTool = %#v, %v", result, err)
+	}
+	_ = clientSession.Close()
+	_ = stdinWriter.Close()
+	cancel()
+	select {
+	case err := <-done:
+		if err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, io.EOF) {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("stdio runtime did not stop")
+	}
+	if strings.Contains(stdout.String(), "jetkvm.operation.v1") {
+		t.Fatalf("protocol stdout contains telemetry: %q", stdout.String())
+	}
+	if strings.Contains(stderr.String(), privateSentinel) {
+		t.Fatalf("stderr retained private sentinel: %q", stderr.String())
+	}
+	var toolSeen, shutdownSeen bool
+	for _, line := range strings.Split(stderr.String(), "\n") {
+		if !strings.HasPrefix(line, "{") {
+			continue
+		}
+		var event struct {
+			Schema    string `json:"schema"`
+			Transport string `json:"transport"`
+			Operation string `json:"operation"`
+			Stage     string `json:"stage"`
+			Code      string `json:"code"`
+			Outcome   string `json:"outcome"`
+		}
+		if err := json.Unmarshal([]byte(line), &event); err != nil {
+			t.Fatalf("stderr JSON line %q: %v", line, err)
+		}
+		if event.Schema != "jetkvm.operation.v1" || event.Transport != "stdio" {
+			t.Fatalf("event = %#v", event)
+		}
+		toolSeen = toolSeen || event.Operation == "inventory" && event.Stage == "tool" && event.Code == "success" && event.Outcome == "succeeded"
+		shutdownSeen = shutdownSeen || event.Operation == "lifecycle" && event.Stage == "shutdown"
+	}
+	if !toolSeen || !shutdownSeen {
+		t.Fatalf("tool=%v shutdown=%v stderr=%q", toolSeen, shutdownSeen, stderr.String())
+	}
+}
+
+func TestRunCanceledContextFlushesShutdownTelemetry(t *testing.T) {
+	binDir := t.TempDir()
+	ffmpegPath := filepath.Join(binDir, "ffmpeg")
+	if err := os.WriteFile(ffmpegPath, []byte("#!/bin/sh\nexit 127\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	configPath := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(configPath, []byte("devices:\n  fixture:\n    url: http://fixture.invalid\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	var stderr bytes.Buffer
+	err := run(ctx, []string{"--config", configPath}, strings.NewReader(""), io.Discard, &stderr, os.LookupEnv)
+	if err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, io.EOF) {
+		t.Fatal(err)
+	}
+	for _, line := range strings.Split(stderr.String(), "\n") {
+		if !strings.HasPrefix(line, "{") {
+			continue
+		}
+		var event struct {
+			Operation string `json:"operation"`
+			Stage     string `json:"stage"`
+			Code      string `json:"code"`
+			Outcome   string `json:"outcome"`
+		}
+		if err := json.Unmarshal([]byte(line), &event); err != nil {
+			t.Fatal(err)
+		}
+		if event.Operation == "lifecycle" && event.Stage == "shutdown" {
+			if event.Code != "canceled" || event.Outcome != "failed" {
+				t.Fatalf("shutdown event = %#v", event)
+			}
+			return
+		}
+	}
+	t.Fatalf("shutdown telemetry missing: %q", stderr.String())
 }

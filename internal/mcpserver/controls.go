@@ -371,10 +371,12 @@ func (result *captureDeadlineResult) MarshalJSON() ([]byte, error) {
 	}
 	encoded, err := json.Marshal(result.result)
 	if err != nil {
+		finishToolTelemetry(result.ctx, err, false)
 		result.cancel()
 		return nil, err
 	}
 	if result.ctx.Err() == nil {
+		finishToolTelemetryResult(result.ctx, result.result, nil, false)
 		result.cancel()
 		return encoded, nil
 	}
@@ -384,11 +386,14 @@ func (result *captureDeadlineResult) MarshalJSON() ([]byte, error) {
 
 func (result *captureDeadlineResult) marshalContextFailure() ([]byte, error) {
 	failure := new(mcp.CallToolResult)
+	var failureErr error
 	if errors.Is(context.Cause(result.ctx), errCaptureScreenDeadline) {
-		failure.SetError(toolFailure(context.DeadlineExceeded, false))
+		failureErr = toolFailure(context.DeadlineExceeded, false)
 	} else {
-		failure.SetError(toolFailure(result.ctx.Err(), false))
+		failureErr = toolFailure(result.ctx.Err(), false)
 	}
+	failure.SetError(failureErr)
+	finishToolTelemetry(result.ctx, failureErr, false)
 	result.cancel()
 	return json.Marshal(failure)
 }
@@ -408,6 +413,7 @@ func captureDeadlineMiddleware(timeout time.Duration) mcp.Middleware {
 			}
 			callResult, ok := result.(*mcp.CallToolResult)
 			if !ok || (captureCtx.Err() != nil && !errors.Is(context.Cause(captureCtx), errCaptureScreenDeadline)) {
+				finishToolTelemetryResult(captureCtx, result, nil, false)
 				cancel()
 				return result, nil
 			}

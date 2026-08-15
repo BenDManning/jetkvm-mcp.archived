@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/BenDManning/jetkvm-mcp/internal/telemetry"
 	"github.com/coder/websocket"
 	"github.com/pion/rtcp"
 	"github.com/pion/webrtc/v4"
@@ -44,7 +45,9 @@ func (provider *WebRTCProvider) WithSession(ctx context.Context, device DeviceCo
 	}
 	connectCtx, cancel := context.WithTimeout(ctx, provider.options.ConnectTimeout)
 	defer cancel()
+	connectStage := telemetry.BeginStage(ctx, telemetry.StageConnect)
 	connected, err := provider.connect(connectCtx, device, profile)
+	finishTelemetryStage(connectStage, err)
 	if err != nil {
 		return err
 	}
@@ -52,7 +55,11 @@ func (provider *WebRTCProvider) WithSession(ctx context.Context, device DeviceCo
 }
 
 func withConnectedSession(ctx context.Context, connected *connectedSession, operation func(Session) error) error {
-	defer connected.CloseContext(ctx)
+	defer func() {
+		cleanupStage := telemetry.BeginStage(ctx, telemetry.StageCleanup)
+		connected.CloseContext(ctx)
+		finishTelemetryStage(cleanupStage, nil)
+	}()
 	return operation(connected)
 }
 
@@ -75,9 +82,12 @@ func (provider *WebRTCProvider) connect(ctx context.Context, device DeviceConfig
 			httpClient.CloseIdleConnections()
 		}
 	}()
+	authStage := telemetry.BeginStage(ctx, telemetry.StageAuth)
 	if _, err := authenticate(ctx, httpClient, device.BaseURL, device.Password); err != nil {
+		finishTelemetryStage(authStage, err)
 		return nil, err
 	}
+	finishTelemetryStage(authStage, nil)
 
 	connectedCtx, cancel := context.WithCancel(context.Background())
 	connected := &connectedSession{
@@ -125,11 +135,13 @@ func (provider *WebRTCProvider) connect(ctx context.Context, device DeviceConfig
 	} else {
 		signalingURL.Scheme = "ws"
 	}
+	signalingStage := telemetry.BeginStage(ctx, telemetry.StageSignaling)
 	connection, response, err := websocket.Dial(ctx, signalingURL.String(), &websocket.DialOptions{HTTPClient: httpClient})
 	if response != nil && response.Body != nil {
 		_ = response.Body.Close()
 	}
 	if err != nil {
+		finishTelemetryStage(signalingStage, err)
 		return nil, fmt.Errorf("%w: signaling", ErrDeviceUnreachable)
 	}
 	connection.SetReadLimit(maxSignalingFrame)
@@ -145,17 +157,22 @@ func (provider *WebRTCProvider) connect(ctx context.Context, device DeviceConfig
 	})
 	offer, err := peer.CreateOffer(nil)
 	if err != nil || peer.SetLocalDescription(offer) != nil {
-		return nil, fmt.Errorf("%w: local offer", ErrProtocol)
+		err = fmt.Errorf("%w: local offer", ErrProtocol)
+		finishTelemetryStage(signalingStage, err)
+		return nil, err
 	}
 	envelope, err := newOfferEnvelope(offer)
 	if err != nil || connected.signal.write(ctx, envelope) != nil {
-		return nil, fmt.Errorf("%w: signaling offer", ErrDeviceUnreachable)
+		err = fmt.Errorf("%w: signaling offer", ErrDeviceUnreachable)
+		finishTelemetryStage(signalingStage, err)
+		return nil, err
 	}
 	connected.pumps.Add(1)
 	go func() {
 		defer connected.pumps.Done()
 		connected.readSignaling()
 	}()
+	finishTelemetryStage(signalingStage, nil)
 
 	select {
 	case <-ready:
@@ -209,7 +226,10 @@ func (session *connectedSession) Call(ctx context.Context, method string, params
 	if session == nil || session.rpc == nil {
 		return ErrSessionClosed
 	}
-	return session.rpc.Call(ctx, method, params, result)
+	rpcStage := telemetry.BeginStage(ctx, telemetry.StageRPC)
+	err := session.rpc.Call(ctx, method, params, result)
+	finishTelemetryStage(rpcStage, err)
+	return err
 }
 
 func (session *connectedSession) Upload(ctx context.Context, uploadID string, reader io.Reader, size int64) error {

@@ -15,6 +15,7 @@ import (
 
 	"github.com/BenDManning/jetkvm-mcp/internal/httporigin"
 	"github.com/BenDManning/jetkvm-mcp/internal/mcpserver"
+	"github.com/BenDManning/jetkvm-mcp/internal/telemetry"
 )
 
 const (
@@ -168,26 +169,26 @@ func (manager *Manager) uploadLocalMedia(ctx context.Context, device DeviceConfi
 		}
 		mutated = true
 		if started.AlreadyUploadedBytes != 0 || !uploadIDPattern.MatchString(started.UploadID) {
-			abortStartedUpload(session, started.UploadID, filename)
+			abortStartedUpload(ctx, session, started.UploadID, filename)
 			return classifyOperationError(fmt.Errorf("%w: upload negotiation", ErrInvalidResponse), ToolOutcomeUnknown)
 		}
 		uploadedHash := sha256.New()
 		uploadErr := session.Upload(ctx, started.UploadID, io.TeeReader(io.LimitReader(file, info.Size()), uploadedHash), info.Size())
 		if uploadErr != nil {
-			bestEffortDeleteUploadArtifacts(session, filename)
+			bestEffortDeleteUploadArtifacts(ctx, session, filename)
 			return mutationSequenceError(uploadErr, true)
 		}
 		if !bytes.Equal(uploadedHash.Sum(nil), initialDigest) {
-			bestEffortDeleteUploadArtifacts(session, filename)
+			bestEffortDeleteUploadArtifacts(ctx, session, filename)
 			return classifyOperationError(fmt.Errorf("%w: media file changed during upload", ErrMediaPath), ToolOutcomeUnknown)
 		}
 		if err := verifyMediaFileUnchanged(ctx, device.MediaDirectory, request.Source, info, initialDigest); err != nil {
-			bestEffortDeleteUploadArtifacts(session, filename)
+			bestEffortDeleteUploadArtifacts(ctx, session, filename)
 			return mutationSequenceError(err, true)
 		}
 		if request.Operation == mcpserver.VirtualMediaMountFile {
 			if err := session.Call(ctx, "mountWithStorage", map[string]any{"filename": filename, "mode": mode}, nil); err != nil {
-				bestEffortDeleteUploadArtifacts(session, filename)
+				bestEffortDeleteUploadArtifacts(ctx, session, filename)
 				return mutationSequenceError(err, true)
 			}
 		}
@@ -206,7 +207,9 @@ func (manager *Manager) uploadLocalMedia(ctx context.Context, device DeviceConfi
 	}, nil
 }
 
-func discardIncompleteUpload(ctx context.Context, session Session, filename string) (bool, error) {
+func discardIncompleteUpload(ctx context.Context, session Session, filename string) (_ bool, returnErr error) {
+	cleanupStage := telemetry.BeginStage(ctx, telemetry.StageCleanup)
+	defer func() { finishTelemetryStage(cleanupStage, returnErr) }()
 	var storage firmwareStorageFiles
 	if err := session.Call(ctx, "listStorageFiles", nil, &storage); err != nil {
 		return false, classifyOperationError(err, ToolOutcomeNotSent)
@@ -223,13 +226,13 @@ func discardIncompleteUpload(ctx context.Context, session Session, filename stri
 	return false, nil
 }
 
-func abortStartedUpload(session Session, uploadID, filename string) {
+func abortStartedUpload(operationCtx context.Context, session Session, uploadID, filename string) {
 	if uploadIDPattern.MatchString(uploadID) {
-		ctx, cancel := context.WithTimeout(context.Background(), virtualMediaCleanupTimeout)
+		ctx, cancel := detachedCleanupContext(operationCtx)
 		_ = session.Upload(ctx, uploadID, strings.NewReader(""), 0)
 		cancel()
 	}
-	bestEffortDeleteStorageFile(session, filename+".incomplete")
+	bestEffortDeleteStorageFile(operationCtx, session, filename+".incomplete")
 }
 
 func verifyMediaFileUnchanged(ctx context.Context, directory, source string, before os.FileInfo, expectedDigest []byte) error {
@@ -307,16 +310,23 @@ func (reader *contextReader) Read(buffer []byte) (int, error) {
 	return reader.reader.Read(buffer)
 }
 
-func bestEffortDeleteUploadArtifacts(session Session, filename string) {
+func bestEffortDeleteUploadArtifacts(operationCtx context.Context, session Session, filename string) {
 	for _, artifact := range []string{filename + ".incomplete", filename} {
-		bestEffortDeleteStorageFile(session, artifact)
+		bestEffortDeleteStorageFile(operationCtx, session, artifact)
 	}
 }
 
-func bestEffortDeleteStorageFile(session Session, filename string) {
-	ctx, cancel := context.WithTimeout(context.Background(), virtualMediaCleanupTimeout)
+func bestEffortDeleteStorageFile(operationCtx context.Context, session Session, filename string) {
+	ctx, cancel := detachedCleanupContext(operationCtx)
 	defer cancel()
 	_ = session.Call(ctx, "deleteStorageFile", map[string]any{"filename": filename}, nil)
+}
+
+func detachedCleanupContext(operationCtx context.Context) (context.Context, context.CancelFunc) {
+	if operationCtx == nil {
+		operationCtx = context.Background()
+	}
+	return context.WithTimeout(context.WithoutCancel(operationCtx), virtualMediaCleanupTimeout)
 }
 
 func openMediaFile(directory, source string) (*os.File, os.FileInfo, string, error) {

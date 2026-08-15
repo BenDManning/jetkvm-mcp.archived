@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/BenDManning/jetkvm-mcp/internal/mcpserver"
+	"github.com/BenDManning/jetkvm-mcp/internal/telemetry"
 )
 
 const maxCapturePNGBytes = 32 << 20
@@ -35,10 +36,12 @@ func (manager *Manager) CaptureScreen(ctx context.Context, name string, request 
 	return manager.captureScreen(ctx, name, request, mcpserver.CaptureScreenTimeout)
 }
 
-func (manager *Manager) captureScreen(ctx context.Context, name string, request mcpserver.CaptureRequest, timeout time.Duration) (mcpserver.CaptureResult, error) {
+func (manager *Manager) captureScreen(ctx context.Context, name string, request mcpserver.CaptureRequest, timeout time.Duration) (_ mcpserver.CaptureResult, returnErr error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	captureStage := telemetry.BeginStage(ctx, telemetry.StageCapture)
+	defer func() { finishTelemetryStage(captureStage, returnErr) }()
 	captureCtx, cancel := context.WithTimeoutCause(ctx, timeout, errCaptureServerDeadline)
 	defer cancel()
 	device, err := manager.device(name)

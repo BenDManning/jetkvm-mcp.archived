@@ -1,6 +1,7 @@
 package mcpserver
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -10,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/BenDManning/jetkvm-mcp/internal/telemetry"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -22,6 +24,12 @@ type cancellationDevice struct {
 }
 
 type deadlineCaptureDevice struct{ recordingDevice }
+
+type failedCaptureDevice struct{ recordingDevice }
+
+func (*failedCaptureDevice) CaptureScreen(context.Context, string, CaptureRequest) (CaptureResult, error) {
+	return CaptureResult{}, invalidInput(errors.New("fixture capture failure"))
+}
 
 type notSentCancellationError struct{}
 
@@ -134,6 +142,10 @@ func TestCaptureDeadlineCoversMCPResultConstruction(t *testing.T) {
 
 func TestCaptureDeadlineMiddlewarePreservesCallerNotSentOutcome(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
+	var telemetryOutput bytes.Buffer
+	recorder := telemetry.New(&telemetryOutput)
+	operationCtx, span := recorder.Start(ctx, telemetry.TransportStdio, telemetry.OperationCapture)
+	operationCtx = context.WithValue(operationCtx, toolTelemetryKey{}, &toolTelemetryState{span: span})
 	result := new(mcp.CallToolResult)
 	result.SetError(toolFailure(notSentCancellationError{}, false))
 	handler := captureDeadlineMiddleware(time.Second)(func(context.Context, string, mcp.Request) (mcp.Result, error) {
@@ -142,7 +154,7 @@ func TestCaptureDeadlineMiddlewarePreservesCallerNotSentOutcome(t *testing.T) {
 	})
 	request := &mcp.CallToolRequest{Params: &mcp.CallToolParamsRaw{Name: CaptureScreenToolName}}
 
-	got, err := handler(ctx, "tools/call", request)
+	got, err := handler(operationCtx, "tools/call", request)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -161,9 +173,26 @@ func TestCaptureDeadlineMiddlewarePreservesCallerNotSentOutcome(t *testing.T) {
 	if failure.Code != toolErrorCanceled || failure.Outcome != "not_sent" || failure.Retryable {
 		t.Fatalf("failure = %#v, want canceled/not_sent/non-retryable", failure)
 	}
+	if err := recorder.Close(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	var terminal struct {
+		Code    string `json:"code"`
+		Outcome string `json:"outcome"`
+	}
+	if err := json.Unmarshal(bytes.TrimSpace(telemetryOutput.Bytes()), &terminal); err != nil {
+		t.Fatalf("decode telemetry: %v; output=%q", err, telemetryOutput.String())
+	}
+	if terminal.Code != string(toolErrorCanceled) || terminal.Outcome != telemetry.OutcomeNotSent {
+		t.Fatalf("terminal=%s/%s differs from final wire=%s/%s", terminal.Code, terminal.Outcome, failure.Code, failure.Outcome)
+	}
 }
 
 func TestCaptureDeadlineCoversResponseSerialization(t *testing.T) {
+	var telemetryOutput bytes.Buffer
+	recorder := telemetry.New(&telemetryOutput)
+	operationCtx, span := recorder.Start(context.Background(), telemetry.TransportStdio, telemetry.OperationCapture)
+	operationCtx = context.WithValue(operationCtx, toolTelemetryKey{}, &toolTelemetryState{span: span})
 	handler := captureDeadlineMiddleware(10 * time.Millisecond)(func(ctx context.Context, _ string, _ mcp.Request) (mcp.Result, error) {
 		return &mcp.CallToolResult{
 			Content:           []mcp.Content{&mcp.TextContent{Text: "capture"}},
@@ -172,7 +201,7 @@ func TestCaptureDeadlineCoversResponseSerialization(t *testing.T) {
 	})
 	request := &mcp.CallToolRequest{Params: &mcp.CallToolParamsRaw{Name: CaptureScreenToolName}}
 
-	result, err := handler(context.Background(), "tools/call", request)
+	result, err := handler(operationCtx, "tools/call", request)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -198,5 +227,71 @@ func TestCaptureDeadlineCoversResponseSerialization(t *testing.T) {
 	}
 	if failure.Code != toolErrorTimeout || failure.Outcome != toolOutcomeFailed {
 		t.Fatalf("failure = %#v, want timeout/failed", failure)
+	}
+	if err := recorder.Close(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	var terminal struct {
+		Stage   string `json:"stage"`
+		Code    string `json:"code"`
+		Outcome string `json:"outcome"`
+	}
+	if err := json.Unmarshal(bytes.TrimSpace(telemetryOutput.Bytes()), &terminal); err != nil {
+		t.Fatalf("decode telemetry: %v; output=%q", err, telemetryOutput.String())
+	}
+	if terminal.Stage != telemetry.StageTool || terminal.Code != string(toolErrorTimeout) || terminal.Outcome != telemetry.OutcomeFailed {
+		t.Fatalf("terminal telemetry = %#v, want tool/timeout/failed", terminal)
+	}
+}
+
+func TestCaptureMalformedInputTerminalMatchesFinalDeadlineOutcome(t *testing.T) {
+	for _, test := range []struct {
+		name      string
+		device    Device
+		arguments map[string]any
+	}{
+		{name: "schema rejection", device: &recordingDevice{}, arguments: map[string]any{"device": []string{"malformed"}}},
+		{name: "stable handler failure", device: &failedCaptureDevice{}, arguments: map[string]any{"device": "fixture"}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			var telemetryOutput bytes.Buffer
+			recorder := telemetry.New(&telemetryOutput)
+			serverTransport, clientTransport := mcp.NewInMemoryTransports()
+			serverSession, err := newServerWithTelemetry(test.device, "test", -time.Nanosecond, recorder, telemetry.TransportStdio).Connect(context.Background(), serverTransport, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			clientSession, err := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "test"}, nil).Connect(context.Background(), clientTransport, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			result, err := clientSession.CallTool(context.Background(), &mcp.CallToolParams{Name: CaptureScreenToolName, Arguments: test.arguments})
+			if err != nil || result == nil || !result.IsError {
+				t.Fatalf("CallTool = %#v, %v, want timeout tool failure", result, err)
+			}
+			text, ok := result.Content[0].(*mcp.TextContent)
+			if !ok {
+				t.Fatalf("content=%#v", result.Content)
+			}
+			var wireFailure toolError
+			if err := json.Unmarshal([]byte(text.Text), &wireFailure); err != nil {
+				t.Fatal(err)
+			}
+			_ = clientSession.Close()
+			_ = serverSession.Close()
+			if err := recorder.Close(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+			var terminal struct {
+				Code    string `json:"code"`
+				Outcome string `json:"outcome"`
+			}
+			if err := json.Unmarshal(bytes.TrimSpace(telemetryOutput.Bytes()), &terminal); err != nil {
+				t.Fatalf("decode telemetry: %v; output=%q", err, telemetryOutput.String())
+			}
+			if wireFailure.Code != toolErrorTimeout || wireFailure.Outcome != toolOutcomeFailed || terminal.Code != string(toolErrorTimeout) || terminal.Outcome != telemetry.OutcomeFailed {
+				t.Fatalf("wire=%s/%s terminal=%s/%s, want timeout/failed", wireFailure.Code, wireFailure.Outcome, terminal.Code, terminal.Outcome)
+			}
+		})
 	}
 }

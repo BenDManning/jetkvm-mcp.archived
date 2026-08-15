@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/BenDManning/jetkvm-mcp/internal/mcpserver"
+	"github.com/BenDManning/jetkvm-mcp/internal/telemetry"
 )
 
 const (
@@ -382,9 +383,13 @@ func (manager *Manager) Power(ctx context.Context, name string, action mcpserver
 }
 
 func (manager *Manager) withSession(ctx context.Context, device DeviceConfig, profile SessionProfile, operation func(Session) error) error {
+	admission := telemetry.BeginStage(ctx, telemetry.StageAdmission)
 	if !tryAcquire(manager.sessions) {
-		return busyNotSent()
+		err := busyNotSent()
+		finishTelemetryStage(admission, err)
+		return err
 	}
+	finishTelemetryStage(admission, nil)
 	defer release(manager.sessions)
 	invoked := false
 	err := manager.provider.WithSession(ctx, device, profile, func(session Session) error {

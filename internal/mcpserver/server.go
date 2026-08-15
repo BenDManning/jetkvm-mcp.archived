@@ -6,8 +6,10 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync/atomic"
 	"time"
 
+	"github.com/BenDManning/jetkvm-mcp/internal/telemetry"
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -107,15 +109,28 @@ type wakeLANInput struct {
 
 // New builds a JetKVM MCP server using only the official Go SDK.
 func New(device Device, version string) *mcp.Server {
-	return newServer(device, version, CaptureScreenTimeout)
+	return newServerWithTelemetry(device, version, CaptureScreenTimeout, nil, "")
 }
 
 func newServer(device Device, version string, captureTimeout time.Duration) *mcp.Server {
+	return newServerWithTelemetry(device, version, captureTimeout, nil, "")
+}
+
+// NewWithTelemetry builds a server whose operation events are written by recorder.
+// Transport and operation values are selected from closed, privacy-safe enums.
+func NewWithTelemetry(device Device, version string, recorder *telemetry.Recorder, transport string) *mcp.Server {
+	return newServerWithTelemetry(device, version, CaptureScreenTimeout, recorder, transport)
+}
+
+func newServerWithTelemetry(device Device, version string, captureTimeout time.Duration, recorder *telemetry.Recorder, transport string) *mcp.Server {
 	// The manifest is static, so do not advertise tool-list change notifications.
 	server := mcp.NewServer(&mcp.Implementation{Name: "jetkvm-mcp", Version: version}, &mcp.ServerOptions{
 		Capabilities: &mcp.ServerCapabilities{Tools: &mcp.ToolCapabilities{}},
 	})
 	server.AddReceivingMiddleware(captureDeadlineMiddleware(captureTimeout))
+	if recorder != nil {
+		server.AddReceivingMiddleware(toolTelemetryMiddleware(recorder, transport))
+	}
 
 	addReadTool(server, &mcp.Tool{
 		Name:         ListDevicesToolName,
@@ -176,6 +191,110 @@ func newServer(device Device, version string, captureTimeout time.Duration) *mcp
 	return server
 }
 
+func toolTelemetryMiddleware(recorder *telemetry.Recorder, transport string) mcp.Middleware {
+	return func(next mcp.MethodHandler) mcp.MethodHandler {
+		return func(ctx context.Context, method string, request mcp.Request) (mcp.Result, error) {
+			params, ok := request.GetParams().(*mcp.CallToolParamsRaw)
+			if method != "tools/call" || !ok {
+				return next(ctx, method, request)
+			}
+			operation, mutation, ok := telemetryToolClass(params.Name)
+			if !ok {
+				return next(ctx, method, request)
+			}
+			operationCtx, span := recorder.Start(ctx, transport, operation)
+			state := &toolTelemetryState{span: span, mutation: mutation}
+			operationCtx = context.WithValue(operationCtx, toolTelemetryKey{}, state)
+			result, err := next(operationCtx, method, request)
+			if err != nil {
+				code, outcome := telemetryToolResult(nil, err, mutation)
+				state.record(code, outcome)
+			}
+			return result, err
+		}
+	}
+}
+
+type toolTelemetryKey struct{}
+
+type toolTelemetryState struct {
+	span     *telemetry.Span
+	mutation bool
+	recorded atomic.Bool
+}
+
+func finishToolTelemetry(ctx context.Context, failure error, mutation bool) {
+	state, _ := ctx.Value(toolTelemetryKey{}).(*toolTelemetryState)
+	if state == nil {
+		return
+	}
+	if failure == nil {
+		state.record(telemetry.CodeSuccess, telemetry.OutcomeSucceeded)
+		return
+	}
+	code, outcome := telemetryToolResult(nil, failure, mutation)
+	state.record(code, outcome)
+}
+
+func finishToolTelemetryResult(ctx context.Context, result mcp.Result, failure error, mutation bool) {
+	state, _ := ctx.Value(toolTelemetryKey{}).(*toolTelemetryState)
+	if state == nil {
+		return
+	}
+	code, outcome := telemetryToolResult(result, failure, mutation)
+	state.record(code, outcome)
+}
+
+func (state *toolTelemetryState) record(code, outcome string) {
+	if state != nil && state.recorded.CompareAndSwap(false, true) {
+		state.span.Record(telemetry.StageTool, code, outcome)
+	}
+}
+
+func telemetryToolClass(name string) (operation string, mutation, ok bool) {
+	switch name {
+	case ListDevicesToolName:
+		return telemetry.OperationInventory, false, true
+	case GetStatusToolName, GetVirtualMediaStatusToolName:
+		return telemetry.OperationStatus, false, true
+	case PressHostPowerButtonToolName, ForceHostPowerOffToolName, PressHostResetButtonToolName,
+		TurnHostDCPowerOnToolName, TurnHostDCPowerOffToolName, WakeHostUSBToolName, WakeHostLANToolName:
+		return telemetry.OperationPower, true, true
+	case KeyboardToolName, MouseToolName:
+		return telemetry.OperationHID, true, true
+	case CaptureScreenToolName:
+		return telemetry.OperationCapture, false, true
+	case VirtualMediaToolName, MountVirtualMediaURLToolName, MountVirtualMediaFileToolName,
+		UnmountVirtualMediaToolName, UploadVirtualMediaFileToolName:
+		return telemetry.OperationMedia, true, true
+	default:
+		return "", false, false
+	}
+}
+
+func telemetryToolResult(result mcp.Result, err error, mutation bool) (string, string) {
+	if err == nil {
+		callResult, ok := result.(*mcp.CallToolResult)
+		if ok && !callResult.IsError {
+			return telemetry.CodeSuccess, telemetry.OutcomeSucceeded
+		}
+		if ok {
+			err = callResult.GetError()
+		}
+	}
+	if err == nil {
+		if mutation {
+			return string(toolErrorOperationFailed), telemetry.OutcomeUnknown
+		}
+		return string(toolErrorOperationFailed), telemetry.OutcomeFailed
+	}
+	var failure toolError
+	if !errors.As(err, &failure) {
+		failure = toolFailure(err, mutation).(toolError)
+	}
+	return string(failure.Code), string(failure.Outcome)
+}
+
 func registerPowerTool(server *mcp.Server, device Device, name, title, description string, action PowerAction, destructive, idempotent bool) {
 	addMutationTool(server, &mcp.Tool{
 		Name:        name,
@@ -192,28 +311,33 @@ func registerPowerTool(server *mcp.Server, device Device, name, title, descripti
 }
 
 func addReadTool[In, Out any](server *mcp.Server, tool *mcp.Tool, handler mcp.ToolHandlerFor[In, Out]) {
-	mcp.AddTool(server, tool, withToolFailure(func(In) bool { return false }, handler))
+	addInputTool(server, tool, false, func(In) bool { return false }, handler)
 }
 
 func addMutationTool[In, Out any](server *mcp.Server, tool *mcp.Tool, handler mcp.ToolHandlerFor[In, Out]) {
-	mcp.AddTool(server, tool, withToolFailure(func(In) bool { return true }, handler))
+	addInputTool(server, tool, false, func(In) bool { return true }, handler)
 }
 
 // addSanitizedInputMutationTool retains the public JSON Schema while handling
 // its validation locally. The SDK's validation errors include rejected values,
 // which is unsafe for media URLs and local paths that may contain private data.
 func addSanitizedInputMutationTool[In, Out any](server *mcp.Server, tool *mcp.Tool, handler mcp.ToolHandlerFor[In, Out]) {
-	addSanitizedInputTool(server, tool, func(In) bool { return true }, handler)
+	addInputTool(server, tool, true, func(In) bool { return true }, handler)
 }
 
 func addSanitizedConditionalMutationTool[In, Out any](server *mcp.Server, tool *mcp.Tool, mutation func(In) bool, handler mcp.ToolHandlerFor[In, Out]) {
-	addSanitizedInputTool(server, tool, mutation, handler)
+	addInputTool(server, tool, true, mutation, handler)
 }
 
-func addSanitizedInputTool[In, Out any](server *mcp.Server, tool *mcp.Tool, mutation func(In) bool, handler mcp.ToolHandlerFor[In, Out]) {
+func addInputTool[In, Out any](server *mcp.Server, tool *mcp.Tool, sanitizeInput bool, mutation func(In) bool, handler mcp.ToolHandlerFor[In, Out]) {
 	inputSchema, ok := tool.InputSchema.(*jsonschema.Schema)
 	if !ok || inputSchema == nil {
-		panic(fmt.Sprintf("tool %q requires a JSON Schema input", tool.Name))
+		var err error
+		inputSchema, err = jsonschema.For[In](nil)
+		if err != nil {
+			panic(fmt.Sprintf("tool %q input schema: %v", tool.Name, err))
+		}
+		tool.InputSchema = inputSchema
 	}
 	inputResolved, err := inputSchema.Resolve(&jsonschema.ResolveOptions{ValidateDefaults: true})
 	if err != nil {
@@ -221,7 +345,12 @@ func addSanitizedInputTool[In, Out any](server *mcp.Server, tool *mcp.Tool, muta
 	}
 	outputSchema, ok := tool.OutputSchema.(*jsonschema.Schema)
 	if !ok || outputSchema == nil {
-		panic(fmt.Sprintf("tool %q requires a JSON Schema output", tool.Name))
+		var err error
+		outputSchema, err = jsonschema.For[Out](nil)
+		if err != nil {
+			panic(fmt.Sprintf("tool %q output schema: %v", tool.Name, err))
+		}
+		tool.OutputSchema = outputSchema
 	}
 	outputResolved, err := outputSchema.Resolve(&jsonschema.ResolveOptions{ValidateDefaults: true})
 	if err != nil {
@@ -232,12 +361,26 @@ func addSanitizedInputTool[In, Out any](server *mcp.Server, tool *mcp.Tool, muta
 	server.AddTool(tool, func(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		input, err := decodeSanitizedToolInput[In](request.Params.Arguments, inputResolved)
 		if err != nil {
+			var zero In
+			mutated := mutation(zero)
+			telemetryFailure := toolFailure(invalidInput(errors.New("arguments do not match the tool schema")), mutated)
+			if tool.Name != CaptureScreenToolName {
+				finishToolTelemetry(ctx, telemetryFailure, mutated)
+			}
 			result := new(mcp.CallToolResult)
-			result.SetError(toolFailure(invalidInput(errors.New("arguments do not match the tool schema")), true))
+			if sanitizeInput {
+				result.SetError(telemetryFailure)
+			} else {
+				result.SetError(fmt.Errorf("validating \"arguments\": %v", err))
+			}
 			return result, nil
 		}
+		mutated := mutation(input)
 		result, output, err := wrapped(ctx, request, input)
 		if err != nil {
+			if tool.Name != CaptureScreenToolName {
+				finishToolTelemetry(ctx, err, mutated)
+			}
 			if result == nil {
 				result = new(mcp.CallToolResult)
 			}
@@ -249,18 +392,24 @@ func addSanitizedInputTool[In, Out any](server *mcp.Server, tool *mcp.Tool, muta
 		}
 		outputJSON, err := json.Marshal(output)
 		if err != nil {
+			finishToolTelemetry(ctx, err, mutated)
 			return nil, fmt.Errorf("marshaling tool output: %w", err)
 		}
 		var outputValue any
 		if err := json.Unmarshal(outputJSON, &outputValue); err != nil {
+			finishToolTelemetry(ctx, err, mutated)
 			return nil, fmt.Errorf("unmarshaling tool output: %w", err)
 		}
 		if err := outputResolved.Validate(outputValue); err != nil {
+			finishToolTelemetry(ctx, err, mutated)
 			return nil, fmt.Errorf("validating tool output: %w", err)
 		}
 		result.StructuredContent = json.RawMessage(outputJSON)
 		if result.Content == nil {
 			result.Content = []mcp.Content{&mcp.TextContent{Text: string(outputJSON)}}
+		}
+		if tool.Name != CaptureScreenToolName {
+			finishToolTelemetry(ctx, nil, mutated)
 		}
 		return result, nil
 	})
@@ -294,9 +443,10 @@ func decodeSanitizedToolInput[In any](arguments json.RawMessage, schema *jsonsch
 
 func withToolFailure[In, Out any](mutation func(In) bool, handler mcp.ToolHandlerFor[In, Out]) mcp.ToolHandlerFor[In, Out] {
 	return func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mcp.CallToolResult, Out, error) {
+		mutated := mutation(input)
 		result, output, err := handler(ctx, request, input)
 		if err != nil {
-			return result, output, toolFailure(err, mutation(input))
+			return result, output, toolFailure(err, mutated)
 		}
 		return result, output, nil
 	}

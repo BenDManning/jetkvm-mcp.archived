@@ -19,6 +19,7 @@ import (
 	"github.com/BenDManning/jetkvm-mcp/internal/config"
 	"github.com/BenDManning/jetkvm-mcp/internal/jetkvm"
 	"github.com/BenDManning/jetkvm-mcp/internal/mcpserver"
+	"github.com/BenDManning/jetkvm-mcp/internal/telemetry"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -112,7 +113,12 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		if err != nil {
 			return err
 		}
-		result, err := manager.DebugRPC(ctx, options.debugDevice, options.debugMethod, options.debugParams, options.debugUnsafeAcknowledged)
+		recorder := telemetry.New(stderr)
+		operationCtx, span := recorder.Start(ctx, telemetry.TransportStdio, telemetry.OperationDebugRPC)
+		result, err := manager.DebugRPC(operationCtx, options.debugDevice, options.debugMethod, options.debugParams, options.debugUnsafeAcknowledged)
+		code, outcome := commandTelemetryResult(err)
+		span.Record(telemetry.StageTool, code, outcome)
+		finishTelemetry(recorder, telemetry.TransportStdio, err)
 		if err != nil {
 			return err
 		}
@@ -129,12 +135,60 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	if err != nil {
 		return err
 	}
-	server := mcpserver.New(manager, reportedVersion())
+	transport := telemetry.TransportStdio
+	if options.httpAddress != "" {
+		transport = telemetry.TransportHTTP
+	}
+	recorder := telemetry.New(stderr)
+	server := mcpserver.NewWithTelemetry(manager, reportedVersion(), recorder, transport)
+	var serveErr error
 	if options.httpAddress == "" {
 		fmt.Fprintln(stderr, "jetkvm-mcp: serving MCP over stdio")
-		return server.Run(ctx, &mcp.IOTransport{Reader: io.NopCloser(stdin), Writer: nopWriteCloser{stdout}})
+		serveErr = server.Run(ctx, &mcp.IOTransport{Reader: io.NopCloser(stdin), Writer: nopWriteCloser{stdout}})
+	} else {
+		serveErr = serveHTTP(ctx, server, options.httpAddress, loaded.HTTPBearerToken, loaded.HTTPAllowedOrigins, stderr)
 	}
-	return serveHTTP(ctx, server, options.httpAddress, loaded.HTTPBearerToken, loaded.HTTPAllowedOrigins, stderr)
+	finishTelemetry(recorder, transport, serveErr)
+	return serveErr
+}
+
+type commandClassifiedError interface {
+	error
+	ToolErrorCode() string
+	ToolErrorOutcome() string
+}
+
+func commandTelemetryResult(err error) (string, string) {
+	if err == nil {
+		return telemetry.CodeSuccess, telemetry.OutcomeSucceeded
+	}
+	var classified commandClassifiedError
+	if errors.As(err, &classified) {
+		return classified.ToolErrorCode(), classified.ToolErrorOutcome()
+	}
+	if errors.Is(err, context.Canceled) {
+		return "canceled", telemetry.OutcomeFailed
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return "timeout", telemetry.OutcomeFailed
+	}
+	return "operation_failed", telemetry.OutcomeFailed
+}
+
+func finishTelemetry(recorder *telemetry.Recorder, transport string, runErr error) {
+	_, span := recorder.Start(context.Background(), transport, telemetry.OperationLifecycle)
+	code, outcome := telemetry.CodeSuccess, telemetry.OutcomeSucceeded
+	if errors.Is(runErr, context.Canceled) {
+		code, outcome = "canceled", telemetry.OutcomeFailed
+	} else if errors.Is(runErr, context.DeadlineExceeded) {
+		code, outcome = "timeout", telemetry.OutcomeFailed
+	} else if runErr != nil && !errors.Is(runErr, io.EOF) {
+		code, outcome = "operation_failed", telemetry.OutcomeFailed
+	}
+	span.Record(telemetry.StageShutdown, code, outcome)
+	flushCtx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	_ = recorder.Close(flushCtx)
 }
 
 func parseArgs(args []string) (commandOptions, error) {
