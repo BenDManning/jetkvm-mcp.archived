@@ -1,0 +1,337 @@
+{
+  "item_name": "Agentic-AI and MCP-specific threat landscape",
+  "research_question": "For jetkvm-mcp's exact bounded architecture, which agentic-AI and MCP attacks have concrete paths to screen, device, host, media, credential, or availability harm; which controls can this server prevent or reduce; and which decisions must remain with the MCP client or deployment rather than becoming an in-product AI policy system?",
+  "scope": "This item covers direct and indirect prompt injection, tool-description poisoning, tool shadowing and name collision, metadata mutation/rug pulls, malicious metadata and tool results, cross-server confusion and toxic flows, excessive agency, confused-deputy behavior, schema manipulation and complexity abuse, unsafe retries, secret exfiltration, malicious MCP clients, compromised agents, and multi-server composition. It maps those threats through stdio/HTTP caller boundaries, static tool discovery, JetKVM/host-derived results, screenshots, HID/power/wake/media effects, and privacy-safe telemetry. It does not assess model training, client-specific approval UI, general HTTP hardening, firmware exploitability, or contribution/supply-chain controls except where they form a direct MCP poisoning path.",
+  "repository_surfaces": [
+    "docs/threat-model.md trusted-principal model, boundaries B1-B8, assets, consequence map, privacy flows, residual risks, and deliberate exclusions",
+    "docs/product-contract.md supported capability and consequence boundaries",
+    "README.md deployment model, full tool table, annotation warning, privacy warning, unknown-outcome guidance, and physical qualification limits",
+    "internal/mcpserver/server.go and controls.go static 18-tool registration, names, descriptions, annotations, schemas, bounded inputs, and typed outputs",
+    "internal/mcpserver/errors.go operational error taxonomy and mutation outcome handling",
+    "internal/mcpserver/testdata/tool-manifest.json and manifest_contract_test.go exact metadata integrity gate",
+    "internal/mcpserver/discovery_metadata_test.go, server_test.go, error_result_test.go, typed_results_test.go, telemetry_test.go, output_validation_test.go, cancellation_test.go, and origin_test.go",
+    "internal/jetkvm/manager.go typed status projection and constant warning labels, session.go delivery classification, admission.go capacity limits, and associated tests",
+    "internal/telemetry privacy-minimized event schema and recorder tests",
+    "internal/config strict configuration, media roots/origins, named Wake-on-LAN targets, bearer configuration, and tests",
+    "cmd/jetkvm-mcp-mutation-checklist and docs/mutation-validation.md supervised physical-mutation evidence procedure",
+    "testdata/mcp-gates/pins.json absence of prompts/resources/sampling/roots/tasks and exact product capability checks"
+  ],
+  "applicability_stage": ["current_private", "before_public_release", "after_external_adoption"],
+  "authoritative_sources": [
+    {
+      "title": "Exact jetkvm-mcp repository tree associated with 6e52f0027b13f928b768de0feeab4847ef9ca53e",
+      "publisher": "BenDManning/jetkvm-mcp",
+      "url": "https://github.com/BenDManning/jetkvm-mcp/commit/6e52f0027b13f928b768de0feeab4847ef9ca53e",
+      "publication_or_update_date": "2026-08-15",
+      "version_or_revision": "commit 6e52f0027b13f928b768de0feeab4847ef9ca53e; tree 34e8b4451d76821950c23d7c06958d021700f3a7",
+      "access_date": "2026-08-15",
+      "supported_claims": "Exact authority, data paths, consequence descriptions, limits, tests, privacy behavior, and trust model evaluated."
+    },
+    {
+      "title": "Security Best Practices for MCP",
+      "publisher": "Model Context Protocol",
+      "url": "https://modelcontextprotocol.io/docs/2026-07-28/tutorials/security/security_best_practices",
+      "publication_or_update_date": "2026-07-28 [uncertain]",
+      "version_or_revision": "Guidance aligned to MCP 2026-07-28",
+      "access_date": "2026-08-15",
+      "supported_claims": "Local-server compromise, least privilege, confused-deputy and token-passthrough risks, SSRF, authorization boundaries, and the client/deployment role in consent and sandboxing."
+    },
+    {
+      "title": "Tools",
+      "publisher": "Model Context Protocol",
+      "url": "https://modelcontextprotocol.io/specification/2026-07-28/server/tools",
+      "publication_or_update_date": "2026-07-28",
+      "version_or_revision": "MCP 2026-07-28",
+      "access_date": "2026-08-15",
+      "supported_claims": "Tool descriptions, schemas, annotations and results are client-visible protocol data; annotations are optional hints that clients must treat as untrusted; declared output schemas require conforming structured results."
+    },
+    {
+      "title": "Technical Blog: Strengthening AI Agent Hijacking Evaluations",
+      "publisher": "NIST Center for AI Standards and Innovation",
+      "url": "https://www.nist.gov/news-events/news/2025/01/technical-blog-strengthening-ai-agent-hijacking-evaluations",
+      "publication_or_update_date": "2025-01-17",
+      "version_or_revision": "CAISI agent-hijacking evaluation guidance",
+      "access_date": "2026-08-15",
+      "supported_claims": "Indirect prompt injection arises when agents cannot reliably separate trusted instructions from untrusted data; model-level protection should not be assumed."
+    },
+    {
+      "title": "Adversarial Machine Learning: A Taxonomy and Terminology of Attacks and Mitigations",
+      "publisher": "NIST",
+      "url": "https://nvlpubs.nist.gov/nistpubs/ai/NIST.AI.100-2e2025.pdf",
+      "publication_or_update_date": "2025-03",
+      "version_or_revision": "NIST AI 100-2e2025",
+      "access_date": "2026-08-15",
+      "supported_claims": "Agent security research remains immature; externally sourced tool data creates prompt-injection exposure; capability separation and well-defined interfaces are relevant mitigations."
+    },
+    {
+      "title": "Lessons Learned from the Consortium: Tool Use in Agent Systems",
+      "publisher": "NIST",
+      "url": "https://www.nist.gov/news-events/news/2025/08/lessons-learned-consortium-tool-use-agent-systems",
+      "publication_or_update_date": "2025-08",
+      "version_or_revision": "NIST AI Safety Institute Consortium lessons",
+      "access_date": "2026-08-15",
+      "supported_claims": "Reason about agent capability categories and constrain tools rather than treating all tools as equivalent."
+    },
+    {
+      "title": "LLM06:2025 Excessive Agency",
+      "publisher": "OWASP GenAI Security Project",
+      "url": "https://genai.owasp.org/llmrisk/llm062025-excessive-agency/",
+      "publication_or_update_date": "2025",
+      "version_or_revision": "OWASP Top 10 for LLM Applications 2025, LLM06",
+      "access_date": "2026-08-15",
+      "supported_claims": "Damage follows from excessive functionality, permissions, or autonomy when manipulated or erroneous model output selects tools; least privilege and human approval are system-level mitigations."
+    },
+    {
+      "title": "OWASP Top 10 for Agentic Applications 2026",
+      "publisher": "OWASP GenAI Security Project, Agentic Security Initiative",
+      "url": "https://genai.owasp.org/2025/12/09/owasp-top-10-for-agentic-applications-the-benchmark-for-agentic-security-in-the-age-of-autonomous-ai/",
+      "publication_or_update_date": "2025-12-09; 2026 edition",
+      "version_or_revision": "Agentic Top 10 2026",
+      "access_date": "2026-08-15",
+      "supported_claims": "Tool misuse, identity/privilege abuse, supply-chain poisoning, memory/context poisoning and cascading failures are useful categories; they are guidance, not MCP requirements."
+    },
+    {
+      "title": "AgentDojo: A Dynamic Environment to Evaluate Prompt Injection Attacks and Defenses for LLM Agents",
+      "publisher": "NeurIPS 2024 Datasets and Benchmarks Track / ETH Zurich",
+      "url": "https://papers.neurips.cc/paper_files/paper/2024/file/97091a5177d8dc64b1da8bf3e1f6fb54-Paper-Datasets_and_Benchmarks_Track.pdf",
+      "publication_or_update_date": "2024",
+      "version_or_revision": "NeurIPS 2024 paper; 97 tasks and 629 security cases",
+      "access_date": "2026-08-15",
+      "supported_claims": "Untrusted tool data can hijack agents into unintended actions, and existing prompt-injection defenses are incomplete; deterministic environment outcomes are better evidence than model self-report."
+    },
+    {
+      "title": "Tool Poisoning and Metadata Attacks",
+      "publisher": "Model Context Protocol Security community project",
+      "url": "https://modelcontextprotocol-security.io/ttps/tool-poisoning/",
+      "publication_or_update_date": "2026 [uncertain]",
+      "version_or_revision": "Community threat taxonomy current on access date",
+      "access_date": "2026-08-15",
+      "supported_claims": "Terminology and observed patterns for poisoned descriptions, rug pulls, name collisions, shadowing and metadata mutation; non-normative community guidance."
+    },
+    {
+      "title": "MCP Security Notification: Tool Poisoning Attacks",
+      "publisher": "Invariant Labs",
+      "url": "https://invariantlabs.ai/blog/mcp-security-notification-tool-poisoning-attacks",
+      "publication_or_update_date": "2025-04 [uncertain]",
+      "version_or_revision": "Technical maintainer/security case study",
+      "access_date": "2026-08-15",
+      "supported_claims": "A malicious server can place model-directed instructions in tool metadata and compose with another server to exfiltrate data; this is a concrete case study, not a normative requirement."
+    }
+  ],
+  "source_class": [
+    "Repository commit, code, tests and maintained threat model: repository_evidence.",
+    "MCP tools specification: normative_specification.",
+    "MCP security best practices: official_documentation; its MUST language applies to described authorization/proxy designs, not automatically to this non-OAuth product.",
+    "NIST sources: security_framework and official_documentation.",
+    "OWASP sources: security_framework.",
+    "AgentDojo: peer_reviewed_research.",
+    "MCP Security community taxonomy and Invariant Labs demonstration: secondary_commentary and maintainer_case_study, used for attack patterns rather than product requirements."
+  ],
+  "normative_status": [
+    "MCP tool schemas and output conformance are protocol MUST requirements; annotation fields are optional and untrusted client hints, never authorization.",
+    "MCP's prohibitions on token passthrough apply when OAuth tokens are accepted or proxied. jetkvm-mcp uses one opaque bearer and distinct JetKVM credentials, so the vulnerable OAuth proxy pattern is not implemented.",
+    "NIST and OWASP recommendations are guidance. They support least privilege, action mediation and adversarial evaluation but do not require an in-server model, classifier, policy engine, or approval UI.",
+    "Peer-reviewed and case-study attack results are observations about agents/clients; they do not prove every model or deployment is exploitable."
+  ],
+  "freshness_and_supersession": "The assessment uses the latest dated MCP revision through 2026-08-15 and current 2025-2026 NIST/OWASP agent guidance, while retaining the canonical 2024 AgentDojo evidence. Agent attacks and defenses are evolving rapidly, and both NIST and the research literature warn that evaluation remains immature. The MCP Security community page's exact update date and the Invariant case-study publication date were not reliably exposed [uncertain]. Older generic LLM lists are superseded here by the agent-specific 2026 OWASP taxonomy and repository-specific paths.",
+  "source_disagreements": [
+    "Some community MCP guidance recommends universal tool signing, runtime scanning, behavioral monitoring and sandboxing. For this repository, tool metadata is compiled from reviewed source and frozen by an exact fixture; signing a tool definition separately from the release would not authenticate the running binary. Resolution: secure/review the release and manifest, and make the client pin/review server identity; do not build a new registry or scanner.",
+    "Prompt-injection guidance often proposes classifiers or model instructions, while NIST and empirical agent research do not establish reliable semantic detection. Resolution: treat injection as possible and enforce deterministic authority/data boundaries outside the model; this server should not claim to recognize malicious text or pixels.",
+    "OWASP least-privilege guidance favors narrower authority, while the repository explicitly defines one fully trusted JetKVM administrator. Resolution: keep that honest bounded product model, recommend isolated deployments and client-side approval for high-impact tools, and do not imply that a bearer, schema, or annotation proves human intent.",
+    "MCP confused-deputy guidance focuses on OAuth proxies, static client IDs, consent cookies and token passthrough. Those preconditions are absent here. The applicable confused-deputy path is instead a valid client using this server's device authority for an injected goal; authentication alone cannot distinguish it."
+  ],
+  "source_limitations": [
+    "No model, MCP host, multi-server composition, or approval UI is part of this repository, so their resistance cannot be tested or claimed here.",
+    "There is no reliable general-purpose detector for prompt injection in arbitrary screen pixels or text; absence of a known injection pattern is not safety evidence.",
+    "AgentDojo and incident case studies demonstrate classes of failure, not an exploit probability for this exact server/client pair.",
+    "The exact current live deployment topology, client tool-name qualification, approval settings, memory behavior, and whether any HTTP bearer is shared are unknown [uncertain].",
+    "A compromised released binary or maintainer can bypass source-level manifest tests; artifact authenticity/provenance is evaluated in the supply-chain workstream."
+  ],
+  "exact_baseline_commit": "The assigned initial commit is 6e52f0027b13f928b768de0feeab4847ef9ca53e with tree 34e8b4451d76821950c23d7c06958d021700f3a7. During research local HEAD was later 71445bc6bf2325e6c683e362393605089c336b63, whose tree is exactly identical. Pre-existing untracked .agents/, skills-lock.json, and jetkvm_mcp_2026_public_release_baseline/ were present. Conclusions are tied to the identical tree, not silently mixed revisions.",
+  "current_repository_evidence": [
+    "docs/threat-model.md explicitly says the server converts calls from one trusted administrative principal, enforces authentication rather than human intent, has no per-tool ACL/consent/approval/audit identity, and grants a compromised or prompt-injected client that principal's full authority.",
+    "The server contains no LLM, prompt interpreter, MCP prompts/resources/sampling/roots/elicitation/tasks, dynamic tool registration, memory, autonomous loop, or server-to-client request surface. It receives a tool name and structured arguments and dispatches deterministically.",
+    "The 18 tools are statically compiled. The exact manifest snapshots names, titles, safety-focused descriptions, input/output schemas and annotations across in-memory, stdio and HTTP. Any reviewed metadata/schema change fails the fixture until explicitly accepted.",
+    "Names use a jetkvm_ prefix and one-purpose power/media tools make consequences legible. The deprecated multiplexed jetkvm_virtual_media tool remains a larger comprehension/annotation risk and is excluded from physical mutation qualification.",
+    "Tool descriptions explicitly state visible-secret, HID-command, UI-click, data-loss, appliance-fetch, storage-retention, physical-effect and unknown-outcome consequences. Annotations distinguish read-only/destructive/idempotent/open-world hints, and README states annotations are not authorization.",
+    "Schemas reject unknown properties and bound operations. Keyboard text is US-ASCII and at most 4096 bytes; capture dimensions are bounded; device/target select configured identifiers; Wake-on-LAN cannot accept arbitrary addresses; file paths stay below configured roots; URL mount requires an exact configured origin.",
+    "A prompt-injected client can still call keyboard, mouse, force-off, reset, power, wake, upload or mount using any configured device. A valid stdio owner or bearer holder is not asked to prove human approval or task provenance.",
+    "jetkvm_capture_screen returns an image that can contain visible host secrets or attacker-supplied instructions. The server does not OCR or interpret it; a vision-capable client may treat its content as instructions and then invoke this or another server.",
+    "Status projection discards unknown firmware fields and media URLs/paths, uses fixed warning labels for probe failures, and tool errors replace raw firmware detail with a stable code/outcome/retryable taxonomy. Firmware-derived version/extension/state strings and the screen remain untrusted client-visible data.",
+    "Mutations classify failures after possible dispatch as outcome=unknown and retryable=false. Tests cover before-send not_sent, during/after-send unknown, cancellation, timeout, error wording and no automatic retry. The server cannot stop a malicious or defective client from issuing a new call.",
+    "Telemetry records operation class, transport, stage, code, outcome, duration and correlation ID while excluding arguments, screenshots, URLs, paths, credentials, raw errors and device identifiers. It helps detect volumes/failures but cannot attribute intent to an end user or reconstruct exact actions.",
+    "HTTP has one opaque bearer principal and no OAuth, token passthrough, scopes or multi-tenancy. JetKVM passwords/cookies are server-held and are never returned or derived from the MCP bearer.",
+    "The mutation checklist requires an expendable target, independent observation, bounded window, postcondition and stop-without-retry on uncertainty, but it is a qualification procedure, not runtime authorization."
+  ],
+  "implementation_and_documentation_agreement": "Code and maintained documentation strongly agree on the actual authority and residual agent risk: a trusted caller has full configured-device control; annotations communicate but do not enforce intent; outputs can be private; unknown mutations must not be retried; optional agent-control planes are absent by design. Tests verify the static metadata and privacy/error claims. The remaining presentation gap is that this unusually important trusted-principal statement lives mainly in the threat model and is less prominent than setup instructions; a public user could connect the server to an autonomous or multi-server client without reading the security model. No documentation can establish that a particular client honors annotations, preserves server provenance, asks for approval, isolates untrusted results, or avoids retries.",
+  "current_state": "substantially_satisfied: the server has a clear, honest, bounded principal model; a static reviewable surface; strong input/result minimization; accurate consequence metadata; non-retryable ambiguous outcomes; and no unnecessary agent features. It cannot prevent client-side prompt injection or excessive autonomy, and it should make the resulting deployment obligations more prominent before public release. Runtime per-user policy, semantic injection scanning, and multi-server governance are intentionally not part of this product.",
+  "evidence_missing": [
+    "Representative MCP host documentation or tests showing tool-name provenance, description display, destructive-action approval, screenshot treatment, result isolation, and retry policy.",
+    "The deployment's exact client, enabled co-resident servers, bearer sharing, network isolation, human-approval configuration and agent memory behavior [uncertain].",
+    "Adversarial client tests demonstrating that every bounded schema and capacity control remains effective under repeated malicious calls; other workstreams cover transport resource limits.",
+    "Physical evidence for mutation outcomes, which cannot be inferred from fake tests or agent behavior."
+  ],
+  "concrete_threat_or_failure_scenarios": [
+    {
+      "threat": "Direct prompt injection and compromised agent",
+      "repository_attack_path": "A user, document, issue, or prior conversation causes the MCP client model to call jetkvm_force_host_power_off, reset, HID, or media tools. The server receives a valid structured call from the authenticated principal and cannot distinguish injected intent from genuine intent.",
+      "server_handling": "Reduces impact through configured-device selection, schemas, input bounds, capacity limits, consequence descriptions and privacy-safe errors; does not and cannot prevent semantic hijacking under its stated trust model.",
+      "primary_owner": "MCP client and deployment: trustworthy instruction/data separation, high-impact approval, task-scoped tool enablement, identity/provenance display and least privilege."
+    },
+    {
+      "threat": "Indirect injection in a captured screen",
+      "repository_attack_path": "An attached host, webpage, login banner or compromised device displays text instructing a vision-capable agent to reveal secrets or invoke mutations. jetkvm_capture_screen faithfully returns the PNG, and the client may feed it back to its model.",
+      "server_handling": "Documents that images can contain secrets, bounds/decodes one frame and does not persist it. It cannot reliably classify the semantic content of pixels and should not add an LLM scanner.",
+      "primary_owner": "Client: treat screen content as untrusted data, do not derive privileged actions from it without trusted user intent and approval, and keep screenshot data out of other servers unless explicitly authorized."
+    },
+    {
+      "threat": "Tool-description poisoning",
+      "repository_attack_path": "A malicious contribution/dependency/release changes a description to tell the model to read or transmit secrets or prefer a destructive tool.",
+      "server_handling": "Static compiled metadata and exact manifest fixture make source-reviewed changes visible; descriptions are consequence-focused. A compromised binary can still lie.",
+      "primary_owner": "Repository/release integrity and client server-review/pinning. The runtime server cannot self-attest honest metadata."
+    },
+    {
+      "threat": "Tool shadowing, impersonation and cross-server name confusion",
+      "repository_attack_path": "A second malicious MCP server exposes the same jetkvm_* name or a similar safer-looking name and poisons selection, or falsely claims to be this server. Conversely, its metadata could instruct the agent to call the real server's mutation tool.",
+      "server_handling": "The jetkvm_ prefix and stable manifest reduce accidental ambiguity but do not create globally unique authenticated names or control another server.",
+      "primary_owner": "Client: bind calls and approvals to server identity plus tool name, qualify collisions, show provenance, and require re-approval when a server/manifest changes."
+    },
+    {
+      "threat": "Rug pull or metadata mutation",
+      "repository_attack_path": "A new binary/release changes tool behavior, schema, annotations or descriptions after a user originally approved the server.",
+      "server_handling": "No runtime mutation or dynamic registration exists; changes require a new process artifact and manifest fixture update. This narrows the path to release/update compromise.",
+      "primary_owner": "Release integrity plus client update review. Pin/review artifact and manifest changes; do not infer continuity from a tool name."
+    },
+    {
+      "threat": "Malicious metadata and tool-result poisoning",
+      "repository_attack_path": "A compromised JetKVM controls screen pixels and can influence firmware-derived version, extension or state strings. A client may interpret those values as instructions, make an unsafe follow-on call, or relay them to another server.",
+      "server_handling": "Typed projections discard unknown raw fields, redact media sources, replace raw errors and use constant warning labels; image and a few bounded protocol values necessarily remain untrusted observations. It detects malformed structures, not malicious semantics.",
+      "primary_owner": "Client: label tool outputs by trust source, keep data separate from instructions, and authorize downstream actions independently."
+    },
+    {
+      "threat": "Excessive agency",
+      "repository_attack_path": "An autonomous client is given the full server and can observe secrets, type commands, click UI, power/reset hosts and mount media without an intervening human. One bearer covers all configured tools/devices.",
+      "server_handling": "Makes each consequence explicit and keeps the product surface bounded, but deliberately implements no per-tool ACL, scope, consent dialog or human identity.",
+      "primary_owner": "Deployment/client: connect only a trusted administrative principal; enable high-impact calls only for intended workflows; use client approval and separate narrowly configured instances/security boundaries when needed."
+    },
+    {
+      "threat": "Confused deputy",
+      "repository_attack_path": "A prompt-injected but authenticated client uses the server's JetKVM password/session authority to act on a configured appliance. This is authority confusion even though the classic OAuth proxy/code-theft preconditions are absent.",
+      "server_handling": "Authenticates the calling boundary and uses separate downstream credentials; does not pass through bearer tokens or implement third-party OAuth. It cannot validate the client's semantic purpose.",
+      "primary_owner": "Client/deployment for intent and approval; server for retaining strict configured targets and never accepting arbitrary downstream credentials/tokens."
+    },
+    {
+      "threat": "Schema manipulation and complexity abuse",
+      "repository_attack_path": "A malicious server release publishes misleading schemas, or a malicious client sends extra fields, invalid unions, oversized text/paths/images or parser-complex input to alter dispatch or exhaust resources.",
+      "server_handling": "Schemas are local/static/snapshotted; typed SDK validation rejects unknown/invalid arguments; handlers add semantic checks and explicit length/range/enum bounds; admission limits concurrent work. No remote party can mutate a schema at runtime.",
+      "primary_owner": "Server/source review for schema correctness and resource bounds; client must still treat schemas as untrusted metadata before selecting a newly added server."
+    },
+    {
+      "threat": "Unsafe retry and cascading physical effects",
+      "repository_attack_path": "A timeout or lost response occurs after HID, reset, power, wake or media dispatch; an agent retries and duplicates a key/click/reset/upload or changes a now-different host state.",
+      "server_handling": "Classifies possible delivery as outcome=unknown/retryable=false, uses not_sent only before dispatch, marks idempotence conservatively, documents inspection, and never automatically retries mutations.",
+      "primary_owner": "Client must honor the result, stop automatic retry, inspect through an independent read-only/physical path and obtain new intent. The stateless server cannot recognize a semantically duplicate new request without adding risky idempotency state."
+    },
+    {
+      "threat": "Secret exfiltration and toxic multi-server flow",
+      "repository_attack_path": "The server returns a screenshot/status/device alias; a compromised client sends it using another MCP server. Or the client asks local-file media tools to upload a guessed file under the configured media root, or mounts a secret-bearing URL at an allowed origin.",
+      "server_handling": "Screenshots are explicit private output; status/media state is typed/redacted; errors/telemetry omit raw data; file access is root-confined and only reaches configured JetKVM; URL origins are administrator-allowlisted. It cannot control data after returning it to the trusted caller.",
+      "primary_owner": "Client for information-flow isolation and cross-server egress; deployment for a non-secret media root, trusted origins, device/network segmentation and not placing secrets in URLs."
+    },
+    {
+      "threat": "Malicious MCP client and denial/abuse",
+      "repository_attack_path": "A bearer holder or stdio owner repeatedly invokes bounded but expensive capture/session operations or high-impact mutations, ignores descriptions and lies about client metadata.",
+      "server_handling": "Authentication, Host/Origin checks, strict schemas, timeouts and global/per-device/session/capture/decoder admission reduce resource abuse. There is no per-principal rate quota or audit identity because there is only one principal.",
+      "primary_owner": "Deployment must protect the bearer/stdio channel and not share it across mutually distrusting users; reverse-proxy rate controls are appropriate if exposed beyond one trusted client."
+    }
+  ],
+  "affected_assets_and_trust_boundaries": "Assets include host screen secrets and state, typed credentials/commands, configured device aliases, JetKVM passwords/cookies, HTTP bearer, local media content, allowed media origins, attached-host availability/data integrity, physical power and USB control, appliance storage, and maintainer/release trust. Relevant boundaries are MCP client to stdio process, bearer holder/proxy to HTTP, static discovery metadata to the model, server outputs to client context/memory, compromised host/appliance pixels and typed state into the server, server-held credentials to configured JetKVM, media root/origin to appliance/host, and one MCP server's results to another server through a composing client.",
+  "plausible_impact": "A successful path can expose visible secrets, type or execute privileged commands, activate a destructive UI control, reset or power off a host, boot/wake equipment, corrupt or lose host data, upload/persist local media, induce an appliance network fetch, create cross-server data exfiltration, or exhaust availability. False or duplicated acknowledgement handling can compound a physical effect. A metadata/release compromise can redirect many clients. Because one caller principal has full configured authority, authentication compromise and prompt-injected agency have nearly the same runtime blast radius.",
+  "likelihood_or_preconditions": "Direct/indirect injection requires a client that lets a model act on untrusted user/tool/screen content and exposes this server's mutating tools without effective approval. Screen-based injection additionally requires capture plus model vision/OCR. Shadowing/cross-server exfiltration requires multi-server composition without server-qualified provenance. Tool poisoning/rug pull requires source, dependency, release, update-channel or local client-configuration compromise. Malicious-client abuse requires stdio ownership or bearer access. The server's lack of model/memory/prompts/resources removes many server-side injection paths, but compromised-client consequences remain high. Actual deployment prevalence is unknown [uncertain].",
+  "existing_controls": [
+    "One explicitly documented administrative principal; no false per-user or intent claim.",
+    "Static tools-only MCP surface with no prompts, resources, sampling, roots, elicitation, task extension, memory, dynamic registration or raw RPC tool.",
+    "Exact cross-transport manifest fixture and discovery metadata tests, making names/descriptions/schemas/annotations review-visible.",
+    "One-purpose consequence-oriented tools, jetkvm_ naming, bounded schemas, configured target selection and deny-by-default media capabilities.",
+    "Typed/redacted outputs, constant public error messages, no request logger, privacy-minimized telemetry and no credential return.",
+    "Explicit destructive/read-only/idempotent/open-world hints plus prose consequences and an explicit statement that hints are not authorization.",
+    "Mutation delivery taxonomy with non-retryable unknown outcomes and focused before/during/after-send and cancellation tests.",
+    "Admission limits, deadlines and no automatic queuing/retry; physical validation procedure requires independent observation and stop rules.",
+    "Opaque MCP bearer is not forwarded; distinct device credentials are used downstream, avoiding token-passthrough design."
+  ],
+  "residual_risk": "A valid client call is authoritative even if produced by prompt injection, hallucination, poisoned memory, malicious metadata or another server. The server cannot tell whether a screenshot contains an instruction or whether a human approved a force-off. Tool results can still carry adversarial pixels and limited firmware strings, and returned private data can be exfiltrated by the client. A malicious caller can ignore retryable=false and submit a new mutation. Tool metadata integrity ultimately depends on source/release integrity and client review. These risks are acceptable only under the declared trusted-administrator deployment boundary, not for an arbitrary autonomous agent.",
+  "compatibility_or_SemVer_effect": "Strengthening warnings, client/deployment guidance and threat tests is non-breaking. Changing tool names, descriptions, annotations or schemas affects model selection and the checked compatibility fixture even before 1.0. Removing the deprecated multiplexed virtual-media tool would be a public compatibility change but reduces permanent ambiguity; follow the repository's deprecation policy. Adding server-side confirmation tokens, dynamic per-client policy or per-user scopes would materially change the stateless contract and should not be smuggled in as a security patch.",
+  "privacy_effect": "The largest agent-specific privacy path is not server logging but authorized return of a private screenshot or status followed by client memory, model-provider retention, or cross-server exfiltration. Existing redaction and telemetry minimization are strong and should remain. Client guidance should explicitly treat screen/result content as untrusted private data, disable retention where appropriate, and avoid forwarding it. Adding prompt-scanning logs or full request auditing would create a new sensitive dataset and is rejected.",
+  "operational_effect": "The safe operating posture is simple: protect stdio/bearer as full administrator authority; configure only intended devices, media roots, origins and wake targets; keep the server isolated from mutually distrusting users; require client-side confirmation for consequential calls; and stop on unknown mutation outcome. Reverse-proxy rate limiting may be useful for remote HTTP but is not an agent-intent control. No second control plane is required.",
+  "maintainer_effect": "Preserving a static tool manifest and honest trust model keeps review tractable. The recurring work is reviewing every tool/description/schema/result change as security-sensitive, checking upstream MCP/agent advisories, and maintaining a concise client/deployment threat table. An embedded model scanner, policy language, tool registry, multi-user scope system or behavioral SIEM would impose high ongoing tuning and incident burden without reliably solving client-side injection.",
+  "disposition": "retain",
+  "recommendation": "Retain the current one-principal, static tools-only architecture, schema and target bounds, privacy-minimized results, consequence-rich metadata, non-retryable unknown outcomes, and explicit non-goals. Before public release, elevate the existing threat-model conclusion into concise operator-facing guidance: any stdio owner or bearer holder, including a prompt-injected or compromised agent, has full configured JetKVM authority; screen/tool results are untrusted private data; annotations are hints; clients must bind approvals to server identity plus exact tool, require fresh human approval for destructive/high-impact calls, isolate cross-server data flows, and never automatically retry unknown mutations. Do not claim the server prevents prompt injection. Prefer deployment separation and configuration minimization over an in-product policy engine.",
+  "minimal_practical_change": "Add one compact, test-linked 'Agent and multi-server safety' section to public security/deployment documentation and release review criteria, derived from the maintained threat model. It should enumerate the concrete screen-to-mutation, result-to-other-server, malicious-client, shadowing and unsafe-retry paths; identify client versus server ownership; state that the bearer is full administrator authority; recommend server-qualified tool provenance and high-impact client approval; and prohibit claims that annotations, authentication or injection detection prove intent. Retain exact manifest review as the metadata-rug-pull gate. This is research guidance only; no repository file is modified here.",
+  "optional_stronger_control": "After real external adoption, publish tested client profiles that document whether a named/versioned host shows server identity, honors annotations, supports per-tool approval, isolates results and suppresses retries. If operators demonstrate a need to expose this server to less-trusted automation, consider a separate deliberately read-only or explicitly allowlisted deployment mode as a product decision, with static discovery that omits unavailable tools. Add coarse proxy rate limits for shared remote HTTP. These controls are justified by demonstrated deployments, not by framework scoring.",
+  "rejected_or_overengineered_alternatives": [
+    "Reject an in-server LLM, prompt-injection classifier, regex scrubber or screenshot OCR filter: it cannot reliably distinguish instructions from data and would process/possibly retain highly sensitive content.",
+    "Reject a bespoke OAuth/scopes/policy engine, per-user consent database or AI gateway for the current one-maintainer/one-principal product; deployment/client controls own user intent.",
+    "Reject signing individual tool descriptions or creating a tool registry. Authenticate the released artifact and review its exact manifest instead.",
+    "Reject sensitive full request/result audit logs, prompt transcripts, screenshots or typed-text retention; they create a high-value exfiltration store.",
+    "Reject automatic replay, mutation idempotency guesses or server-side deduplication state for physical calls; an explicit repeated request may occur after world state changes.",
+    "Reject adding sampling, prompts, resources, memory, tasks or a multi-agent approval framework as security machinery; each expands the injection and compatibility surface.",
+    "Reject a blanket claim that all autonomous use is safe or unsafe. Safety depends on client authority, provenance, approvals, untrusted-data handling and deployment isolation."
+  ],
+  "rationale": "The repository is not an AI agent; it is a deterministic privileged tool server. Its strongest leverage is to minimize and accurately describe authority, validate structured inputs, constrain targets, minimize outputs, preserve ambiguous-outcome semantics and avoid optional agent surfaces. Empirical research shows that model-side injection defenses remain incomplete, while official MCP guidance assigns local-server consent/sandboxing and cross-tool authority to the client/deployment boundary. The code already implements most server-owned controls and honestly documents residual risk. Making the boundary prominent yields high value at low maintenance cost; pretending to solve semantic intent inside the server would be both misleading and disproportionate.",
+  "dependencies_or_prerequisites": [
+    "Public documentation must continue to derive from the exact manifest and maintained threat model.",
+    "Client-specific recommendations require testing named client versions rather than assuming annotation/approval behavior [uncertain].",
+    "Artifact signing/provenance and contribution review are prerequisites for stronger rug-pull resistance but belong to their dedicated workstreams.",
+    "Any future reduced-authority mode requires an explicit maintainer product decision and tests that discovery matches actual allowed operations."
+  ],
+  "migration_or_rollout_considerations": "No runtime migration is required for the retained model. Put the full-administrator and untrusted-screen warnings before copy-paste client configuration, not only in the threat model. When publishing, give operators a short preflight: trusted client, no unreviewed co-server composition, protected bearer/stdio, intended devices only, safe media root/origins, approval for mutation classes, private-result retention understood, and retry disabled on unknown. If the deprecated multiplexed media tool is later removed, announce and fixture-test the compatibility change separately. Do not imply that documentation shifts responsibility away from server-owned validation and privacy controls.",
+  "priority": "P1 before public release for prominent agent/multi-server boundary guidance and release-review acceptance evidence; no P0 architectural blocker under the declared trusted-administrator model.",
+  "implementation_effort": "XS for the minimal documentation/release-review synthesis; M for any later tested read-only/allowlist product mode.",
+  "ongoing_maintenance_burden": "low: review static manifest diffs, current client/deployment guidance and relevant advisories each release; optional client-profile testing would be medium.",
+  "confidence": "high for repository paths and server/client ownership because code, tests, threat model and official guidance align; medium for likelihood in unknown external client deployments and effectiveness of client-specific controls.",
+  "acceptance_evidence": [
+    "Public deployment guidance states that stdio ownership or the bearer equals full configured-device administrator authority and that prompt-injected/compromised clients are authorized from the server's perspective.",
+    "A threat table covers all named categories with an actual path or an explicit no-path/not-applicable rationale and assigns prevent/reduce/detect/document/client/deployment ownership.",
+    "The exact manifest remains static and safety descriptions, annotations, schemas and output shapes remain review-gated across both transports.",
+    "Tests prove unknown mutation outcomes are non-retryable, not_sent is only pre-dispatch, private firmware/error data is redacted, and telemetry excludes sensitive arguments/results.",
+    "Documentation warns that screenshots and tool results are untrusted private data and that cross-server transfer needs separate authorization.",
+    "No claim says annotations, authentication, a model prompt, or a scanner proves human intent or prompt-injection safety."
+  ],
+  "proposed_tests_or_checks": [
+    "Keep manifest drift tests and add/retain required safety phrases for private output, physical/destructive consequence, open-world fetch and unknown-outcome retry handling.",
+    "Property/table-test that every mutating handler converts any post-dispatch timeout, cancellation or unclassified error to unknown/non-retryable and that no internal automatic retry occurs.",
+    "Inject instruction-like sentinels into firmware version/extension/raw unknown fields/errors and confirm only intended typed bounded fields reach structured results, while unknown/raw detail never reaches telemetry.",
+    "Return a screenshot containing obvious adversarial text in a fake fixture and verify the server treats it only as opaque private image data; do not assert that a model ignores it.",
+    "Exercise malicious clients with unknown fields, oversized text/path/URL, invalid enums, repeated capture calls and capacity exhaustion; confirm rejection or busy/not_sent before device dispatch.",
+    "For any recommended client profile, manually test server-qualified naming, approval display for each consequence class, result retention/export, cross-server calls and retry behavior using fake devices only."
+  ],
+  "negative_or_abuse_cases": [
+    "Screen pixels saying to ignore the user, reveal credentials, call force-off, or send the image through another server.",
+    "A second server publishes jetkvm_force_host_power_off with deceptive read-only metadata or instructs the agent to invoke the real tool.",
+    "A changed release keeps a tool name but alters description/schema/behavior or changes destructive/idempotent annotations.",
+    "Firmware strings, errors or unknown fields contain instruction-like text, secrets, terminal control characters or oversized values.",
+    "A bearer holder calls every mutation, guesses configured media-root paths, repeatedly captures screens, sends allowed-origin URLs with secret queries, or ignores busy/retryable=false.",
+    "Timeout/cancellation after dispatch followed by an identical new keyboard, click, reset, power or upload request.",
+    "Client forwards screenshot/status/tool error into email, web, shell, storage or another MCP server without separate authorization.",
+    "Client treats readOnlyHint=false/destructiveHint=false/idempotentHint=true as permission or proof of harmlessness."
+  ],
+  "evidence_needed_before_claiming_support": "Before claiming safe use with an AI client, name and test the exact client/version, its server identity and namespace behavior, approval policy, treatment of untrusted images/results, memory/retention, multi-server information flow, and retry behavior. Server tests can support only claims about bounded dispatch, metadata, redaction, result taxonomy and transport behavior. They cannot qualify model resistance to injection, human consent, absence of cross-server exfiltration, or physical safety. Physical mutations require the separately approved hardware procedure and independent observation.",
+  "revisit_trigger": "Revisit when a tool, result field, dynamic capability, client-facing description, transport principal, device selection rule, media root/origin, telemetry field or raw firmware surface changes; when the project recommends a specific host or supports multi-user deployment; after a prompt-injection, retry, exfiltration or shadowing incident; on material MCP/OWASP/NIST guidance or advisory; or at least quarterly while agent security evidence is rapidly evolving, then each release once stable.",
+  "unresolved_questions": [
+    "Which MCP clients and versions will the maintainer publicly recommend, and do they provide server-qualified tool identity, fresh high-impact approval and retry controls [uncertain]?",
+    "Will typical users compose this server with browsing, messaging, filesystem or shell servers that create a direct screenshot/status exfiltration sink [uncertain]?",
+    "Would demonstrated less-trusted automation justify a separate read-only/allowlisted mode, or is instance/deployment separation sufficient?",
+    "Are firmware-derived version and extension strings explicitly length-bounded before typed output, or only indirectly bounded by transport message limits [uncertain]?",
+    "What release assurance will let clients detect a manifest rug pull between versions? This depends on the supply-chain workstream."
+  ],
+  "uncertain": [
+    "authoritative_sources",
+    "freshness_and_supersession",
+    "source_limitations",
+    "evidence_missing",
+    "likelihood_or_preconditions",
+    "dependencies_or_prerequisites",
+    "confidence",
+    "unresolved_questions"
+  ]
+}

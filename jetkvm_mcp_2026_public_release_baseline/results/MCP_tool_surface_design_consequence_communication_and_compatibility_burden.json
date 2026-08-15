@@ -1,0 +1,221 @@
+{
+  "item_name": "MCP tool-surface design, consequence communication, and compatibility burden",
+  "research_question": "Does the exact repository tool surface communicate consequences accurately, bound and validate caller-controlled data, return stable typed results and errors, and keep only tools whose safety and compatibility value justifies their permanent review burden before a public 1.0 release?",
+  "scope": "The 18 statically advertised MCP tools, their names, titles, descriptions, JSON Schemas, annotations, result and error contracts, transport-independent compatibility fixtures, deprecation policy, and pre-1.0 evolution. This includes caller comprehension, metadata/schema attack surface, and the distinction between protocol errors and tool execution errors. It excludes device-protocol correctness, deployment authorization, and physical qualification except where those facts determine an annotation or public claim.",
+  "repository_surfaces": [
+    "internal/mcpserver/server.go: Server.New, addInputTool, addMutationTool, addSanitizedInputMutationTool, mutationErrorResult, and result construction",
+    "internal/mcpserver/controls.go: all tool registrations, input/result types, schemas, descriptions, and annotations",
+    "internal/mcpserver/server_test.go, controls_test.go, manifest_contract_test.go, transport_contract_test.go, and testdata/tool-manifest.json",
+    "internal/mcpserver/discovery_manifest.go and internal/mcpserver/testdata/server-discover-manifest.json",
+    "docs/product-contract.md, docs/threat-model.md, docs/protocol-sources.md, README.md, go.mod, and repository tag v0.1.0"
+  ],
+  "applicability_stage": ["current_private", "before_public_release", "after_external_adoption"],
+  "authoritative_sources": [
+    {
+      "title": "jetkvm-mcp exact baseline source and tests",
+      "publisher": "BenDManning/jetkvm-mcp",
+      "url": "https://github.com/BenDManning/jetkvm-mcp/commit/6e52f0027b13f928b768de0feeab4847ef9ca53e",
+      "publication_or_update_date": "2026-08-15",
+      "version_or_revision": "commit 6e52f0027b13f928b768de0feeab4847ef9ca53e, tree 34e8b4451d76821950c23d7c06958d021700f3a7",
+      "access_date": "2026-08-15",
+      "supported_claims": "Executable registrations, schemas, annotations, typed outputs, error behavior, manifest fixtures, deprecation, and documented product contract."
+    },
+    {
+      "title": "MCP Specification 2026-07-28: Tools",
+      "publisher": "Model Context Protocol",
+      "url": "https://modelcontextprotocol.io/specification/2026-07-28/server/tools",
+      "publication_or_update_date": "2026-07-28",
+      "version_or_revision": "2026-07-28",
+      "access_date": "2026-08-15",
+      "supported_claims": "Tool discovery and calls, annotations as untrusted hints, structured content and text fallback, output-schema conformance, error categories, and tool security requirements."
+    },
+    {
+      "title": "MCP Specification 2026-07-28: Schema Reference",
+      "publisher": "Model Context Protocol",
+      "url": "https://modelcontextprotocol.io/specification/2026-07-28/schema",
+      "publication_or_update_date": "2026-07-28",
+      "version_or_revision": "2026-07-28",
+      "access_date": "2026-08-15",
+      "supported_claims": "Normative Tool, ToolAnnotations, CallToolResult, inputSchema, outputSchema, title, description, and metadata shapes."
+    },
+    {
+      "title": "MCP 2026-07-28 Final Release",
+      "publisher": "Model Context Protocol",
+      "url": "https://blog.modelcontextprotocol.io/posts/2026-07-28/",
+      "publication_or_update_date": "2026-07-28",
+      "version_or_revision": "2026-07-28 final release",
+      "access_date": "2026-08-15",
+      "supported_claims": "Deterministic, cacheable list responses and the final revision lifecycle."
+    },
+    {
+      "title": "Tool Annotations",
+      "publisher": "Model Context Protocol",
+      "url": "https://blog.modelcontextprotocol.io/posts/2026-03-16-tool-annotations/",
+      "publication_or_update_date": "2026-03-16",
+      "version_or_revision": "2026 guidance",
+      "access_date": "2026-08-15",
+      "supported_claims": "Meaning, pessimistic defaults, client uses, and non-enforcement of read-only, destructive, idempotent, and open-world hints."
+    },
+    {
+      "title": "MCP 2026-07-28 Release Candidate",
+      "publisher": "Model Context Protocol",
+      "url": "https://blog.modelcontextprotocol.io/posts/2026-07-28-release-candidate/",
+      "publication_or_update_date": "2026-05-21",
+      "version_or_revision": "2026-07-28 release candidate guidance retained by final release",
+      "access_date": "2026-08-15",
+      "supported_claims": "JSON Schema 2020-12 support, prohibition on automatic external-reference dereferencing, and bounding schema depth and validation time."
+    },
+    {
+      "title": "Semantic Versioning 2.0.0",
+      "publisher": "Semantic Versioning",
+      "url": "https://semver.org/spec/v2.0.0.html",
+      "publication_or_update_date": "2013-06-19",
+      "version_or_revision": "2.0.0",
+      "access_date": "2026-08-15",
+      "supported_claims": "Public API declaration, initial-development semantics, deprecation, and incompatible-change versioning."
+    }
+  ],
+  "source_class": {
+    "repository_baseline": "repository_evidence",
+    "MCP_tools_and_schema": "normative_specification",
+    "MCP_release_and_annotation_articles": "official_documentation",
+    "Semantic_Versioning": "normative_specification"
+  },
+  "normative_status": [
+    "MCP: tools with outputSchema MUST return conforming structuredContent; the repository validates this before sending.",
+    "MCP: annotations are hints and clients MUST treat them as untrusted unless the server is trusted; they are not authorization or confirmation controls.",
+    "MCP: servers MUST validate tool inputs; the repository combines JSON Schema and handler validation.",
+    "MCP: structured results SHOULD also include serialized JSON TextContent for backward compatibility; capture_screen currently returns image plus structured metadata but no JSON text metadata.",
+    "MCP official guidance: idempotentHint communicates safe repeated invocation and can influence retry behavior; destructiveHint communicates whether a mutation may destructively update its environment.",
+    "SemVer 2.0.0: 0.y.z APIs may be unstable; the repository's product contract voluntarily imposes a stricter major-version rule for breaking tool changes."
+  ],
+  "freshness_and_supersession": "The MCP 2026-07-28 final specification and its final-release material were current on 2026-08-15 and supersede earlier MCP revisions for normative behavior. The May release-candidate article is used only for security rationale carried into the final model, not to override final schema text. SemVer 2.0.0 is older but remains the current canonical version. Repository evidence is from the exact stipulated tree.",
+  "source_disagreements": [
+    "SemVer permits instability during 0.y.z, while docs/product-contract.md promises major-version treatment for breaking tool changes. Resolve in favor of the repository's stronger published contract; it is a deliberate compatibility promise, not a standards conflict.",
+    "The repository describes wake, DC power state, and unmount operations as never blindly retryable after unknown outcome while advertising idempotentHint=true. Official annotation guidance allows clients to use that hint for retry decisions. Resolve conservatively: wake tools are not idempotent in the action sense, and all five hints should be false unless qualified evidence and the retry contract are deliberately reconciled.",
+    "Keyboard and mouse descriptions acknowledge potentially destructive host effects while destructiveHint=false. Resolve using the MCP definition's may-be-destructive standard: set both true even though ordinary input is often harmless."
+  ],
+  "source_limitations": "Annotations are advisory and their practical treatment varies by MCP client. No live client telemetry, package-download evidence, hardware qualification, or public user population was available. The exact impact of removing the deprecated combined tool is therefore [uncertain]. The final-spec blog is official explanatory guidance rather than normative specification text. No claim is made that schema conformance proves physical device behavior.",
+  "exact_baseline_commit": "The stipulated baseline is 6e52f0027b13f928b768de0feeab4847ef9ca53e (tree 34e8b4451d76821950c23d7c06958d021700f3a7). Live HEAD during this workstream was 71445bc6bf2325e6c683e362393605089c336b63, but it has the identical tree and an empty diff against the stipulated commit; evidence was therefore not mixed across source revisions. Pre-existing untracked .agents/, jetkvm_mcp_2026_public_release_baseline/, and skills-lock.json were present.",
+  "current_repository_evidence": [
+    "internal/mcpserver/controls.go registers exactly 18 tools. Seventeen are one-purpose tools; jetkvm_virtual_media is an explicitly deprecated multiplexed compatibility tool with status, mount, unmount, and upload operations.",
+    "internal/mcpserver/testdata/tool-manifest.json snapshots every tool's name, title, description, input schema, output schema, and annotations, plus representative success, tool error, and protocol error behavior.",
+    "manifest_contract_test.go and transport_contract_test.go exercise the contract in memory, over stdio, and over stateless Streamable HTTP; successful structured output is checked against outputSchema.",
+    "Every input object sets additionalProperties=false. Capture dimensions, typed text, media paths/URLs, mouse coordinates, and wheel deltas are bounded; device and target aliases, keyboard key, and modifier array cardinality remain incompletely bounded.",
+    "Tool descriptions explain consequential power, HID, media, and capture effects and explicitly warn that unknown mutation outcomes must not be blindly retried.",
+    "keyboard and mouse have destructiveHint=false despite descriptions saying they may execute commands, alter data, or activate destructive UI.",
+    "turn_host_dc_power_on, turn_host_dc_power_off, wake_host_usb, wake_host_lan, and unmount_virtual_media have idempotentHint=true despite the universal unknown-outcome no-retry contract; wake operations repeat a packet or HID action on every invocation.",
+    "mount_virtual_media_url alone has openWorldHint=true because it makes the appliance fetch a caller-selected URL; configured device and wake targets remain closed-world.",
+    "addInputTool returns operational and business failures as CallToolResult with IsError=true, while unknown tools remain JSON-RPC protocol errors. mutationErrorResult supplies version, code, message, outcome, and retryable fields.",
+    "addInputTool normally adds serialized JSON TextContent beside structuredContent, but capture_screen supplies ImageContent and therefore does not receive the JSON text compatibility fallback.",
+    "addSanitizedInputMutationTool protects media URL/path validation from value reflection. keyboard uses the ordinary schema-validation path, whose detailed validation error may echo rejected typed text to the trusted caller transcript.",
+    "discovery_manifest.go advertises a static tools-only surface with public cache scope and ttlMs=0; list ordering and the manifest fixture are deterministic.",
+    "docs/product-contract.md documents all 18 tools, typed results/errors, deprecation, and stronger-than-default pre-1.0 compatibility rules. README.md and docs/threat-model.md agree that annotations communicate consequences but do not enforce authority."
+  ],
+  "implementation_and_documentation_agreement": "Implementation, manifest fixtures, README, threat model, and product contract substantially agree on the static 18-tool surface, one-purpose replacements, structured results, tool-versus-protocol errors, and unknown-outcome behavior. The main conflicts are semantic rather than undocumented behavior: five true idempotent hints can invite behavior the descriptions forbid, and false destructive hints understate keyboard/mouse consequences. Documentation acknowledges schema errors may echo rejected values to the same trusted caller, but that is an avoidable privacy weakness for typed text. Capture's lack of JSON text metadata falls short of an MCP SHOULD, not the repository's declared executable contract.",
+  "current_state": "partial: the static, typed, fixture-locked surface and consequence-rich descriptions are unusually strong, but two annotation classes materially miscommunicate safety; some caller-controlled identifiers are unbounded; typed-text validation may reflect private input; one deprecated multiplexed tool remains; and capture omits the recommended structured-result text fallback.",
+  "evidence_missing": [
+    "[uncertain] Live usage/download evidence showing whether any external caller still depends on jetkvm_virtual_media.",
+    "Physical-device and firmware evidence that repeating DC-state or unmount requests is safe after an acknowledgement is lost.",
+    "A client-compatibility sample showing how major MCP clients display or act on destructiveHint and idempotentHint and consume image-plus-structured results.",
+    "A documented maintainer choice for maximum device/target alias length and the intended v1 removal date for the legacy tool."
+  ],
+  "concrete_threat_or_failure_scenarios": [
+    "An MCP client uses idempotentHint=true to retry wake_host_usb after a timeout; the first HID wake was delivered but its acknowledgement was lost, so a second physical input is emitted contrary to the server's unknown-outcome warning.",
+    "A client suppresses confirmation because keyboard or mouse is marked non-destructive; injected or mistaken arguments type a command or click a destructive control on the attached host.",
+    "Rejected keyboard text containing a password or secret is incorporated into a detailed schema-validation error and retained in the client transcript or diagnostics.",
+    "An oversized device/target alias or key string consumes avoidable parsing, validation, error, or logging resources before handler rejection; HTTP request limits reduce but do not define the tool contract.",
+    "The deprecated virtual_media tool's single destructive/open-world annotation cannot accurately represent its read-only status branch versus local-file, URL-fetch, upload, and unmount branches, so a client receives misleading whole-tool metadata.",
+    "A provider regression returns the wrong action/status string; permissive output fields still validate and silently expand the public result vocabulary.",
+    "A legacy client consumes only TextContent and receives an image from capture_screen without the structured metadata's JSON fallback."
+  ],
+  "affected_assets_and_trust_boundaries": "Affected assets are host integrity and availability, typed secrets, captured screen confidentiality, JetKVM media state, physical power state, caller compatibility, and maintainer review capacity. Boundaries are MCP client to server arguments/metadata, server to configured JetKVM, JetKVM to attached host through HID/power/media, and server results back into an agent transcript. The server trusts an authenticated/authorized caller with full configured-device authority; annotations still shape client decisions but are not an enforcement boundary.",
+  "plausible_impact": "Incorrect retry or consequence hints can cause duplicate physical input, unintended commands, power/media changes, or lost caller confirmation. Validation reflection can expose sensitive typed text inside otherwise trusted but retained transcripts. Unbounded strings and weak output vocabularies mainly create robustness and compatibility drift rather than an independent high-severity exploit under existing request limits. Retaining the multiplexed legacy tool permanently increases review, fixture, documentation, and compatibility cost and preserves ambiguous metadata.",
+  "likelihood_or_preconditions": "Consequential annotation failures require a client or agent that uses hints for confirmation or retry behavior, which official guidance explicitly permits; timeout or lost-acknowledgement conditions make the retry case realistic. Typed-text reflection requires invalid input and transcript/log retention. Resource pressure requires a caller already able to invoke the server and an enclosing request body large enough to matter. Legacy-tool breakage requires actual external dependency, which is [uncertain] because usage evidence was unavailable.",
+  "existing_controls": [
+    "Static, deterministic tool registration with no runtime list mutation or third-party metadata ingestion.",
+    "Strict object schemas, shallow local anyOf branches, startup schema resolution, and no external JSON Schema references.",
+    "Rich descriptions and explicit destructive/idempotent/open-world annotations on every tool.",
+    "Typed success results, declared output schemas, pre-send output validation, and stable redacted mutation-error envelopes.",
+    "Manifest contract tests across in-memory, stdio, and stateless HTTP transports.",
+    "One-purpose power and media tools with the deprecated combined tool clearly labeled and documented.",
+    "Descriptions explicitly prohibit blind retries after unknown mutation outcome.",
+    "No prompts, resources, dynamic tools, icons, custom metadata, or raw JetKVM RPC tool enlarges the public MCP surface."
+  ],
+  "residual_risk": "The static fixture prevents silent metadata drift but faithfully locks in misleading hint values until corrected. Descriptions do not reliably compensate when clients consume annotations mechanically. A trusted caller can always intentionally operate the host, so the server cannot eliminate excessive-agent-authority risk; it can make consequences accurate and errors non-leaking. Hardware semantics of state-setting operations remain unqualified.",
+  "compatibility_or_SemVer_effect": "Changing annotations and tightening previously accepted input lengths alters observable API behavior; under the repository's product contract these should ship deliberately with the already-required v1.0.0 boundary and regenerated compatibility fixture. Removing jetkvm_virtual_media is breaking and should occur at v1 only after migration notes and a check for actual users. Tightening output schemas without changing emitted values is contract clarification but should still be fixture-reviewed. Adding JSON TextContent to capture is additive, though content ordering must remain stable. Retaining the remaining 17 tools makes them the intended long-lived v1 compatibility surface.",
+  "privacy_effect": "Value-free validation errors for keyboard prevent rejected typed text, including credentials, from being copied into agent transcripts or diagnostics. The change does not add collection or a new log. The capture result remains sensitive regardless of adding a metadata text part; only nonsensitive metadata, never image bytes, should be serialized there.",
+  "operational_effect": "The proposed changes do not add services, state, approval infrastructure, or runtime control planes. They improve client confirmation/retry cues and reconciliation behavior. Contract snapshots make releases slightly more deliberate. A positive static list TTL could reduce repeated discovery but is optional and not an availability control.",
+  "maintainer_effect": "Removing the deprecated multiplexed tool eliminates a handler, conditional schema, tests, documentation, and permanent compatibility branch. Correcting annotations and bounds is low recurring cost because the manifest fixture detects drift. Keeping keyboard and mouse as bounded multiplexed operation families avoids a tool explosion. Every new public tool after v1 should require a distinct consequence/input/result need and representative compatibility cases.",
+  "disposition": "simplify",
+  "recommendation": [
+    "Retain the static tools-only architecture, typed results/errors, one-purpose power/media tools, shallow local schemas, rich descriptions, and manifest contract gate.",
+    "Before public v1, set keyboard and mouse destructiveHint=true. Set wake_host_usb and wake_host_lan idempotentHint=false; conservatively set all five currently true mutation idempotent hints false unless physical/firmware qualification proves repeat safety and the documented no-retry policy is consciously narrowed.",
+    "Use value-free stable invalid_input errors for keyboard and preferably all tools; add explicit maximums for device/target identifiers, key length, and modifier count/uniqueness.",
+    "Remove deprecated jetkvm_virtual_media at the v1 boundary if live usage evidence does not justify one explicit sunset release. Keep the other 17 tools: each exposes a distinct safe-discovery, observation, input, power, wake, or media contract.",
+    "As P2 cleanup, constrain fixed output vocabularies, add nonsensitive JSON metadata TextContent to capture_screen, and consider a small positive TTL for the immutable public tool list."
+  ],
+  "minimal_practical_change": "Update the annotation table and fixture so keyboard/mouse are destructive and wake operations are non-idempotent; decide the remaining three idempotent hints against qualified repeat semantics. Route keyboard schema failures through a value-free invalid_input path. Add defensible string/array bounds. Make the v1 release decision for the deprecated tool and document its replacement mapping. No architectural abstraction is required.",
+  "optional_stronger_control": "After external adoption, maintain machine-readable compatibility fixtures for the latest released major and run a small client-interoperability matrix that verifies descriptions, confirmations, content parts, and error presentation. Require a short consequence review for any new tool or annotation change. This becomes worthwhile only when real downstream clients exist; it is not a precondition for the first public release.",
+  "rejected_or_overengineered_alternatives": [
+    "Do not combine the seven power/wake operations: their consequences and repeat semantics differ and deserve separate descriptions and annotations.",
+    "Do not split each keyboard key, mouse action, or media mode into its own tool: the bounded conditional schemas group operations with the same authority and would otherwise create permanent tool-list noise.",
+    "Do not add a policy engine, server-side human approval workflow, custom consequence taxonomy, or per-tool scopes; the product grants a trusted caller full configured-device authority and confirmation belongs at the MCP client/deployment boundary.",
+    "Do not expose raw JetKVM RPC, dynamic device-generated tools, icons, prompts, resources, or arbitrary metadata merely because the SDK permits them.",
+    "Do not retain the deprecated combined tool indefinitely without demonstrated callers; backward compatibility is not free for a one-maintainer project."
+  ],
+  "rationale": "The repository already has a comprehensible and strongly tested public contract, so replacement frameworks would add more risk than value. The concrete gaps are narrow but consequential: the metadata clients are invited to use contradicts the descriptions in exactly the lost-acknowledgement and host-mutation cases the product treats as safety-critical. Conservative annotations, non-reflecting validation, complete bounds, and a clean v1 surface directly address those failures. Removing one known legacy multiplexor reduces burden while retaining the 17 tools whose distinct consequences or results justify their names.",
+  "dependencies_or_prerequisites": [
+    "Maintainer decision on whether v1 removes jetkvm_virtual_media immediately or after one documented sunset release.",
+    "Live release/download or issue evidence before assuming no legacy users.",
+    "Representative JetKVM firmware/hardware tests before asserting state-setting calls are safely repeatable after lost acknowledgement.",
+    "A documented maximum alias length aligned between configuration and MCP schemas.",
+    "Coordination with the already-required v1 contract update and release notes."
+  ],
+  "migration_or_rollout_considerations": "Publish a v1 migration table mapping each legacy virtual_media operation to get_virtual_media_status, mount_virtual_media_url, mount_virtual_media_file, upload_virtual_media_file, or unmount_virtual_media. Land annotation/bound changes with an intentional manifest update and explain that false idempotence means callers must reconcile state after unknown outcomes. If real legacy use is found, retain the deprecated tool for one explicit, time-bounded release rather than inventing a permanent compatibility layer. Add capture TextContent without removing ImageContent or structuredContent.",
+  "priority": "P1: consequence-hint correctness, typed-text error privacy, bounded inputs, and the v1 legacy-tool decision should be complete before public release; output-schema/fallback/cache refinements are P2.",
+  "implementation_effort": "S for annotation, validation, bounds, and fixture changes; M if legacy removal, migration documentation, and interoperability checks are included.",
+  "ongoing_maintenance_burden": "low: review the manifest diff whenever a tool contract changes and reconsider the surface only at releases or when downstream evidence appears.",
+  "confidence": "high for repository behavior and specification interpretation; medium for removal timing and repeat safety because usage and physical qualification evidence are missing.",
+  "acceptance_evidence": [
+    "The generated manifest contains the approved 17-tool v1 surface or an explicitly time-bounded deprecated exception, with an exact migration map.",
+    "keyboard and mouse are destructive; wake tools are non-idempotent; any remaining true idempotent hint has documented device evidence and reconciled retry wording.",
+    "Invalid keyboard arguments containing a unique secret sentinel return a stable error that does not contain the sentinel on any supported transport.",
+    "All caller-controlled string and array fields have reviewed maxima and negative boundary tests.",
+    "Every success result validates against outputSchema; capture includes ImageContent, structured metadata, and a compatible nonsensitive JSON TextContent part if that P2 change is accepted.",
+    "Focused and transport contract tests pass and the manifest diff is explicitly reviewed as a public API change."
+  ],
+  "proposed_tests_or_checks": [
+    "Table-test all 17 or 18 advertised tools for exact readOnly, destructive, idempotent, and openWorld annotations against a reviewed consequence matrix.",
+    "Run manifest contract tests in memory, stdio, and stateless HTTP and classify every snapshot change as breaking, additive, or corrective.",
+    "Inject oversized device, target, key, modifier, text, path, URL, coordinate, and unknown-property inputs at boundary minus one, boundary, and boundary plus one.",
+    "Use a sensitive sentinel in invalid keyboard text and assert it is absent from result content, server stderr, and captured transport messages.",
+    "Validate representative success and every stable error code against schemas; mutate fixed action/status values in a fake provider to ensure tightened output schemas reject them.",
+    "Exercise capture with a legacy TextContent-only consumer and a modern structured/image consumer.",
+    "Run go test ./internal/mcpserver; it passed at the studied tree on 2026-08-15."
+  ],
+  "negative_or_abuse_cases": [
+    "Lost acknowledgement followed by attempted automatic retry of each power, wake, upload, mount, unmount, keyboard, and mouse mutation.",
+    "Keyboard text containing credentials, control characters, non-ASCII data, maximum-size data, and invalid conditional-operation fields.",
+    "Mouse operations with fields from the wrong anyOf branch, extreme coordinates/deltas, and extra properties.",
+    "Media URL versus local-file tools presented to a client to verify only the URL fetch is open-world.",
+    "Deprecated combined-tool status operation misleadingly inheriting destructive metadata, demonstrating why branch-specific consequences cannot be represented.",
+    "Malformed structured provider output, unknown tool name, invalid arguments, known operational failure, and unknown mutation outcome to preserve protocol/tool error separation.",
+    "Schemas containing recursive or external references if future changes introduce them; startup must reject or bound them rather than dereference network content."
+  ],
+  "evidence_needed_before_claiming_support": "Claim only schema and transport conformance from the current fixtures. Do not claim that true idempotence makes retry safe without lost-acknowledgement tests on supported JetKVM firmware and attached-host effects. Do not claim legacy removal is harmless without checking published releases, issues, downloads where available, and maintainer knowledge. Do not claim broad MCP-client compatibility until representative clients consume image plus structured/text results and present consequence hints correctly.",
+  "revisit_trigger": "Revisit on any MCP specification or Go SDK change to Tool, ToolAnnotations, JSON Schema, list caching, or CallToolResult; before adding, renaming, or removing a tool; at v1 release; after the first external caller or compatibility complaint; after any duplicate-mutation or secret-reflection incident; when qualified firmware changes repeat semantics; and at least annually while public.",
+  "unresolved_questions": [
+    "[uncertain] Are there external v0.1.0 callers that still invoke jetkvm_virtual_media, and is one sunset release warranted?",
+    "Do supported JetKVM firmware versions deduplicate or safely converge repeated DC state and unmount requests when the first acknowledgement is lost?",
+    "What maximum device and wake-target alias length should configuration and MCP expose?",
+    "Should the server make all mutation idempotent hints false to encode its universal no-blind-retry policy, or retain true only for physically qualified state-setting calls?",
+    "Which target MCP clients need capture metadata duplicated as JSON TextContent, and what content ordering do they expect?"
+  ],
+  "uncertain": [
+    "source_limitations",
+    "evidence_missing",
+    "likelihood_or_preconditions",
+    "unresolved_questions"
+  ]
+}

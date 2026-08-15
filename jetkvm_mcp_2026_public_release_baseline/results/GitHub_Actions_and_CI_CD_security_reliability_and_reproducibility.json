@@ -1,0 +1,152 @@
+{
+  "item_name": "GitHub Actions and CI/CD security, reliability, and reproducibility",
+  "research_question": "Does the exact jetkvm-mcp CI workflow provide trustworthy, proportionate evidence for its product and release claims while safely executing untrusted pull-request code, and which repository and workflow controls must change before public release?",
+  "scope": "Covers GitHub Actions triggers, token and secret authority, external actions and transitive code, pull-request trust, expressions, caches, artifacts and logs, hosted runners, network installation, tool and runner versions, timeouts, duplicate work, concurrency, job-to-claim traceability, branch gates, and bypass testing. Release publication credentials, signing and attestations are considered only as boundaries and are primarily workstream 14.",
+  "repository_surfaces": "Exact .github/workflows/ci.yml, .github/dependabot.yml, Makefile, docs/ci-quality.md, go.mod, go.sum, Dockerfile, testdata/mcp-gates/pins.json, testdata/mcp-gates/npm/package.json, package-lock.json, internal/protocolgate/**, cmd/jetkvm-mcp-protocol-gates/**, scripts/run-fuzz-targets.py, artifact sanitizer tests, and live repository Actions permissions, workflow-token permissions, secrets, variables, environments, cache usage, artifacts, recent runs, visibility, rulesets and main-branch protection APIs.",
+  "applicability_stage": "current_private, before_public_release",
+  "authoritative_sources": [
+    {
+      "title": "Studied jetkvm-mcp repository tree and CI workflow",
+      "publisher": "BenDManning/jetkvm-mcp",
+      "url": "https://github.com/BenDManning/jetkvm-mcp/tree/6e52f0027b13f928b768de0feeab4847ef9ca53e",
+      "publication_or_update_date": "2026-08-15 snapshot",
+      "version_or_revision": "6e52f0027b13f928b768de0feeab4847ef9ca53e; identical tracked tree 34e8b4451d76821950c23d7c06958d021700f3a7 and later 71445bc6bf2325e6c683e362393605089c336b63",
+      "access_date": "2026-08-15",
+      "supported_claims": "Actual triggers, actions, permissions, jobs, timeouts, caches, artifacts, tool pins and local gates."
+    },
+    {
+      "title": "Secure use reference",
+      "publisher": "GitHub",
+      "url": "https://docs.github.com/en/actions/reference/security/secure-use",
+      "publication_or_update_date": "continuously maintained; accessed 2026-08-15",
+      "version_or_revision": "current GitHub Actions documentation",
+      "access_date": "2026-08-15",
+      "supported_claims": "Full-length commit SHA is the only immutable action reference; minimize token permissions; untrusted input and self-hosted public-runner risks."
+    },
+    {
+      "title": "REST API endpoints for GitHub Actions permissions",
+      "publisher": "GitHub",
+      "url": "https://docs.github.com/en/rest/actions/permissions?apiVersion=2026-03-10",
+      "publication_or_update_date": "API version 2026-03-10",
+      "version_or_revision": "2026-03-10",
+      "access_date": "2026-08-15",
+      "supported_claims": "Repositories can select allowed actions, require full-length SHA pins, set read-only default workflow permissions, and prevent workflow PR approval."
+    },
+    {
+      "title": "Script injections",
+      "publisher": "GitHub",
+      "url": "https://docs.github.com/en/actions/concepts/security/script-injections",
+      "publication_or_update_date": "continuously maintained; accessed 2026-08-15",
+      "version_or_revision": "current GitHub Actions documentation",
+      "access_date": "2026-08-15",
+      "supported_claims": "Many github context fields and branch names are untrusted and direct expression interpolation into shell can execute attacker input."
+    },
+    {
+      "title": "Dependency caching reference",
+      "publisher": "GitHub",
+      "url": "https://docs.github.com/en/actions/reference/workflows-and-actions/dependency-caching",
+      "publication_or_update_date": "continuously maintained; accessed 2026-08-15",
+      "version_or_revision": "current GitHub Actions documentation",
+      "access_date": "2026-08-15",
+      "supported_claims": "Caches are not signed, may be read by fork PRs, and can enable code execution if trusted; pull_request caches are merge-ref scoped and low-trust default-branch cache writes are restricted."
+    },
+    {
+      "title": "Compromised runners",
+      "publisher": "GitHub",
+      "url": "https://docs.github.com/en/actions/concepts/security/compromised-runners",
+      "publication_or_update_date": "continuously maintained; accessed 2026-08-15",
+      "version_or_revision": "current GitHub Actions documentation",
+      "access_date": "2026-08-15",
+      "supported_claims": "GitHub-hosted runners do not scan downloaded code; malicious code can steal GITHUB_TOKEN and referenced secrets; fork pull_request runs receive read-only access and no secrets."
+    },
+    {
+      "title": "CVE-2025-30066 / GHSA-mrrh-fwg8-r2c3",
+      "publisher": "GitHub Advisory Database",
+      "url": "https://github.com/advisories/ghsa-mrrh-fwg8-r2c3",
+      "publication_or_update_date": "published 2025-03-15; updated 2025-10-22",
+      "version_or_revision": "reviewed advisory",
+      "access_date": "2026-08-15",
+      "supported_claims": "The tj-actions/changed-files compromise moved many version tags to malicious code and exposed runner secrets, demonstrating the concrete risk of mutable action tags."
+    },
+    {
+      "title": "Use GITHUB_TOKEN for authentication in workflows",
+      "publisher": "GitHub",
+      "url": "https://docs.github.com/en/actions/how-tos/writing-workflows/choosing-what-your-workflow-does/controlling-permissions-for-github_token",
+      "publication_or_update_date": "continuously maintained; accessed 2026-08-15",
+      "version_or_revision": "current GitHub Actions documentation",
+      "access_date": "2026-08-15",
+      "supported_claims": "Actions can access github.token even if not explicitly passed and workflows should grant only minimum permissions."
+    },
+    {
+      "title": "Managing GitHub Actions settings for a repository",
+      "publisher": "GitHub",
+      "url": "https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/enabling-features-for-your-repository/managing-github-actions-settings-for-a-repository",
+      "publication_or_update_date": "continuously maintained; accessed 2026-08-15",
+      "version_or_revision": "current GitHub documentation",
+      "access_date": "2026-08-15",
+      "supported_claims": "Repositories can allow selected owners/actions and require full SHA pins; fork PR workflows use read-only tokens without secrets under the documented setting."
+    },
+    {
+      "title": "Configuring retention for GitHub Actions artifacts and logs",
+      "publisher": "GitHub",
+      "url": "https://docs.github.com/en/organizations/managing-organization-settings/configuring-the-retention-period-for-github-actions-artifacts-and-logs-in-your-organization",
+      "publication_or_update_date": "continuously maintained; accessed 2026-08-15",
+      "version_or_revision": "current GitHub documentation",
+      "access_date": "2026-08-15",
+      "supported_claims": "Default retention is 90 days and public/private repositories have different configurable ranges."
+    }
+  ],
+  "source_class": "Repository tree and live API responses are repository_evidence. GitHub security, API, caching and retention pages are official_documentation. GHSA-mrrh-fwg8-r2c3 is an official_advisory. No secondary source is required.",
+  "normative_status": "Repository workflow behavior and live settings are observations. GitHub's workflow syntax and permission mechanics are platform requirements; full-SHA pinning, least privilege, hosted-runner isolation and cache cautions are official guidance. The advisory is observation of a concrete incident. Proposed job composition, retention duration, concurrency policy and branch-gate selection are repository-specific judgments.",
+  "freshness_and_supersession": "The source tree and live APIs were inspected on 2026-08-15. GitHub REST evidence used the 2026-03-10 API where documented. Recent official documentation supersedes older security-hardening page organization but retains the full-SHA, least-privilege and untrusted-input guidance. The 2025 tj-actions incident remains directly relevant. Action SHAs and hosted-runner images are intentionally time-varying and must be resolved and reviewed at implementation time.",
+  "source_disagreements": "GitHub permits tags and recommends full SHAs; this repository currently uses trusted publishers but mutable major tags. Because CI result integrity matters even without deployment secrets and the platform now offers SHA enforcement, resolve this in favor of full SHA pins plus reviewable tag comments. GitHub caching is supported and low-trust writes are scoped, while caches remain unsigned and untrusted; retain only if measured latency value justifies it, never as evidence. Reproducibility conflicts with ubuntu-latest and network installs, but fully hermetic CI is disproportionate; pin controllable identities and describe hosted images/network as environmental inputs rather than claiming byte reproducibility.",
+  "source_limitations": "[uncertain] Private Free plan/API responses returned 403 for rulesets and branch protection, so the absence versus plan-inaccessibility of individual branch controls could not be distinguished. The user plan field was unavailable. Live API did expose Actions policy, token defaults, zero repository Actions secrets/variables/environments, artifact expiries, cache use and recent runs. External action source trees/transitive bundled dependencies were not fully audited; full SHA pinning fixes identity, not publisher compromise at the chosen commit. No hostile fork was executed.",
+  "exact_baseline_commit": "The exact initial studied commit is 6e52f0027b13f928b768de0feeab4847ef9ca53e, diverging from the mission's expected 176ec421f9ee6c801517180e1ad0ec9c84570e8e. Its tracked tree is identical to 34e8b4451d76821950c23d7c06958d021700f3a7 and later 71445bc6bf2325e6c683e362393605089c336b63. Current HEAD during live inspection was 71445bc6bf2325e6c683e362393605089c336b63. Pre-existing untracked .agents/, skills-lock.json and research outputs were excluded from product evidence.",
+  "current_repository_evidence": "The single workflow triggers on pull_request and pushes to main, declares workflow-wide contents: read, uses no pull_request_target, workflow_run, issue event, deployment event, secrets, id-token or write permission, and has four GitHub-hosted ubuntu-latest jobs with 15-30 minute timeouts. test supports formatting/tidy/checksum/race/vet/staticcheck/govulncheck/fuzz/coverage/cross-build claims but make verify repeats ordinary tests and vet already run; minimum-go independently verifies Go 1.25 with GOTOOLCHAIN=local; protocol-gates uses Go 1.26.6, Node 22.22.0, an integrity-locked npm tree installed by npm ci --ignore-scripts, reviewed protocol pins, loopback fixtures and sanitized artifacts; container uses Buildx/QEMU for amd64/arm64 binary and image construction. All seven external uses references are mutable major tags: actions/checkout@v7 four times, actions/setup-go@v7 three times, actions/setup-node@v4, actions/upload-artifact@v4 twice, docker/setup-qemu-action@v4 and docker/setup-buildx-action@v4. checkout does not explicitly disable persisted credentials. No event/body/title/ref value is interpolated into a run script; runner.temp is the only expression used in shell/path context. setup-go caching is enabled in three jobs. The workflow has no concurrency cancellation and no explicit artifact retention-days. Dependabot groups Go and GitHub Actions monthly with one open PR each. Go and Node versions, Staticcheck v0.7.0, govulncheck v1.7.0, npm lock integrity, and container base digests are pinned; ubuntu-latest, action tags, apt repository contents and downloaded tool graphs are not fully immutable. Live API: Actions enabled; allowed_actions=all; sha_pinning_required=false; default_workflow_permissions=read; can_approve_pull_request_reviews=false; zero Actions secrets, variables and environments; no self-hosted Actions access; 39 active caches totaling 4,808,383,288 bytes; 38 artifacts; sampled artifacts expire after 90 days; recent pinned-tree PR and main runs succeeded in about 6-8 minutes. Ruleset and branch-protection endpoints returned a plan/publication 403.",
+  "implementation_and_documentation_agreement": "docs/ci-quality.md accurately describes a single read-only, credential-free, fake/loopback CI authority and its four lanes. Code confirms timeouts, exact Go/Node/tool versions, npm integrity locking, sanitizer boundaries and no release/deploy authority. Its phrase pinned analyzers is accurate at the module-version/go.sum level, but CI actions themselves are not immutable. Its release lane description says make ci-quality although the workflow invokes individual steps and make verify, causing repeated test/vet work. No documentation claims full reproducibility, and the mutable runner/network inputs mean such a claim would be unsupported.",
+  "current_state": "partial: job authority and product-claim coverage are substantially sound, but action identity and live policy are an avoidable supply-chain gap, branch gates are unavailable in the current private plan, and efficiency/evidence lifecycle controls are incomplete.",
+  "evidence_missing": "[uncertain] Exact branch/ruleset controls after publication; fork workflow approval settings; repository owner 2FA and session security; organization/enterprise overrides; the reviewed full SHAs for each action release; action provenance/transitive bundled code; runner-image manifest for each historical run; cache hit-rate and time saved; whether all 4.8 GB of cache remains useful; job-log retention setting; required-check names after public conversion; and an adversarial pull request demonstrating policy enforcement.",
+  "concrete_threat_or_failure_scenarios": [
+    "A compromised action publisher moves a v4 or v7 tag to malicious code, as occurred with tj-actions/changed-files; the next PR or main run executes it. It can falsify checks, read the checked-out private source and read-only token, poison artifacts, and contact the network.",
+    "A public contributor changes .github/workflows/ci.yml or Makefile so jobs retain expected names but skip real gates. Status checks turn green unless the maintainer reviews the gate-definition change; required checks alone do not prove the submitted workflow was trustworthy.",
+    "A future maintainer adds pull_request_target plus checkout of PR code or adds secrets/write/id-token to the existing test workflow, turning deliberate arbitrary PR-code execution into a repository or credential compromise.",
+    "An unsigned restored cache contains malicious executable material. GitHub's merge-ref/default-branch restrictions reduce cross-trigger writes, and Go content checks reduce risk, but the workflow must not treat caches as trusted evidence or store secrets in them.",
+    "The default 90-day artifact/log retention preserves future accidentally sensitive evidence longer than intended; if-no-files-found: warn can also let a run finish without the artifact someone later assumes exists.",
+    "Rapid pushes launch duplicate 6-8 minute workflows because no concurrency group cancels superseded revisions, increasing queue time, network exposure and maintainer noise.",
+    "ubuntu-latest or live registries change beneath an unchanged commit; CI fails or changes behavior, and a passing run is incorrectly described as reproducible rather than evidence from a particular hosted environment.",
+    "A compromised Go/npm/apt upstream or DNS/network path serves malicious content; checksums and npm integrity constrain module/package bytes, while apt package versions and action downloads remain environmental dependencies.",
+    "A public self-hosted runner is later added to save cost; arbitrary PR code establishes persistence and steals credentials from subsequent privileged jobs."
+  ],
+  "affected_assets_and_trust_boundaries": "Assets are repository source and CI truth, GITHUB_TOKEN, private source before publication, future release credentials, caches, workflow artifacts/logs, dependency and analyzer inputs, container outputs, branch integrity and maintainer attention. Boundaries are untrusted PR to reviewed repository, workflow YAML to GitHub controller, external action publisher to runner, runner to public registries, cache/artifact service to jobs/maintainer, and CI status to branch-merge decision.",
+  "plausible_impact": "A malicious or mutable CI dependency can falsify required checks, expose source/token data, prepare a compromised release, or mislead review. A privileged-trigger mistake can modify the repository or leak durable credentials. Reliability failures waste maintainer time or block merges. Mutable environmental inputs weaken forensic/verifiability claims, while excessive duplicate jobs consume quota and obscure signal.",
+  "likelihood_or_preconditions": "Mutable-tag compromise requires upstream action compromise or tag movement; the 2025 advisory demonstrates feasibility, though selected current publishers are prominent. PR gate bypass requires a malicious contribution plus insufficient maintainer review. Credential impact is presently limited because permissions are read-only and live repo secrets/environments are empty; it rises sharply when release authority is added. Cache poisoning requires a writable compatible cache scope or compromised trusted run. Runner drift and duplicate execution are routine rather than hypothetical.",
+  "existing_controls": "One small workflow; pull_request rather than pull_request_target; explicit contents: read and live read-only token default; workflow PR approval disabled; no secrets, variables, environments, OIDC or write jobs; GitHub-hosted ephemeral runners; per-job timeouts; exact Go/Node/analyzer versions; go.sum/module verification; npm ci with committed integrity lock and --ignore-scripts; container base digest pins; bounded fuzz; sanitized artifacts; loopback fixtures and no hardware; Dependabot Action updates; hosted-runner cache-scope protections; successful recent runs for the studied tree.",
+  "residual_risk": "Every external action can change under the referenced tag and live policy permits any action without SHA enforcement. checkout credentials remain persisted by default. PR code necessarily executes with network access and can alter gates. Hosted images, registries and apt packages are not hermetic. Caches and artifacts are service-controlled, unsigned evidence. Branch protection cannot currently be confirmed/enabled under the private plan. No CI design can replace maintainer review of changed workflow, Makefile, lockfile and fixture/gate definitions.",
+  "compatibility_or_SemVer_effect": "SHA pins, allowlists, persist-credentials:false, concurrency, artifact retention and branch settings do not alter the MCP API. Splitting duplicate Make targets changes developer commands only if existing names are removed; retain compatibility aliases. Pin updates may intentionally change CI behavior and need normal review. Public branch rules can change maintainer merge workflow and should be tested before declaring them mandatory.",
+  "privacy_effect": "No product/device secrets are present in current CI, and artifacts are sanitized. Short explicit artifact retention reduces exposure. Public PRs and external actions can still read repository contents and logs. Do not add device credentials, screenshots, typed input, raw protocol output, personal tokens or production endpoints to this workflow or its caches/artifacts.",
+  "operational_effect": "Immutable actions and enforcement make runs slightly more deliberate but more stable. PR concurrency reduces redundant work. Removing duplicated test/vet invocations should reduce duration without reducing claims. Disabling or narrowing caches increases downloads but reduces 4.8 GB churn. Branch gates become available after publication and turn the four job outcomes into merge conditions. Network outages remain a known CI dependency.",
+  "maintainer_effect": "Dependabot can propose SHA updates, but the maintainer must review upstream release notes and resolved commits rather than blindly merge a grouped action update. An allowlist, four required checks and a small workflow are comprehensible. Monthly review of cache/artifact use and occasional pin updates are low burden. Self-hosted runners, egress firewalls, duplicated security scanners and complex reusable-workflow policy would add disproportionate maintenance.",
+  "disposition": "change",
+  "recommendation": "Before public release, replace every external action tag with a reviewed full-length commit SHA and retain a human-readable version comment; set checkout persist-credentials:false; change live Actions policy from all actions/no enforcement to selected trusted publishers or exact actions plus required full-SHA pinning; retain read-only permissions, pull_request, hosted runners, zero secrets and no OIDC in CI. On public conversion, create a ruleset requiring the four meaningful job results on main and blocking force-push/deletion while preserving sole-maintainer emergency recovery. Add PR/main concurrency cancellation, explicit short artifact retention, and remove only demonstrably duplicate test/vet execution while preserving cross-build evidence. Treat cache contents and job outputs as untrusted and review any change to workflows, Makefile, lockfiles, gate pins or artifact selection as security-sensitive.",
+  "minimal_practical_change": "Pin actions/checkout, setup-go, setup-node, upload-artifact, docker/setup-qemu-action and setup-buildx-action to full 40-character commits; configure sha_pinning_required=true and selected actions for actions/* and docker/* or exact required repositories; add persist-credentials:false to checkout; add a safe concurrency group based on workflow plus PR number/ref with cancel-in-progress:true; set retention-days:30 on the two sanitized artifacts; use if-no-files-found:error when the producing step succeeded; split a cross-build-only target so the test job does not rerun make test and make vet inside make verify; and document the exact required job names and claim each supports.",
+  "optional_stronger_control": "If external adoption or a release workflow adds valuable credentials, separate release from untrusted CI, use protected environments and short-lived OIDC with audience-scoped cloud policy, require artifact attestations, and consider a reviewed egress-monitoring runner action pinned by SHA. If cache performance is negligible, disable setup-go caches entirely; otherwise keep current GitHub scoping and periodically prune stale PR caches. A static workflow analyzer such as zizmor is optional only if it catches a demonstrated recurring review failure and is itself pinned and maintained.",
+  "rejected_or_overengineered_alternatives": "Reject self-hosted runners for public PRs, pull_request_target execution of contributor code, long-lived PATs/cloud keys, secrets in the test workflow, an in-repository CI orchestration framework, enterprise required-workflow machinery, blanket network isolation that prevents the declared dependency gates, multiple duplicate SAST products, arbitrary coverage thresholds, full hermetic/reproducible-runner claims, and CI jobs without a product claim. Do not add a cache-cleanup workflow with write permission merely to manage 4.8 GB; first disable/reduce caching or prune manually when needed.",
+  "rationale": "The current design already contains the blast radius: PR code runs only on ephemeral hosted runners with read-only repository authority, no secrets and bounded time. Its most consequential preventable gap is identity: seven action references rely on movable tags while live settings allow every action and do not enforce SHA pins. GitHub identifies a full SHA as the immutable reference, and the tj-actions compromise shows tags can be retroactively redirected. SHA enforcement, an allowlist and non-persisted checkout credentials materially protect CI truth for little upkeep. Concurrency, explicit retention and deduplication then improve reliability and cost without adding gates for their own sake.",
+  "dependencies_or_prerequisites": "Resolve each desired action release to a publisher-controlled full SHA and review its release/source; confirm selected-action pattern syntax and SHA enforcement on the account/repository; publish the repository before relying on free rulesets/branch protection; select stable required check names; preserve local Make aliases while splitting duplication; decide whether 30-day evidence retention meets maintainer needs; and coordinate any future release credentials with the separate supply-chain workstream.",
+  "migration_or_rollout_considerations": "Pin and test actions in one reviewable change before enabling SHA enforcement so CI is not unexpectedly blocked. Then enable selected-action policy and run a deliberate negative PR using a tag/unallowed action to confirm rejection. Add public ruleset requirements only after all four checks have successful default-branch runs with stable names and retain a documented emergency bypass. Introduce concurrency after checking required-check behavior for canceled superseded commits. Measure job duration before/after deduplication and cache changes; roll back cache removal if network time is disproportionate.",
+  "priority": "P0 before public release for immutable action pins and live SHA/allowlist enforcement; P1 for credentials persistence, public branch gates, concurrency, retention and deduplication.",
+  "implementation_effort": "S: workflow/settings/documentation changes and focused negative tests; no new service or credentials.",
+  "ongoing_maintenance_burden": "low: review monthly Dependabot pin updates, verify required checks/settings after workflow changes, and periodically inspect cache/artifact use.",
+  "confidence": "high for workflow and exposed live Actions settings; medium for branch controls and public-fork behavior because the current private plan blocked those inspections.",
+  "acceptance_evidence": "All uses entries contain reviewed 40-character SHAs with version comments; repository API reports allowed_actions selected and sha_pinning_required true; workflow permissions remain read and PR approval false; checkout credentials are not persisted; repository has no CI secrets/environments/OIDC permission; a disallowed/tag-pinned action is rejected; four documented jobs pass on the exact default-branch commit; public main rules require those checks and prevent force-push/deletion; superseded PR runs cancel without allowing an ungated merge; artifacts show the chosen expiry and contain only sanctioned files; job timing confirms duplicate work removal did not remove cross-build coverage.",
+  "proposed_tests_or_checks": "Add a workflow-lint/control test that parses YAML and fails on non-SHA uses, pull_request_target, self-hosted labels, permissions beyond contents:read, secrets/id-token, missing timeouts, unsafe event-context interpolation, missing artifact retention, or unrecognized actions. Exercise a fork PR with malicious title, branch name, filename, Makefile, workflow change, cache contents and artifact text. Verify fork gets no secrets/write token and cannot populate default-branch cache scope. Force analyzer/npm/network failures and confirm fail-closed gates plus sanitized artifacts. Inspect API settings at release time and periodically compare required checks to workflow jobs.",
+  "negative_or_abuse_cases": "Mutable tag moved after review; selected action outside allowlist; short SHA; compromised allowed action at the pinned commit; contributor renames or replaces a required job with echo success; PR edits Makefile, npm lock or protocol pins; github.event title/ref contains shell syntax; checkout token read from git config; fork tries to read secrets, request OIDC, write contents or poison default cache; dependency emits ANSI/log commands; artifact path includes unintended files or symlinks; upload missing after producer success; registry outage; job hangs; two pushes race; runner image update breaks FFmpeg/Docker; canceled check is incorrectly accepted by ruleset.",
+  "evidence_needed_before_claiming_support": "A green workflow proves only the defined tests on the recorded GitHub-hosted environment and exact commit; it does not prove runtime platform/device compatibility, reproducible bytes, uncompromised upstream registries, physical qualification or release provenance. Claim a protected branch only after live public ruleset inspection and bypass test. Claim immutable CI dependencies only when every action is full-SHA pinned and enforcement is live; Go/npm locks and container digests cover different inputs and do not make ubuntu/apt/network hermetic.",
+  "revisit_trigger": "Any new workflow, action, secret, environment, OIDC permission, release/publish/deploy job, self-hosted runner, pull_request_target/workflow_run trigger, cache path, artifact, registry installer or contributor automation; an upstream action/advisory or tag compromise; GitHub plan/policy change; public conversion; required-check rename; repeated flaky/slow runs; cache growth or poisoning evidence; annually during release-baseline review.",
+  "unresolved_questions": "[uncertain] Which ruleset/protection options and bypasses will be enabled immediately after the repository becomes public? Which exact action SHAs correspond to the intended v7/v4 releases on implementation day? Is the 90-day live log retention also desired, or should job logs be shortened at account level? How much wall time do the three Go caches save relative to 4.8 GB active storage? Should superseded main pushes be canceled or only PR runs? Will a future release workflow require OIDC or other publication authority?",
+  "uncertain": [
+    "source_limitations",
+    "evidence_missing",
+    "unresolved_questions"
+  ]
+}

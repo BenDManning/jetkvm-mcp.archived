@@ -1,0 +1,295 @@
+{
+  "item_name": "MCP specification, Go SDK, compatibility, and conformance",
+  "research_question": "Does jetkvm-mcp's implemented MCP wire contract at the exact studied tree conform to the latest dated 2026-07-28 MCP specification, use the official Go SDK safely, expose only intended capabilities and revisions, and have proportionate compatibility and conformance evidence before public release?",
+  "scope": "This item covers the normative 2026-07-28 MCP lifecycle and wire model; server discovery and per-request capability/version metadata; the tools primitive, schemas, structured content, error categories, annotations, deterministic listing and caching; stdio and stateless Streamable HTTP; the official Go SDK's implemented versus merely available features; official conformance tooling and Inspector; protocol security advisories; and compatibility claims. It excludes the substantive safety of individual JetKVM operations, HTTP authentication/deployment policy, and generic supply-chain controls except where the SDK, conformance runner, or Inspector affects protocol assurance.",
+  "repository_surfaces": [
+    "go.mod official Go SDK requirement github.com/modelcontextprotocol/go-sdk v1.7.0 and go.sum",
+    "internal/mcpserver/server.go NewServer, tools-only ServerCapabilities, 18 AddTool registrations, typed schemas/results, annotations, and tool-error handling",
+    "internal/mcpserver/transport.go NewStreamableHTTPHandler with Stateless=true and JSONResponse=true",
+    "internal/mcpserver/manifest_contract_test.go and testdata/tool-manifest.json, including discovery supportedVersions, cache hints, capability surface, transport parity, schemas, annotations, and representative error contracts",
+    "internal/mcpserver/transport_test.go, origin_test.go, tool_error_test.go, output_validation_test.go, and cmd/jetkvm-mcp/stdio_integration_test.go",
+    "internal/protocolgate and cmd/jetkvm-mcp-protocol-gates",
+    "testdata/mcp-gates/pins.json and package-lock.json",
+    "docs/protocol-sources.md, docs/protocol-gates.md, docs/product-contract.md, docs/ci-quality.md, README.md, Makefile, and .github/workflows/ci.yml",
+    "The downloaded official Go SDK v1.7.0 source, especially mcp/shared.go, mcp/transport.go, mcp/streamable.go, and mcp/server.go"
+  ],
+  "applicability_stage": ["current_private", "before_public_release", "after_external_adoption"],
+  "authoritative_sources": [
+    {
+      "title": "Exact jetkvm-mcp repository tree associated with 6e52f0027b13f928b768de0feeab4847ef9ca53e",
+      "publisher": "BenDManning/jetkvm-mcp",
+      "url": "https://github.com/BenDManning/jetkvm-mcp/commit/6e52f0027b13f928b768de0feeab4847ef9ca53e",
+      "publication_or_update_date": "2026-08-15",
+      "version_or_revision": "commit 6e52f0027b13f928b768de0feeab4847ef9ca53e, tree 34e8b4451d76821950c23d7c06958d021700f3a7",
+      "access_date": "2026-08-15",
+      "supported_claims": "Exact implementation, tests, fixtures, pins, and documentation evaluated."
+    },
+    {
+      "title": "Model Context Protocol Specification 2026-07-28",
+      "publisher": "Model Context Protocol / Linux Foundation Agentic AI Foundation",
+      "url": "https://modelcontextprotocol.io/specification/2026-07-28",
+      "publication_or_update_date": "2026-07-28",
+      "version_or_revision": "2026-07-28",
+      "access_date": "2026-08-15",
+      "supported_claims": "Latest dated normative protocol, JSON-RPC basis, stateless request model, capability declarations, and authoritative schema status."
+    },
+    {
+      "title": "2026-07-28 Specification Changelog",
+      "publisher": "Model Context Protocol",
+      "url": "https://modelcontextprotocol.io/specification/2026-07-28/changelog",
+      "publication_or_update_date": "2026-07-28",
+      "version_or_revision": "Changes from 2025-11-25 to 2026-07-28",
+      "access_date": "2026-08-15",
+      "supported_claims": "Removal of initialize, protocol sessions, ping and legacy server-initiated requests; addition of per-request metadata, server/discover, resultType, cache hints and HTTP routing headers; tasks moved to an extension."
+    },
+    {
+      "title": "Protocol Versioning",
+      "publisher": "Model Context Protocol",
+      "url": "https://modelcontextprotocol.io/specification/2026-07-28/basic/versioning",
+      "publication_or_update_date": "2026-07-28",
+      "version_or_revision": "2026-07-28",
+      "access_date": "2026-08-15",
+      "supported_claims": "Every modern request declares its revision; unsupported revisions require -32022 and supportedVersions; server/discover is mandatory for modern servers; dual-era support is optional."
+    },
+    {
+      "title": "Server Discovery",
+      "publisher": "Model Context Protocol",
+      "url": "https://modelcontextprotocol.io/specification/2026-07-28/server/discover",
+      "publication_or_update_date": "2026-07-28",
+      "version_or_revision": "2026-07-28",
+      "access_date": "2026-08-15",
+      "supported_claims": "Servers MUST implement server/discover and its response normatively declares supported revisions and capabilities."
+    },
+    {
+      "title": "Tools",
+      "publisher": "Model Context Protocol",
+      "url": "https://modelcontextprotocol.io/specification/2026-07-28/server/tools",
+      "publication_or_update_date": "2026-07-28",
+      "version_or_revision": "2026-07-28",
+      "access_date": "2026-08-15",
+      "supported_claims": "Tool capability/list/call requirements, deterministic listing guidance, JSON Schema contracts, optional untrusted annotations, structured-content validation and text fallback guidance, and protocol-error versus tool-error semantics."
+    },
+    {
+      "title": "Caching",
+      "publisher": "Model Context Protocol",
+      "url": "https://modelcontextprotocol.io/specification/2026-07-28/server/utilities/caching",
+      "publication_or_update_date": "2026-07-28",
+      "version_or_revision": "2026-07-28",
+      "access_date": "2026-08-15",
+      "supported_claims": "Cacheable list results MUST include ttlMs and cacheScope; public scope permits cross-authorization sharing and therefore must contain no caller-specific data."
+    },
+    {
+      "title": "stdio Transport",
+      "publisher": "Model Context Protocol",
+      "url": "https://modelcontextprotocol.io/specification/2026-07-28/basic/transports/stdio",
+      "publication_or_update_date": "2026-07-28",
+      "version_or_revision": "2026-07-28",
+      "access_date": "2026-08-15",
+      "supported_claims": "JSON Lines framing, stdout purity, stderr diagnostics, cancellation, and lifecycle requirements."
+    },
+    {
+      "title": "Streamable HTTP Transport",
+      "publisher": "Model Context Protocol",
+      "url": "https://modelcontextprotocol.io/specification/2026-07-28/basic/transports/streamable-http",
+      "publication_or_update_date": "2026-07-28",
+      "version_or_revision": "2026-07-28",
+      "access_date": "2026-08-15",
+      "supported_claims": "Single POST endpoint, JSON or SSE response choice, Origin protection, protocol/method/name header validation, cancellation, and modern stateless operation."
+    },
+    {
+      "title": "Deprecated Features",
+      "publisher": "Model Context Protocol",
+      "url": "https://modelcontextprotocol.io/specification/2026-07-28/deprecated",
+      "publication_or_update_date": "2026-07-28",
+      "version_or_revision": "2026-07-28 deprecation registry",
+      "access_date": "2026-08-15",
+      "supported_claims": "Roots, sampling, logging, legacy HTTP+SSE, and Dynamic Client Registration are deprecated; new implementations should not add them without a concrete need."
+    },
+    {
+      "title": "modelcontextprotocol/go-sdk v1.7.0 release",
+      "publisher": "Model Context Protocol Go SDK maintainers",
+      "url": "https://github.com/modelcontextprotocol/go-sdk/releases/tag/v1.7.0",
+      "publication_or_update_date": "2026-08-13 [uncertain]",
+      "version_or_revision": "v1.7.0; 2026 support based on spec commit f817239f4d6b1efff2c4dfc2f7af85c985d73076",
+      "access_date": "2026-08-15",
+      "supported_claims": "Full 2026-07-28 support as of the named spec commit, deliberate backward compatibility on endpoints, cross-origin protection, and a patched JSON decoder dependency."
+    },
+    {
+      "title": "Official MCP Conformance Suite",
+      "publisher": "Model Context Protocol",
+      "url": "https://github.com/modelcontextprotocol/conformance",
+      "publication_or_update_date": "2026-08 [uncertain]",
+      "version_or_revision": "repository pin 0.2.0-alpha.11 at c321dd32035556e6769d3724a8ee97d87c3faaac",
+      "access_date": "2026-08-15",
+      "supported_claims": "Official scenario runner and inventory; alpha status and fixture-specific scenarios limit what a passing subset proves."
+    },
+    {
+      "title": "MCP Inspector proxy server lacks authentication between the Inspector client and proxy",
+      "publisher": "GitHub Advisory Database / MCP Inspector maintainers",
+      "url": "https://github.com/advisories/GHSA-7f8r-222p-6f5g",
+      "publication_or_update_date": "2025-06-13; updated 2025-07-09",
+      "version_or_revision": "GHSA-7f8r-222p-6f5g / CVE-2025-49596; fixed in 0.14.1",
+      "access_date": "2026-08-15",
+      "supported_claims": "Inspector versions below 0.14.1 permitted unauthenticated command execution; the repository's 2.2.0 pin is beyond the fixed version."
+    },
+    {
+      "title": "Potential Command Execution in MCP Inspector via XSS When Connecting to an Untrusted MCP Server",
+      "publisher": "MCP Inspector maintainers",
+      "url": "https://github.com/advisories/GHSA-g9hg-qhmf-q45m",
+      "publication_or_update_date": "2025-09-06",
+      "version_or_revision": "GHSA-g9hg-qhmf-q45m",
+      "access_date": "2026-08-15",
+      "supported_claims": "Inspector is an active security boundary when pointed at an untrusted MCP server; it is not safe evidence merely because it is official."
+    },
+    {
+      "title": "The 2026-07-28 Specification",
+      "publisher": "Model Context Protocol maintainers",
+      "url": "https://blog.modelcontextprotocol.io/posts/2026-07-28/",
+      "publication_or_update_date": "2026-07-28",
+      "version_or_revision": "2026-07-28 release announcement",
+      "access_date": "2026-08-15",
+      "supported_claims": "Maintainer explanation of the wire-model migration; useful context but subordinate to the normative specification."
+    }
+  ],
+  "source_class": [
+    "The exact repository tree, local SDK source, generated fixture, and test executions are repository_evidence.",
+    "The dated MCP specification pages and authoritative schema are normative_specification.",
+    "The Go SDK release and source, conformance repository, Inspector repository, and MCP release announcement are official_documentation or maintainer_case_study.",
+    "The two Inspector GHSAs are official_advisory."
+  ],
+  "normative_status": [
+    "MUST: modern server/discover, per-request revision/capability metadata, required resultType, declared output-schema conformance, cache hints, stdout purity, and required Streamable HTTP validation behavior.",
+    "SHOULD: deterministic tool ordering, text fallback for structured content, localhost binding and authorization guidance, and advisory annotations used as hints rather than security controls.",
+    "MAY: pagination, SSE responses, list-change notifications, annotations, and support for more than one revision.",
+    "Deprecated: roots, sampling, logging, HTTP+SSE and DCR; their presence in an SDK does not make them part of this product.",
+    "Optional extension: tasks; MRTR/input-required behavior is unnecessary for the current complete, bounded tool calls.",
+    "Observation: Inspector and alpha conformance results are evidence about exercised paths, not a normative certification."
+  ],
+  "freshness_and_supersession": "As of 2026-08-15, 2026-07-28 was the latest dated normative MCP revision. It supersedes 2025-11-25 and radically changes the wire model by removing initialization and protocol sessions; the undated draft is not a stable support target. Go SDK v1.7.0 is current repository evidence and states support only through a named specification commit, so later editorial or schema changes must be checked rather than assumed. The repository pins conformance 0.2.0-alpha.11 and Inspector 2.2.0; both pins are reproducible evidence but are point-in-time tools, not permanent proof. Exact upstream publication dates for the Go SDK and conformance alpha were not independently established [uncertain].",
+  "source_disagreements": [
+    "docs/product-contract.md and README declare only MCP 2026-07-28 supported, but the executable discovery fixture advertises 2026-07-28 plus 2025-11-25, 2025-06-18, 2025-03-26, and 2024-11-05. The SDK source explains the conflict: v1.7.0 intentionally retains every endpoint's backward compatibility and the repository does not restrict supported revisions. Resolution: wire discovery is authoritative to clients; the current implementation is multi-revision despite the documentation.",
+    "docs/protocol-gates.md describes Inspector as checking initialization, while initialization was removed in 2026-07-28 and the modern client path uses discovery. Resolution: update the evidence language after raw-wire verification; do not call an SDK connection helper's internal setup an MCP initialize exchange.",
+    "The official conformance inventory includes many tool-call scenarios, but most demand conformance-only fixture tools. The repository classifies them not applicable and substitutes product tests. Resolution: this is proportionate, but a pass means selected applicable scenario coverage, not full suite conformance.",
+    "The SDK exposes deprecated primitives, legacy revisions, tasks, MRTR and other capabilities. Resolution: SDK availability is not specification requirement or product support; only advertised and tested surfaces count."
+  ],
+  "source_limitations": [
+    "The official conformance suite is alpha, changes rapidly, and several scenarios are coupled to specially named fixture tools; it cannot certify the semantic safety of JetKVM operations.",
+    "Inspector proves interoperability only for the exact client/tool path exercised and has had command-execution advisories; it is not a replacement for raw-wire tests or safe execution boundaries.",
+    "SDK release notes claim full support only as of a named spec commit; exact correspondence between that commit and the final published schema was not independently diffed [uncertain].",
+    "Focused tests used fake devices and do not establish compatibility with third-party MCP hosts, old clients, physical devices, or long-running deployments.",
+    "No public-release consumer population exists to show whether anyone relies on the unintentionally advertised legacy revisions."
+  ],
+  "exact_baseline_commit": "The assigned baseline is 6e52f0027b13f928b768de0feeab4847ef9ca53e, tree 34e8b4451d76821950c23d7c06958d021700f3a7. At this workstream's start local HEAD was 71445bc6bf2325e6c683e362393605089c336b63, but its tree was exactly the same 34e8b4451d76821950c23d7c06958d021700f3a7 and git diff 6e52f00..HEAD was empty. The worktree also contained pre-existing untracked .agents/, skills-lock.json, and jetkvm_mcp_2026_public_release_baseline/. No evidence from differing trees was mixed.",
+  "current_repository_evidence": [
+    "go.mod selects the official github.com/modelcontextprotocol/go-sdk v1.7.0; docs/protocol-sources.md records the tag and commit provenance.",
+    "internal/mcpserver/server.go declares only ServerCapabilities.Tools with an empty ToolCapabilities object, producing listChanged=false, and statically registers 18 tools. No prompts, resources, logging, roots, sampling, tasks, subscriptions, or extensions are advertised.",
+    "All 18 tool definitions have inputSchema and outputSchema; annotations explicitly classify read-only, destructive, idempotent, and open-world behavior. Typed AddTool handlers validate arguments and outputs and return structuredContent plus a text fallback. Operational failures become CallToolResult isError=true; malformed/unknown protocol requests remain JSON-RPC errors.",
+    "The manifest contract fixture records protocolVersion 2026-07-28, a complete resultType, empty client capabilities, tools-only server capabilities, deterministic sorted tools, ttlMs=0 and cacheScope=public.",
+    "That same fixture records supportedVersions as five revisions: 2026-07-28, 2025-11-25, 2025-06-18, 2025-03-26, and 2024-11-05. This contradicts docs/product-contract.md's declared modern-only support.",
+    "Downloaded v1.7.0 source confirms the five-version list. StdioTransport does not implement the SDK's ProtocolVersionSupporter restriction seam; stateless Streamable HTTP's SupportsProtocolVersion returns true for both the 2026 revision and legacy revisions. Therefore the legacy advertisement is active SDK behavior, not a passive dependency capability.",
+    "internal/mcpserver/transport.go selects Stateless=true and JSONResponse=true. The wrapper exposes POST /mcp without a protocol session or GET/SSE channel; JSON response is permitted for this request/response-only product.",
+    "Manifest tests compare in-memory, stdio subprocess, and stateless HTTP behavior. Stdio integration tests, HTTP transport/origin/header tests, output-validation tests and tool-error tests exercise important focused paths.",
+    "testdata/mcp-gates/pins.json pins official conformance 0.2.0-alpha.11 by version, commit, integrity and scenario-inventory hash. Four scenarios gate: tools-list, dns-rebinding-protection, caching, and http-header-validation. All other scenarios are classified with a product-specific reason and replacement evidence; none is an allowed unexplained skip.",
+    "The Inspector gate pins 2.2.0 and tests discovery/list/call of the fixture-safe jetkvm_list_devices tool over both transports in an isolated temporary setup. It does not exercise consequential tools.",
+    "The focused command go test ./internal/mcpserver ./internal/protocolgate ./cmd/jetkvm-mcp-protocol-gates passed on 2026-08-15."
+  ],
+  "implementation_and_documentation_agreement": "Implementation and documentation agree on the 2026 wire model, official SDK, static tools-only surface, stateless HTTP, no deprecated capabilities, structured typed results, consequence annotations, selected conformance gates and transport parity. They materially disagree on supported protocol revisions: documentation says only 2026-07-28, while server/discover normatively advertises and the SDK accepts five revisions. The phrase 'Inspector initialization' is stale for the modern wire model. ttlMs=0/public agrees with the checked fixture and is conforming, though it deliberately disables useful freshness caching for a static public tool list.",
+  "current_state": "partial: the repository has unusually strong modern MCP implementation and evidence for a small server, but the public compatibility declaration is false on the wire. The server advertises four unclaimed legacy revisions whose actual product semantics are not separately tested; selected alpha conformance and Inspector checks cannot close that mismatch.",
+  "evidence_missing": [
+    "A raw-wire test proving exactly which revisions each transport accepts and how unsupported-version -32022 responses are encoded.",
+    "An upstream-supported configuration or reviewed thin transport restriction that limits both stdio and HTTP to the intended revision.",
+    "A final-spec-schema versus Go SDK v1.7.0 commit-diff review [uncertain].",
+    "Interoperability evidence from representative third-party 2026-07-28 hosts; this is useful after adoption but not required to correct the advertised contract.",
+    "A dated record of the actual official conformance and Inspector command outputs for the release candidate, beyond unit tests of the runner."
+  ],
+  "concrete_threat_or_failure_scenarios": [
+    "A legacy client sees its revision in server/discover and calls a consequential tool. The SDK's compatibility translation accepts the request, but repository tests and safety documentation reason about the 2026 contract. Differences in lifecycle, cancellation, metadata, headers, errors, schemas, or result handling can produce a lost acknowledgement or ambiguous mutation outcome.",
+    "A maintainer changes a tool schema or annotation under the assumption that only 2026 clients exist; a backward-compatible SDK path silently preserves legacy access, cementing an unreviewed compatibility burden before 1.0.",
+    "A CI report says 'official conformance passes' although only four applicable scenarios are gates and most call scenarios are fixture-specific N/A. Reviewers infer stronger coverage than exists and miss raw resultType, revision rejection, or transport translation defects.",
+    "Inspector is pointed at an untrusted MCP server or run with broader command authority. Historical proxy/XSS vulnerabilities show how an official diagnostic client can become a command-execution boundary; a malicious tool description/result can attack the operator environment.",
+    "A future SDK update exposes or defaults a capability, extension, or compatibility behavior. If capability and raw-wire fixtures do not remain exact, the product accidentally acquires new public protocol surface.",
+    "A public cache scope is retained after tools/list becomes authorization-dependent or gains sensitive deployment metadata, allowing a client cache to share it across callers. Current static generic definitions do not have that property."
+  ],
+  "affected_assets_and_trust_boundaries": "The affected assets are the stable public tool contract, client interpretation of consequential HID/power/upload/virtual-media outcomes, device and host state, credentials conveyed at deployment boundaries, server availability, and maintainer review capacity. Boundaries are MCP client to stdio child process, HTTP client/reverse proxy to POST /mcp, SDK wire translation to application handlers, cached discovery/tool metadata across authorization contexts, npm-based protocol tools to the CI runner, and Inspector-rendered remote metadata to the maintainer workstation.",
+  "plausible_impact": "The primary impact is compatibility and reliability: a server may promise a legacy behavior it does not intentionally validate, and an old caller may misinterpret a mutation acknowledgement or error. Secondary impacts are security and maintainer load from unplanned protocol surface, false confidence from partial conformance evidence, and possible local command execution if unsafe Inspector versions or untrusted servers are used. The current ttlMs=0 causes only modest repeated-list operational cost.",
+  "likelihood_or_preconditions": "Legacy-version risk requires a client that sends or selects one of the four advertised old revisions; this is plausible precisely because discovery invites it, but current user adoption is unknown. Consequential impact additionally requires a mutating tool call and a semantic difference or failure. Accidental SDK-surface expansion requires an upgrade without exact capability/wire fixtures. Inspector exploitation requires running the tool against untrusted content or exposing its proxy; the repository's pinned 2.2.0 isolated safe-tool path substantially lowers that likelihood.",
+  "existing_controls": [
+    "Exact official Go SDK and npm protocol-tool pins with checksums/integrity and source provenance.",
+    "Static tools-only capabilities and exact checked-in manifest fixture across in-memory, stdio and HTTP paths.",
+    "Typed schemas, output validation, structured content, text fallback, explicit annotations, deterministic names, and protocol/tool error separation.",
+    "Stateless JSON Streamable HTTP, required header/origin tests, stdout-purity integration coverage, cancellation tests, and no deprecated HTTP+SSE path.",
+    "Four blocking official conformance scenarios with full scenario classification, plus pinned Inspector checks limited to a fake device and safe read-only discovery tool.",
+    "Documentation explicitly rejects inferring support from SDK availability and records protocol source provenance."
+  ],
+  "residual_risk": "The supportedVersions mismatch remains a concrete public-contract defect until both transports reject unclaimed revisions. Product-specific tests cover representative calls but do not prove every mandatory raw-wire field across success and failure responses. Alpha conformance churn can also create maintenance noise or blind spots. Annotations improve caller comprehension but are explicitly untrusted hints and cannot ensure a client obtains human approval or avoids unsafe retries.",
+  "compatibility_or_SemVer_effect": "Restricting discovery from five revisions to 2026-07-28 is technically a wire compatibility reduction for any client already relying on legacy negotiation, but it repairs an undocumented and untested promise before public release. Treat it as a deliberate pre-1.0 compatibility correction, note it in release notes, and do not silently add the old revisions later. Tool names, schemas, annotations, output schemas and error classification remain compatibility-sensitive even before 1.0; the manifest fixture appropriately makes changes review-visible.",
+  "privacy_effect": "Current discovery and tools/list metadata are static and contain no device identifiers, aliases, credentials, screenshots, typed text, or caller-specific authorization data, so cacheScope=public is defensible. If tools become caller- or device-specific, public caching must be changed to private. Inspector and conformance artifacts must continue excluding credentials and consequential device output.",
+  "operational_effect": "Modern-only negotiation reduces the matrix the maintainer must diagnose and avoids hidden state/session expectations. Retaining JSONResponse=true keeps HTTP operation simple; no SSE infrastructure is needed for current complete calls. A positive tools-list TTL would reduce repeated metadata traffic but is optional. The gate suite adds npm/network time and should remain a targeted release/CI claim rather than expanding with irrelevant fixture jobs.",
+  "maintainer_effect": "The recommended change removes four revision families from the mental and test matrix while preserving high-value fixtures. Recurring work is limited to reviewing each dated MCP/SDK release, advisories, conformance inventory changes and deliberate manifest diffs. Supporting all advertised legacy revisions would multiply lifecycle, transport, error and host-interoperability review for little one-maintainer value.",
+  "disposition": "change",
+  "recommendation": "Before public release, make the executable wire contract modern-only: server/discover must advertise only 2026-07-28 and both stdio and stateless HTTP must reject legacy and unknown revisions with the specified error behavior. Retain the official Go SDK v1.7.0, static tools-only capability, stateless JSON HTTP, typed structured results, text fallback, explicit consequence annotations, exact manifest parity, selected official gates and isolated Inspector smoke tests. Treat tasks, MRTR, deprecated roots/sampling/logging, sessions, HTTP+SSE and other SDK features as unsupported/non-goals unless a real product requirement emerges. Describe conformance precisely as a pinned applicable-scenario gate, not certification.",
+  "minimal_practical_change": "Add an explicit supported-revision restriction at each SDK transport boundary, preferably through an upstream SDK option or a very thin reviewed ProtocolVersionSupporter adapter; update the manifest expectation to exactly [\"2026-07-28\"]; add raw-wire tests that legacy initialize and all four older revisions are rejected and that unknown modern revision returns -32022 with only the intended supported list. Correct documentation that currently says Inspector 'initializes' and explicitly state the four official scenarios that gate. Do not otherwise redesign the server.",
+  "optional_stronger_control": "If external adoption later creates demonstrated legacy demand, choose and publish a finite compatibility matrix, run revision-specific raw fixtures and representative hosts for each supported revision, and sunset revisions explicitly. For the static list, a reviewed positive ttlMs such as one hour or one day can improve cache behavior once representative clients demonstrate value. Upgrade the official conformance pin when a stable release or materially relevant scenario appears, preserving the inventory hash and full classification.",
+  "rejected_or_overengineered_alternatives": [
+    "Do not implement or claim four legacy revisions merely because the SDK can translate them; that turns accidental availability into permanent test and review burden.",
+    "Do not add deprecated roots, sampling, logging, protocol sessions, initialize, ping, or HTTP+SSE.",
+    "Do not add tasks, MRTR/input-required, subscriptions, dynamic tool-list notifications, prompts, or resources without an actual product use case.",
+    "Do not create conformance-only tools in the production manifest solely to make every official fixture scenario green; substitutions with exact product tests are more faithful.",
+    "Do not call selected conformance scenarios certification, and do not use Inspector UI execution against untrusted public servers or give it broad workstation/runner authority.",
+    "Do not fork the specification or maintain a large SDK fork; prefer an upstream configuration seam or minimal boundary adapter."
+  ],
+  "rationale": "The dated specification permits a server to support only 2026-07-28, and this small product expressly chose that bounded contract. The implementation is otherwise strong and current, but server/discover is normative: advertising four old revisions is a product promise, not harmless SDK internals. Because the tools can cause physical mutations, ambiguous lifecycle/error/cancellation compatibility deserves correction before callers exist. Narrowing the wire surface has high reliability and maintainer value, while adding legacy implementations or optional MCP features has disproportionate recurring cost. Exact capability/manifest tests and focused official gates preserve useful assurance without governance theater.",
+  "dependencies_or_prerequisites": [
+    "Maintainer confirmation that the documented modern-only policy is intentional; this report recommends it.",
+    "Determine whether Go SDK v1.7.0 already provides a supported-version option usable by its HTTP handler; local source suggests transport-specific adapters may be needed [uncertain].",
+    "If no clean seam exists, open or track an upstream SDK request and keep any local adapter narrow and wire-tested.",
+    "Use the final 2026-07-28 schema and pinned conformance inventory as acceptance references."
+  ],
+  "migration_or_rollout_considerations": "Make the restriction before the first public release. Run exact manifest and raw-wire tests over in-memory, stdio and HTTP, then run the pinned official gates and Inspector smoke. Record the compatibility correction in release notes because a private/internal legacy client could have relied on the wire despite contrary docs. If such a client exists, either migrate it to 2026-07-28 or make an explicit, time-bounded support decision; do not silently leave all legacy revisions enabled. Preserve rollback by keeping the change localized to transport/version selection.",
+  "priority": "P0 before public release because discovery currently makes a false normative compatibility promise on safety-relevant tools; P2 for positive caching and wider host interoperability.",
+  "implementation_effort": "S if an SDK restriction seam is available; M if both transports require a small adapter or upstream change.",
+  "ongoing_maintenance_burden": "low after modern-only restriction: review dated spec/SDK/advisory changes and deliberate fixture diffs; supporting legacy revisions would be medium to high.",
+  "confidence": "high for the five-version contradiction and retained modern controls because code, fixture, SDK source and normative spec agree; medium for the smallest SDK integration technique and exact upstream publication dates.",
+  "acceptance_evidence": [
+    "Raw server/discover over stdio and HTTP returns supportedVersions exactly [\"2026-07-28\"], tools-only capabilities, resultType=complete and valid cache hints.",
+    "Requests declaring each of 2025-11-25, 2025-06-18, 2025-03-26, 2024-11-05 and a fabricated revision fail with specified unsupported-version behavior and do not invoke any handler.",
+    "No initialize/initialized, Mcp-Session-Id, GET/SSE, ping, deprecated capability or extension appears in raw traffic or manifest.",
+    "Representative tools/list and tools/call success, operational error and malformed request carry required 2026 result/error shapes on both transports; output schemas validate.",
+    "Pinned applicable conformance scenarios and Inspector safe smoke pass from a clean release candidate, with logs recording exact tool versions and no secrets.",
+    "README, product contract, protocol sources/gates and executable fixture agree on the same support statement."
+  ],
+  "proposed_tests_or_checks": [
+    "Table-test all supported and unsupported revision values at the raw JSON-RPC layer over stdio and HTTP, including body/header disagreement.",
+    "Assert mandatory per-request _meta keys, HTTP MCP-Protocol-Version, Mcp-Method and Mcp-Name matching, Content-Type/Accept handling, and -32020/-32022 errors.",
+    "Assert every complete response has wire resultType=complete even where the SDK hides the discriminator from application types.",
+    "Retain exact deterministic tools/list snapshot and test ttlMs/cacheScope, no cursor for the single page, only tools capability, and listChanged=false.",
+    "Validate every successful structuredContent value against its outputSchema and retain text fallback; assert operational failures use isError and unknown tool/malformed params use protocol errors.",
+    "Run cancellation and stdout-purity tests over both transports; verify cancellation cannot turn a delivered mutation into an automatic retry.",
+    "Run the four pinned official gates and the pinned Inspector read-only smoke in an isolated temp directory with fake device configuration."
+  ],
+  "negative_or_abuse_cases": [
+    "Legacy initialize request, legacy revision in _meta/header, missing revision, unknown revision, contradictory header/body revision, missing/mismatched method or tool-name header, wrong Content-Type, malformed JSON and batched input.",
+    "Unknown tool, wrong argument type, extra/boundary arguments, handler operational failure, output-schema violation, unknown resultType, missing resultType and cancellation before/after downstream dispatch.",
+    "Attempted capability use for prompts, resources, logging, roots, sampling, tasks, subscriptions or session endpoints when not advertised.",
+    "Tools/list cache leakage check if aliases or authorization-specific tools are ever introduced; public cache results must remain caller-independent.",
+    "Malicious tool description/result rendered by Inspector, exposed Inspector proxy, poisoned npm package/lock mismatch, and an upstream scenario inventory change not classified by the pin validator."
+  ],
+  "evidence_needed_before_claiming_support": "Claim support only for MCP 2026-07-28 after exact raw-wire revision rejection, required-field/header, capability, tool schema/result/error, cancellation and both-transport tests pass. Claim 'official conformance scenarios pass' only with the exact four scenario names, suite alpha version, command result and documented N/A inventory; do not claim full certification. Claim compatibility with a named host only after testing that host/version. Never claim legacy revision, deprecated primitive, task/MRTR extension, SSE/session, or physical-device behavior from SDK availability, a fake fixture, Inspector, or cross-build alone.",
+  "revisit_trigger": "Revisit on every new dated MCP revision; Go SDK or official conformance release/advisory; any change to server capabilities, transport, tool list, cache scope, result type or authentication-dependent visibility; first external compatibility report; evidence that a client needs legacy support, SSE or input-required calls; or an Inspector/conformance security advisory. Review at least quarterly while the 2026 ecosystem is rapidly changing, then at each dependency/release cycle once stable.",
+  "unresolved_questions": [
+    "Will the maintainer enforce the documented 2026-only policy, or intentionally accept the cost of a tested multi-revision contract?",
+    "Can Go SDK v1.7.0's HTTP handler be configured cleanly to report only one revision, or is a small upstream/API change required [uncertain]?",
+    "Did any final-spec change after SDK commit f817239f materially affect the server's exercised wire surface [uncertain]?",
+    "Which representative external 2026-07-28 clients should become compatibility evidence after public adoption?",
+    "Would a positive tools-list TTL measurably improve a real client without slowing tool-contract changes?"
+  ],
+  "uncertain": [
+    "authoritative_sources",
+    "freshness_and_supersession",
+    "source_limitations",
+    "evidence_missing",
+    "dependencies_or_prerequisites",
+    "confidence",
+    "unresolved_questions"
+  ]
+}

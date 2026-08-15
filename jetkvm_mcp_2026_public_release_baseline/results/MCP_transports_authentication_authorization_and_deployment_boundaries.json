@@ -1,0 +1,245 @@
+{
+  "item_name": "MCP transports, authentication, authorization, and deployment boundaries",
+  "research_question": "At exact initial commit 6e52f0027b13f928b768de0feeab4847ef9ca53e, does jetkvm-mcp expose stdio and MCP 2026-07-28 stateless Streamable HTTP with a security boundary proportionate to one administrative principal and the server's physical authority, and which controls belong in the binary, at a TLS reverse proxy/network deployment, or remain explicit non-goals?",
+  "scope": "This workstream examines stdio ownership and stream purity; the opt-in HTTP listener; MCP 2026-07-28 stateless POST semantics and cancellation; static bearer parsing, comparison, storage and rotation; bind, Host, Origin, DNS-rebinding and CORS behavior; health exposure; TLS termination and reverse-proxy requirements; request/header/body/time limits; global/per-device admission and external rate limiting; session isolation; OAuth applicability, audience/issuer/scope validation and token passthrough; confused-deputy paths; and secure deployment guidance. It distinguishes the MCP client/process boundary, client-to-HTTP endpoint, proxy-to-backend, server-to-JetKVM, and appliance-to-media-origin boundaries. It does not redesign tool-level consequence communication, JetKVM SSRF controls, release supply chain, or agent prompt-injection defenses except where they cross transport authority.",
+  "repository_surfaces": [
+    "cmd/jetkvm-mcp/main.go: run, parseArgs, serveHTTP, loopbackHost, shutdown and stream selection",
+    "internal/mcpserver/transport.go: NewHTTPHandler, postOnly, trustedHostAndOrigin, loopbackHTTPHost and requireBearer",
+    "internal/httporigin/origin.go and its unit/fuzz tests",
+    "internal/config/config.go: fileHTTP, HTTPBearerToken, HTTPAllowedOrigins, environment resolution and exact-origin normalization",
+    "internal/mcpserver/transport_test.go, origin_test.go, cancellation_test.go and manifest_contract_test.go",
+    "cmd/jetkvm-mcp/stdio_integration_test.go and main_test.go",
+    "internal/jetkvm/admission_test.go, manager.go and provider/network deadline surfaces",
+    "README.md HTTP Server, configuration, operation-limit and raw-RPC sections",
+    "config.example.yaml HTTP bearer/origin and admission-limit examples",
+    "docs/product-contract.md, docs/threat-model.md, docs/adr/0001-mcp-transports-and-authentication.md and docs/adr/0007-same-origin-browser-http.md",
+    "docs/protocol-sources.md and testdata/mcp-gates/pins.json including dns-rebinding and HTTP-header conformance gates",
+    "github.com/modelcontextprotocol/go-sdk v1.7.0 mcp/streamable.go as the exact dependency implementation used by the pinned tree"
+  ],
+  "applicability_stage": ["current_private", "before_public_release", "after_external_adoption"],
+  "authoritative_sources": [
+    {
+      "title": "jetkvm-mcp exact studied tree",
+      "publisher": "BenDManning/jetkvm-mcp",
+      "url": "https://github.com/BenDManning/jetkvm-mcp/commit/6e52f0027b13f928b768de0feeab4847ef9ca53e",
+      "publication_or_update_date": "2026-08-15",
+      "version_or_revision": "6e52f0027b13f928b768de0feeab4847ef9ca53e; identical tracked trees 34e8b4451d76821950c23d7c06958d021700f3a7 and later 71445bc6bf2325e6c683e362393605089c336b63",
+      "access_date": "2026-08-15",
+      "supported_claims": "Exact transport code, configuration, tests, threat model, deployment contract and dependency usage."
+    },
+    {
+      "title": "Streamable HTTP",
+      "publisher": "Model Context Protocol project",
+      "url": "https://modelcontextprotocol.io/specification/2026-07-28/basic/transports/streamable-http",
+      "publication_or_update_date": "2026-07-28",
+      "version_or_revision": "MCP revision 2026-07-28",
+      "access_date": "2026-08-15",
+      "supported_claims": "POST-only per-message transport, removal of protocol sessions and GET stream, mandatory Origin validation, localhost binding guidance, authentication guidance, per-request cancellation and required metadata/header validation."
+    },
+    {
+      "title": "stdio transport",
+      "publisher": "Model Context Protocol project",
+      "url": "https://modelcontextprotocol.io/specification/2026-07-28/basic/transports/stdio",
+      "publication_or_update_date": "2026-07-28",
+      "version_or_revision": "MCP revision 2026-07-28",
+      "access_date": "2026-08-15",
+      "supported_claims": "Newline-delimited protocol traffic on stdin/stdout, logging on stderr, stdout purity, cancellation and shutdown behavior."
+    },
+    {
+      "title": "Authorization",
+      "publisher": "Model Context Protocol project",
+      "url": "https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization",
+      "publication_or_update_date": "2026-07-28",
+      "version_or_revision": "MCP revision 2026-07-28",
+      "access_date": "2026-08-15",
+      "supported_claims": "Authorization is optional; stdio should use environment credentials; HTTP implementations choosing MCP authorization should conform to protected-resource discovery, audience validation, token isolation, errors and scope behavior."
+    },
+    {
+      "title": "Security Best Practices",
+      "publisher": "Model Context Protocol project",
+      "url": "https://modelcontextprotocol.io/docs/2026-07-28/tutorials/security/security_best_practices",
+      "publication_or_update_date": "2026-07-28",
+      "version_or_revision": "Guidance accompanying MCP revision 2026-07-28",
+      "access_date": "2026-08-15",
+      "supported_claims": "Local server restriction, token-passthrough prohibition, audience separation, confused-deputy preconditions, proxy/stdio privilege boundaries and least-privilege deployment guidance."
+    },
+    {
+      "title": "HTTP Semantics",
+      "publisher": "IETF",
+      "url": "https://www.rfc-editor.org/rfc/rfc9110.html",
+      "publication_or_update_date": "2022-06",
+      "version_or_revision": "RFC 9110",
+      "access_date": "2026-08-15",
+      "supported_claims": "HTTP authentication schemes are case-insensitive tokens; credentials are conveyed in Authorization; origin is scheme, host and port."
+    },
+    {
+      "title": "The OAuth 2.0 Authorization Framework: Bearer Token Usage",
+      "publisher": "IETF",
+      "url": "https://www.rfc-editor.org/rfc/rfc6750.html",
+      "publication_or_update_date": "2012-10; updated by RFC 8996 and RFC 9700",
+      "version_or_revision": "RFC 6750",
+      "access_date": "2026-08-15",
+      "supported_claims": "Bearer possession grants authority; tokens require TLS-equivalent confidentiality, must not be placed in URLs, and need protection between TLS front end and backend."
+    },
+    {
+      "title": "Best Current Practice for OAuth 2.0 Security",
+      "publisher": "IETF",
+      "url": "https://www.rfc-editor.org/info/rfc9700/",
+      "publication_or_update_date": "2025-01",
+      "version_or_revision": "RFC 9700 / BCP 240",
+      "access_date": "2026-08-15",
+      "supported_claims": "OAuth deployments should restrict token privileges and audience, prevent replay, protect reverse-proxy security headers and secure the proxy-to-backend link."
+    },
+    {
+      "title": "Package net/http",
+      "publisher": "The Go Project",
+      "url": "https://pkg.go.dev/net/http@go1.26.5",
+      "publication_or_update_date": "2026-07 Go 1.26 documentation",
+      "version_or_revision": "Go 1.26 net/http Server",
+      "access_date": "2026-08-15",
+      "supported_claims": "ReadHeaderTimeout does not bound body reads when ReadTimeout is zero; IdleTimeout covers waiting for the next request; MaxHeaderBytes bounds parsed header bytes; WriteTimeout has whole-handler consequences."
+    },
+    {
+      "title": "Go SDK Streamable HTTP implementation",
+      "publisher": "Model Context Protocol project",
+      "url": "https://github.com/modelcontextprotocol/go-sdk/blob/v1.7.0/mcp/streamable.go",
+      "publication_or_update_date": "2026-07-28 release line",
+      "version_or_revision": "go-sdk v1.7.0",
+      "access_date": "2026-08-15",
+      "supported_claims": "Stateless mode creates a temporary session per request, ignores MCP session IDs, propagates cancellation, and applies DefaultMaxRequestBodyBytes of 4 MiB when the option is zero."
+    }
+  ],
+  "source_class": [
+    "The exact repository and pinned SDK source are repository_evidence.",
+    "MCP transport and authorization pages are normative_specification; MCP Security Best Practices is official_documentation with normative requirements where it quotes the specification.",
+    "RFC 9110 and RFC 6750 are normative_specification; RFC 9700 is a Best Current Practice.",
+    "Go net/http documentation is official_documentation."
+  ],
+  "normative_status": [
+    "MCP Streamable HTTP servers MUST validate present Origin and return 403 when invalid; local servers SHOULD bind localhost and SHOULD authenticate connections.",
+    "MCP authorization is OPTIONAL. If the product chooses the MCP OAuth authorization feature for HTTP, it SHOULD conform to that feature; its token validation, audience and non-passthrough rules then contain MUST requirements. The current pre-shared deployment secret is explicitly not claimed as MCP OAuth.",
+    "The stdio stdout/stderr framing rules are MCP MUST/MAY requirements and are implemented.",
+    "RFC 9110 makes auth-scheme matching case-insensitive, exposing an interoperability defect in the current exact `scheme == \"Bearer\"` parser.",
+    "TLS, proxy-link protection and OAuth audience controls are normative for OAuth bearer deployments; for this non-OAuth static secret they remain directly applicable security guidance because possession still grants all authority.",
+    "The choice to keep a single principal, reject embedded policy/OAuth machinery and place rate limiting at deployment is a repository-specific judgment."
+  ],
+  "freshness_and_supersession": "The 2026-07-28 MCP transport supersedes earlier stateful Streamable HTTP behavior by removing protocol sessions and the standalone GET stream; deprecated HTTP+SSE should not be newly adopted. The repository and Go SDK both target that revision. MCP authorization remains optional but its selected OAuth baseline evolved substantially through 2026; repository statements that it does not implement MCP OAuth remain accurate. RFC 9700 updates earlier OAuth security guidance while RFC 6750's bearer confidentiality rules remain applicable. The exact tracked tree is unchanged across the three stated commit identities. [uncertain] Living SDK and Go documentation page update timestamps are not independently stable beyond their version tags.",
+  "source_disagreements": "There is no conflict in declining OAuth: the MCP authorization feature is optional, and stdio is specifically advised not to use it. The apparent tension is that Streamable HTTP says servers should authenticate while the product permits unauthenticated loopback HTTP; localhost-only reachability plus exact Host/Origin protection is a documented single-host deployment choice, while non-loopback startup requires a secret. The resolution is to retain this narrow mode and not advertise it as multi-user authorization. RFC 6750 requires TLS for bearer access, whereas the binary allows a token on a directly bound plain-HTTP protected interface; resolve this by making TLS or equivalent protected transport a deployment requirement and continuing to recommend loopback behind TLS. The threat model says no request-body cap exists at the wrapper, while the pinned SDK actually defaults to 4 MiB; resolve by documenting the dependency control accurately and setting it explicitly so a security limit is not inherited silently.",
+  "source_limitations": "The assessment is static and loopback-test based; no production proxy, TLS certificate, firewall, container network namespace, rate limiter, token rotation, hostile slow client or multi-user deployment was exercised. Live GitHub state is irrelevant to executable transport behavior and was not needed. Official MCP authorization guidance describes OAuth resource-owner deployments unlike this one-principal static-secret design, so it is used to define what must not be falsely claimed and when redesign becomes necessary. [uncertain] Actual supported MCP clients' behavior with a bare Bearer challenge, lowercase auth scheme, same-origin browsers, and proxy Host preservation is not recorded.",
+  "exact_baseline_commit": "Exact initial studied commit: 6e52f0027b13f928b768de0feeab4847ef9ca53e. Its tracked tree is identical to 34e8b4451d76821950c23d7c06958d021700f3a7 and later merged 71445bc6bf2325e6c683e362393605089c336b63. It differs from mission-expected 176ec421f9ee6c801517180e1ad0ec9c84570e8e only by removal of bespoke CI policy machinery. Current checkout was 71445bc with pre-existing untracked .agents/, jetkvm_mcp_2026_public_release_baseline/, and skills-lock.json; those are not product evidence.",
+  "current_repository_evidence": [
+    "Stdio is the default and opens no HTTP listener. server.Run uses MCP IOTransport over supplied stdin/stdout, all lifecycle and telemetry output goes to stderr, and subprocess tests enforce malformed-input recovery, clean EOF and stdout protocol purity. Process/stream ownership is therefore the only principal boundary.",
+    "HTTP exists only with `--http HOST:PORT`. `serveHTTP` rejects a non-loopback bind when the resolved static bearer is empty; the documented direct default is 127.0.0.1:8080. `localhost`, IPv4 loopback and IPv6 loopback are accepted as local bind hosts.",
+    "NewHTTPHandler configures SDK v1.7.0 Stateless=true, JSONResponse=true and PropagateRequestCancellation=true. GET and DELETE receive 405, no Mcp-Session-Id is minted, and each request receives a temporary SDK session. HTTP cancellation reaches the tool handler and device-work admission is shared across requests.",
+    "trustedHostAndOrigin runs before bearer and method/MCP handling. Malformed Host is 403. Loopback Hosts are intrinsically admitted; every public Host must match the authority of an exact configured HTTP(S) origin. Wildcards, credentials, paths, queries, fragments, invalid ports and duplicates are rejected during strict configuration loading.",
+    "A missing Origin is accepted for native clients after Host admission. A present Origin must be exactly one nonempty parseable HTTP(S) origin whose effective host equals request Host; public scheme/authority must be configured and loopback scheme must reflect direct request TLS. Invalid, duplicate, opaque null and foreign values are 403 before the bearer challenge. Extensive unit/fuzz tests and official dns-rebinding/header gates cover this matrix.",
+    "The endpoint emits no CORS grant headers. Same-origin OPTIONS is authenticated if a token exists and then receives 405; foreign preflight is 403. Separately hosted browser clients are explicitly unsupported. `allowed_origins` is therefore Host/origin admission, not ambient browser authorization.",
+    "requireBearer hashes the configured and provided values with SHA-256 and compares the fixed-size digests with subtle.ConstantTimeCompare. The token comes only from a named nonempty environment variable and is not logged or passed to JetKVM. Any holder receives every configured device and tool; annotations do not authorize.",
+    "The bearer parser accepts only exactly `Bearer` followed by one ASCII space. RFC 9110 defines auth-scheme as case-insensitive, so `bearer token` is incorrectly rejected. It also uses Header.Get rather than explicitly rejecting multiple Authorization field lines, leaving ambiguous proxy-normalization behavior untested. There is no token strength validation, expiry, overlap rotation, revocation, issuer, audience, identity, scope or per-tool/device ACL.",
+    "The server deliberately does not implement MCP OAuth, protected-resource metadata, client registration, user consent or scopes. Its pre-shared secret is deployment authentication, not an OAuth access token claim. It never forwards that secret or an MCP Authorization value to JetKVM, eliminating token-passthrough and third-party OAuth confused-deputy paths.",
+    "The Go HTTP server sets ReadHeaderTimeout=10s, IdleTimeout=60s and MaxHeaderBytes=1 MiB, then uses a five-second graceful shutdown. It has no ReadTimeout or per-request body-read deadline. The pinned SDK supplies a 4 MiB MaxBytesReader default, but the product does not set that security-relevant value explicitly. WriteTimeout is intentionally absent, avoiding blind cancellation of long/ambiguous mutations but leaving response duration governed by operation contexts and deployment.",
+    "Manager admission defaults to 16 total operations, four per device, eight sessions, two captures and two decoders; exhaustion is immediate busy/not_sent and mutation work is per-device serialized. These protect expensive downstream work but are not request-rate, per-principal or connection limits. `/healthz` is unauthenticated and bypasses Host/Origin middleware, returning only `ok`; this is a small intentional liveness exposure, not device authority.",
+    "TLS is not implemented in-process. README and ADRs recommend loopback behind a TLS reverse proxy, require preserving the external Host, and identify routing, bearer rotation, rate limiting, process limits and proxy hardening as deployment work. The application ignores forwarded-host/proto identity rather than trusting spoofable headers.",
+    "README, product contract, threat model and ADRs consistently state one bearer/stdio owner has full authority, native Origin omission is supported, same-origin browser only, no OAuth/CORS/policy engine, TLS at deployment, and no automatic retry of unknown physical mutations."
+  ],
+  "implementation_and_documentation_agreement": "Code, tests, README, product contract, threat model and ADRs agree on the principal architecture and non-goals. Exact Host/Origin behavior, middleware order, loopback default, non-loopback token gate, stateless/no-SSE behavior and CORS rejection are executable and tested. Documentation correctly says the static secret is not MCP OAuth and is never a per-user authorization layer. Two corrections are needed: threat-model wording should acknowledge the pinned SDK's default 4 MiB body cap while noting it is not explicit at the wrapper, and HTTP Bearer parsing should follow RFC 9110 case-insensitive scheme matching. The non-loopback startup gate, duplicate Authorization handling, slow body behavior and proxy deployment are not directly tested end to end.",
+  "current_state": "substantially_satisfied: the selected one-principal boundary is clear, narrow, well tested and aligned with MCP 2026-07-28. Before public release, fix standards-compliant bearer parsing, explicitly own the request-body cap/read deadline, test the non-loopback startup gate, and make proxy/TLS/rate-limit/token-strength requirements operationally concrete. OAuth, scopes and policy machinery remain unjustified.",
+  "evidence_missing": [
+    "A server-level test for refusal of non-loopback HTTP without a bearer and successful graceful shutdown on approved binds.",
+    "Tests for case-insensitive Bearer scheme, duplicate Authorization fields, empty/extra-whitespace credentials and absence of credential reflection.",
+    "A wrapper-owned body-size value and slow-body/read-deadline abuse test independent of SDK defaults.",
+    "A validated reverse-proxy example covering TLS, preserved external Host, stripped untrusted forwarded headers, backend reachability, request rate/body/read timeouts and Authorization log suppression.",
+    "[uncertain] Client interoperability evidence for manual pre-shared bearer configuration versus clients that treat a 401 Bearer challenge as MCP OAuth discovery.",
+    "[uncertain] Actual deployment topology, token entropy/rotation method, proxy product and exposure of /healthz are maintainer/operator choices not recorded in the repository."
+  ],
+  "concrete_threat_or_failure_scenarios": [
+    "A malicious website rebinds a hostname to loopback and POSTs to /mcp. Without validation it could exercise power/HID; current Host and present-Origin checks reject it before authentication and dispatch.",
+    "An operator binds 0.0.0.0 with no token. Startup refuses. If the operator supplies a weak/reused token over cleartext, any observer or log reader can replay it for every device/tool because there is no expiry or scope.",
+    "A reverse proxy rewrites Host to the backend name. Legitimate public requests fail 403; an operator tempted to wildcard admission cannot because wildcards are rejected. The safe fix is preserving exact external Host, not weakening application checks.",
+    "A slow client sends a 4 MiB-or-smaller body indefinitely. ReadHeaderTimeout has expired after headers and IdleTimeout does not apply to an active request; without ReadTimeout/proxy enforcement the connection can consume resources before MCP admission.",
+    "A conforming HTTP client sends `authorization: bearer <secret>`. Header names work case-insensitively in Go, but the current scheme-value comparison rejects it, causing avoidable interoperability failure.",
+    "Multiple Authorization field lines are normalized differently by proxy and backend. The current Header.Get behavior is not an auth bypass shown by evidence, but ambiguity at a credential boundary warrants fail-closed rejection.",
+    "A native client omits Origin and sends an admitted Host plus stolen bearer. This is intentionally authorized: Origin is browser/DNS-rebinding evidence, not client identity. TLS, token protection and routing are decisive.",
+    "A caller retries an HTTP request after connection loss. Stateless transport does not make a possibly delivered power/HID/media mutation safe to retry; result outcome classification and independent reconciliation remain necessary.",
+    "An OAuth token intended for another service is sent to this server. The current static comparator rejects it unless it coincidentally equals the configured secret, and no token is passed downstream. Adding generic JWT acceptance without audience/issuer validation would create the prohibited confused-deputy path.",
+    "A compromised stdio MCP host already owns the child streams/environment and can invoke every tool. Adding server-side OAuth inside stdio would not restore trust; client process isolation and least privilege own this boundary."
+  ],
+  "affected_assets_and_trust_boundaries": "Assets include JetKVM administrator credentials/sessions, screen data, HID and physical power authority, host availability/data, media, the shared MCP bearer, configuration environment, stdout protocol integrity, process/network capacity and deployment metadata. Boundaries are MCP host to child stdio; native/browser client to HTTP; public TLS proxy to loopback backend; bearer holder to all configured tools/devices; server to JetKVM; appliance to media origins; and MCP caller cancellation to possibly delivered physical effects.",
+  "plausible_impact": "Transport compromise grants screen observation and consequential HID, reset, power, wake and media operations, potentially causing credential disclosure, host takeover, interruption or data loss. Slow-client/resource abuse can deny the one process. Proxy/Host mistakes can either break availability or, if operators weaken controls, expose full authority. OAuth/token passthrough mistakes could broaden token replay across services. Standards-incompatible bearer parsing primarily causes availability/interoperability failure.",
+  "likelihood_or_preconditions": "DNS rebinding requires browser reachability and a present Origin but is strongly controlled. Bearer replay requires disclosure plus network reachability; likelihood rises sharply without TLS or with proxy logging/weak secrets. Slow-body denial requires HTTP reachability and enough concurrent connections, with no application rate limit. Stdio abuse requires compromise or over-privilege of the launching MCP host. OAuth confused-deputy flows are currently absent by design. [uncertain] No exposure telemetry, incident history or deployment census supports numerical likelihood estimates.",
+  "existing_controls": [
+    "Stdio default, stdout purity, stderr diagnostics and process-lifecycle tests.",
+    "Explicit HTTP opt-in, loopback default and non-loopback startup bearer requirement.",
+    "Stateless JSON Streamable HTTP, POST-only endpoint, no legacy SSE/session IDs and propagated cancellation.",
+    "Exact fail-closed Host/Origin parser, wildcard rejection, same-origin browser-only policy, no CORS headers and extensive unit/fuzz/conformance gates.",
+    "SHA-256 plus constant-time static secret comparison, environment-only loading, no logging and no downstream forwarding.",
+    "SDK 4 MiB body cap, HTTP header/read-header/idle bounds, device-work admission and bounded operation/network/decoder contexts.",
+    "TLS/proxy/network/process requirements and single-principal/no-OAuth limitations documented in maintained threat model and ADRs."
+  ],
+  "residual_risk": "One secret is a replayable, non-expiring all-authority credential; TLS, entropy, storage, rotation and ingress limits are external. Loopback trust depends on local process/user isolation. Native clients legitimately omit Origin. Active request body reads have no binary-owned deadline, rate limiting is absent, and health is public on the listener. Statelessness removes session confusion but not duplicate physical effects. No per-user audit or attribution exists. These are acceptable only for the stated one-maintainer/single-principal deployment and must trigger redesign if multiple principals appear.",
+  "compatibility_or_SemVer_effect": "Case-insensitive Bearer acceptance is backward-compatible. Rejecting duplicate Authorization is a compatible security hardening because ambiguous credentials are not a meaningful supported input. Explicitly retaining the SDK's 4 MiB body cap is behavior-preserving; lowering it or adding a read deadline must exceed all documented valid schemas and be classified for existing clients. Adding OAuth, scopes, CORS, sessions or per-device ACLs would create substantial configuration/wire/deployment surfaces and at least a minor addition, possibly a major change to authentication expectations. Removing a supported transport is major under the product contract.",
+  "privacy_effect": "Transport secrecy is essential because the bearer, screenshots, typed text and device state cross HTTP. TLS and Authorization-log suppression belong at the proxy. The application currently emits no request/payload log and rejects Origin before exposing a bearer challenge. OAuth would add identity, consent, metadata and audit data that the product does not currently collect. Rate-limit logs should remain metadata-only if later added.",
+  "operational_effect": "The recommended small changes add deterministic auth/read-boundary tests and a concrete proxy checklist without creating another service. Operators must generate and rotate a strong secret, preserve Host, protect proxy-to-backend reachability, set connection/rate/resource limits and avoid automatic mutation retries. An application ReadTimeout must be chosen to bound only body ingestion, not indiscriminately cancel long physical operations.",
+  "maintainer_effect": "The current boundary is maintainable because it uses standard net/http middleware, one optional secret and no identity database. Correcting parser semantics and owning limits is low recurring cost. Embedded OAuth, token validation keys, scopes, consent, multi-tenancy, CORS credentials or a policy engine would impose high protocol/security/operations maintenance and are not justified for one principal. A documented proxy example has modest update burden but should avoid claiming support for many proxy vendors.",
+  "disposition": "change",
+  "recommendation": "Retain stdio as the preferred local path; retain stateless JSON Streamable HTTP, exact Host/Origin admission, same-origin browser-only behavior, non-loopback secret gate, deployment TLS and the explicit absence of OAuth/scopes/policy. Before public release, make Bearer auth-scheme matching case-insensitive and reject ambiguous duplicate Authorization fields; explicitly configure the SDK request-body cap; add a bounded body-read timeout or require and verify it at the ingress proxy; test the non-loopback bind gate; and provide one concise secure reverse-proxy deployment checklist. Describe the static value as a pre-shared administrative secret, not an OAuth access token, and state it must be high entropy, protected by TLS/equivalent transport, omitted from logs and rotated by restart. Keep rate limiting at the ingress unless observed unauthenticated parsing pressure justifies an in-process limiter.",
+  "minimal_practical_change": "Change requireBearer to compare the scheme with strings.EqualFold, accept one syntactically valid Authorization credential only, and fail closed on multiple field lines; add table tests. Set StreamableHTTPOptions.MaxRequestBodyBytes explicitly to the reviewed bound already supplied by SDK v1.7.0, add a product-level oversize test, and set a conservative HTTP ReadTimeout sufficient for the maximum body or document a mandatory proxy body-read timeout if application timing would be unsafe. Add focused serveHTTP tests proving non-loopback-without-secret refusal before listen and loopback behavior. Expand README with a 128-bit-or-stronger generated secret example and proxy requirements: TLS, preserved Host, stripped untrusted forwarded headers, backend isolation, rate/connection/body timeout, and Authorization redaction.",
+  "optional_stronger_control": "After multiple principals or externally operated shared deployments exist, place a mature OAuth-aware gateway/authorization server in front and make jetkvm-mcp validate gateway identity or adopt MCP OAuth as a separately designed resource server using maintained libraries, protected-resource metadata, issuer/audience/expiry/signature validation, narrow step-up scopes and no token passthrough. At that point add per-principal quotas and privacy-safe audit events. Prefer the external gateway first; embed OAuth only if direct MCP client interoperability is a demonstrated requirement.",
+  "rejected_or_overengineered_alternatives": [
+    "Reject embedded OAuth, DCR/CIMD, consent UI, user database and JWKS lifecycle before there are multiple principals or a direct-client requirement.",
+    "Reject per-tool/device policy engines and AI gateways; they create a second product and cannot make a compromised all-authority stdio host trustworthy.",
+    "Reject wildcard/reflected CORS and separately hosted browser support without a browser identity and credential model.",
+    "Reject stateful Streamable HTTP, legacy HTTP+SSE, durable sessions and distributed session stores; MCP 2026-07-28 and the static tool surface need none.",
+    "Reject trusting X-Forwarded-Host/Proto from arbitrary clients; preserve external Host and isolate the backend instead.",
+    "Reject application WriteTimeout as a blunt global operation deadline because cancellation of a possibly delivered physical mutation can create unknown outcomes; use operation-specific deadlines and ingress body/read limits.",
+    "Reject in-process distributed rate limiting or per-IP identity before a real exposed deployment exists; use the TLS ingress/network boundary."
+  ],
+  "rationale": "Every MCP tool has administrator-level device or host consequences, so reachability and credential handling are the primary security boundary. The repository already implements the MCP-required Origin protection and preferred localhost deployment, while its stateless/no-session shape reduces state isolation and cleanup risk. The static secret is proportional for one principal and avoids every current OAuth proxy/passthrough precondition. The remaining issues are concrete and small: RFC 9110 interoperability, ambiguous credential fields, silently inherited SDK body policy, missing active-read deadline and incomplete deployment verification. Solving those yields more value than importing identity machinery whose security obligations would exceed the product requirement.",
+  "dependencies_or_prerequisites": [
+    "Choose and document the explicit MCP request body cap above every valid current schema payload.",
+    "Measure an adequate body-read deadline for supported native/proxied clients without applying a global mutation completion timeout.",
+    "Select one generic reverse-proxy baseline or vendor-neutral checklist and define protected backend reachability.",
+    "Maintainer decision on whether direct non-loopback cleartext is merely technically possible or explicitly unsupported without equivalent protected networking.",
+    "Any future OAuth work requires an accepted multi-principal/direct-client objective, authorization server choice, scope model and privacy/audit decision."
+  ],
+  "migration_or_rollout_considerations": "Ship parser acceptance first because it only broadens standards-conforming input. Reject duplicate Authorization with a clear 401 that never echoes credentials. Explicitly set the existing 4 MiB cap before considering a lower value; inventory all tool schemas before narrowing. Stage body-read deadlines against slow legitimate clients and proxies, and never translate a transport timeout into safe mutation retry. Publish the proxy checklist before recommending remote exposure. Existing single-secret deployments rotate by updating the environment and restarting; document brief downtime and no dual-token window rather than adding a token database.",
+  "priority": "P1: small standards and denial-of-service boundary corrections before public release; OAuth redesign is deferred.",
+  "implementation_effort": "S for parser, explicit limits, focused tests and deployment documentation.",
+  "ongoing_maintenance_burden": "low for the recommendation; medium to high only if OAuth, per-principal policy or multi-proxy support is later adopted.",
+  "confidence": "high for code/spec findings; medium for deployment adequacy because no real proxy/TLS/rate-limit environment was inspected.",
+  "acceptance_evidence": [
+    "Unit tests accept Bearer auth scheme in representative casing, reject wrong schemes, missing/empty tokens and duplicate Authorization fields, and never echo the configured/provided secret.",
+    "Server tests prove non-loopback bind without secret fails before listening, loopback works without secret, and public Host/Origin plus bearer ordering remains unchanged.",
+    "A product-owned body cap test rejects cap+1 and accepts the largest valid tool request; a slow-body test proves bounded connection lifetime at either application or documented ingress.",
+    "Existing origin fuzz/tests and pinned dns-rebinding/http-header conformance gates pass.",
+    "A sanitized proxy smoke demonstrates TLS, exact preserved Host, same-origin behavior, missing/invalid bearer rejection, no CORS grant, cancellation propagation and no Authorization logging.",
+    "README/threat model distinguish pre-shared authentication, MCP OAuth non-support, application controls, deployment controls and non-goals."
+  ],
+  "proposed_tests_or_checks": [
+    "Table-test `Bearer`, `bearer`, `BEARER`, wrong scheme, no space, extra whitespace, empty token, duplicate lines and comma-combined ambiguity.",
+    "Exercise `serveHTTP` with an injectable listener or pre-listen validation helper for 0.0.0.0, public IP, localhost, 127.0.0.1 and ::1.",
+    "Send oversized, chunked and deliberately slow bodies; verify 413/400-style bounded failure, connection cleanup and no device dispatch.",
+    "Retain Host/Origin matrices for default ports, IPv6 canonicalization, malformed authority, missing/duplicate/null Origin, public native no-Origin and reverse-proxy Host.",
+    "Smoke an actual TLS proxy with direct backend inaccessible externally, exact allowed origin, Authorization log redaction, connection/rate limits and controlled shutdown/cancellation.",
+    "Review every SDK update for MaxRequestBodyBytes, cancellation, localhost protection, stateless/session debug flags and header validation changes."
+  ],
+  "negative_or_abuse_cases": [
+    "DNS rebinding to localhost; forged Host; missing, duplicate, whitespace-only, opaque null, foreign, cross-scheme and wildcard Origin; unbracketed IPv6 and default-port confusion.",
+    "Missing, lowercase, duplicate, oversized, weak, stale, leaked and logged bearer; token in query; proxy-to-backend cleartext observation; header smuggling/normalization disagreement.",
+    "Slowloris headers and bodies, chunked oversize bodies, many unauthenticated connections, repeated cheap discovery and admitted expensive captures/uploads, canceled clients and shutdown with active work.",
+    "Mcp-Session-Id and legacy GET/DELETE/SSE attempts; required metadata header/body mismatch; client disconnect followed by unsafe mutation retry.",
+    "Cross-origin credentialed browser preflight, reflected/wildcard CORS, proxy rewriting Host, spoofed forwarded headers and publicly reachable health endpoint.",
+    "Foreign-audience JWT or downstream token presented as MCP credential, token passthrough attempt, OAuth metadata discovery injection and one principal impersonating another after future scope expansion."
+  ],
+  "evidence_needed_before_claiming_support": "Direct local stdio support needs stdout/stderr, cancellation and EOF evidence under a trusted launching principal. Remote HTTP support needs exact MCP revision conformance, bind/Host/Origin/bearer/body/deadline tests and a named TLS/proxy/network baseline. Same-origin browser support needs actual browser/proxy interoperability without CORS; cross-origin is unsupported. OAuth support would require protected-resource metadata, authorization-server discovery, secure client registration choices, issuer/audience/signature/expiry/scope validation, correct 401/403 challenges, TLS and explicit no-passthrough tests. Multi-user or per-device authorization requires principal identity, policy semantics, audit/privacy and quota evidence. Stateless build evidence alone does not prove a deployment is securely reachable.",
+  "revisit_trigger": "Revisit on an MCP transport/authorization or Go SDK revision; any Host/Origin/auth bypass; public remote deployment; token disclosure; slow-client/resource incident; proxy product change; demand for cross-origin browser access, sessions, server-initiated features, multiple principals or differentiated tool/device rights; or annually before a supported release. OAuth becomes relevant only at the explicit multi-principal/direct-client trigger.",
+  "unresolved_questions": [
+    "[uncertain] Which direct HTTP deployments, if any, are intended to be supported beyond loopback behind a TLS proxy?",
+    "[uncertain] Which MCP clients permit configuring a static pre-shared bearer without interpreting the challenge as OAuth discovery?",
+    "[uncertain] What maximum legitimate request-body size and minimum body-read rate should become the stable product bound?",
+    "[uncertain] Which proxy/runtime will own TLS, rate limits, connection limits, Authorization redaction and backend isolation for the first public deployment example?",
+    "[uncertain] Should unauthenticated /healthz on a non-loopback listener remain explicitly public, be covered by Host admission, or be left to proxy routing?",
+    "[uncertain] Is restart-only token rotation acceptable for all expected deployments?"
+  ],
+  "uncertain": ["freshness_and_supersession", "source_limitations", "evidence_missing", "likelihood_or_preconditions", "unresolved_questions"]
+}

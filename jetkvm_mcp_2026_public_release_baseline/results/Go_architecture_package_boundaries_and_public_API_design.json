@@ -1,0 +1,202 @@
+{
+  "item_name": "Go architecture, package boundaries, and public API design",
+  "research_question": "At exact commit 6e52f0027b13f928b768de0feeab4847ef9ca53e, does jetkvm-mcp use package, interface, configuration, provider, command, and result boundaries that make a consequential but small single-process Go MCP server understandable and testable without creating an unsupported Go library API or speculative abstraction burden?",
+  "scope": "This workstream examines the compile-time and behavioral architecture of the Go module: command composition, internal package responsibilities and import direction, configuration-to-runtime conversion, the MCP-to-device interface, WebRTC session and FFmpeg decoder seams, typed MCP request/result ownership, error-boundary ownership, test doubles, and ADR-backed architectural decisions. It includes the process/configuration, MCP client/server, device/session, subprocess, and local-validation boundaries insofar as they affect code structure. It does not independently re-evaluate transport security, protocol conformance, concurrency correctness, release automation, or physical compatibility, which belong to other workstreams. The supported public surfaces are the executable, CLI/configuration/MCP wire contracts, validator reports, and artifacts; this repository exposes no supported importable Go library package because implementation packages are under internal/.",
+  "repository_surfaces": [
+    "go.mod and the complete package/import inventory from go list ./...",
+    "cmd/jetkvm-mcp/main.go: run, parseArgs, serveHTTP, and command composition",
+    "cmd/jetkvm-mcp-validate/main.go: toolCaller, validationSession, and black-box read-only validation",
+    "cmd/jetkvm-mcp-mutation-checklist/main.go, cmd/jetkvm-mcp-protocol-gates/main.go, and cmd/jetkvm-mcp-upstream-drift/main.go",
+    "internal/config/config.go: Runtime, fileConfig, Load, strict decoding, environment resolution, and conversion to jetkvm.DeviceConfig/jetkvm.Limits",
+    "internal/httporigin/origin.go: shared exact-origin value and parsers",
+    "internal/mcpserver/server.go: MCP-owned Device consumer interface, Status, PowerResult, DeviceList, constructors, registration, and tool telemetry middleware",
+    "internal/mcpserver/controls.go: typed HID/capture/media request and result contracts and deadline middleware",
+    "internal/mcpserver/errors.go and internal/jetkvm/errors.go: transport-safe error projection versus device-operation classification",
+    "internal/mcpserver/transport.go: isolated HTTP adapter",
+    "internal/jetkvm/manager.go: DeviceConfig, Limits, Session, SessionProvider, Manager, options, admission, device inventory, and operations",
+    "internal/jetkvm/provider.go: concrete WebRTCProvider and connectedSession",
+    "internal/jetkvm/capture.go and decoder_ffmpeg.go: consumer-owned Decoder seam and concrete subprocess implementation",
+    "internal/jetkvm/hid.go, virtual_media.go, video.go, rpc_session.go, signaling.go, auth.go, debug.go, and telemetry.go",
+    "internal/telemetry/recorder.go: independent privacy-safe event recorder",
+    "internal/protocolgate/*.go and internal/compatibility/ledger_test.go",
+    "internal/mcpserver/manifest_contract_test.go, architecture_decisions_test.go, typed_results_test.go, error_result_test.go, cancellation_test.go, and transport tests",
+    "internal/jetkvm manager/provider/capture/HID/media/session tests and fuzz targets",
+    "CONTEXT.md, README.md, docs/product-contract.md, docs/threat-model.md, docs/protocol-sources.md, docs/ci-quality.md, docs/telemetry.md, docs/mutation-validation.md, docs/adr/README.md, and ADRs 0001 through 0007",
+    "Diff from mission-expected 176ec421f9ee6c801517180e1ad0ec9c84570e8e to studied commit, which removes the custom cmd/jetkvm-ci-check and internal/cipolicy machinery"
+  ],
+  "applicability_stage": [
+    "current_private",
+    "before_public_release"
+  ],
+  "authoritative_sources": [
+    {
+      "title": "jetkvm-mcp exact studied tree",
+      "publisher": "BenDManning/jetkvm-mcp",
+      "url": "https://github.com/BenDManning/jetkvm-mcp/commit/6e52f0027b13f928b768de0feeab4847ef9ca53e",
+      "publication_or_update_date": "2026-08-15 commit date context; exact timestamp not required for tree identity",
+      "version_or_revision": "6e52f0027b13f928b768de0feeab4847ef9ca53e",
+      "access_date": "2026-08-15",
+      "supported_claims": "Exact source layout, symbols, imports, tests, documentation claims, and expected-baseline divergence. Code and tests are authoritative for executable behavior."
+    },
+    {
+      "title": "Organizing a Go module",
+      "publisher": "The Go Project",
+      "url": "https://go.dev/doc/modules/layout",
+      "publication_or_update_date": "[uncertain] The page does not display a publication or last-update date",
+      "version_or_revision": "Living official Go module-layout guidance accessed with Go 1.26 current",
+      "access_date": "2026-08-15",
+      "supported_claims": "Server implementations should normally stay under internal/, commands conventionally live under cmd/, and an internal package avoids creating an externally supported import API."
+    },
+    {
+      "title": "Go Wiki: Go Code Review Comments",
+      "publisher": "The Go Project",
+      "url": "https://go.dev/wiki/CodeReviewComments#interfaces",
+      "publication_or_update_date": "[uncertain] Living wiki page does not display a stable last-update date",
+      "version_or_revision": "Interfaces section as accessed 2026-08-15",
+      "access_date": "2026-08-15",
+      "supported_claims": "Interfaces generally belong in the consuming package, implementers should normally return concrete types, and interfaces should arise from actual use rather than speculative mocking."
+    },
+    {
+      "title": "Go Doc Comments",
+      "publisher": "The Go Project",
+      "url": "https://go.dev/doc/comment",
+      "publication_or_update_date": "[uncertain] Living documentation page does not display a stable last-update date",
+      "version_or_revision": "Official documentation as accessed 2026-08-15; discusses gofmt behavior introduced in Go 1.19",
+      "access_date": "2026-08-15",
+      "supported_claims": "Every package should have a package comment, command package comments should describe the command, and exported names should have doc comments."
+    },
+    {
+      "title": "Package names",
+      "publisher": "The Go Project",
+      "url": "https://go.dev/blog/package-names",
+      "publication_or_update_date": "2015-02-04",
+      "version_or_revision": "Canonical Go package-design article",
+      "access_date": "2026-08-15",
+      "supported_claims": "Design from the client viewpoint; avoid generic api/types/interfaces packages and avoid one package that accumulates all APIs."
+    }
+  ],
+  "source_class": [
+    "The exact commit, source, tests, fixtures, and maintained repository documents are repository_evidence.",
+    "Organizing a Go module and Go Doc Comments are official_documentation.",
+    "Go Code Review Comments is official_documentation maintained by the Go project, but it is idiomatic guidance rather than a language requirement.",
+    "Package names is official_documentation in the form of a first-party design article."
+  ],
+  "normative_status": [
+    "Repository code and tests are observation for current executable structure; the product contract is repository-owned policy, not an external standard.",
+    "Go's internal-directory import restriction is enforced behavior of the Go toolchain; the recommendation to keep server code internal and commands under cmd/ is guidance.",
+    "Consumer-owned, use-driven interfaces are guidance, not a compiler MUST.",
+    "Package and exported-name comments are official SHOULD-style documentation guidance, not a release-blocking language rule.",
+    "The conclusion to retain a bounded-context package design and reject a generic domain/api/interfaces layer is a repository-specific engineering judgment."
+  ],
+  "freshness_and_supersession": "The exact repository evidence is current at the stipulated 2026-08-15 research date and supersedes claims about the mission-expected 176ec421f9ee6c801517180e1ad0ec9c84570e8e tree. The official Go module-layout and doc-comment pages are living documentation retrieved on that date. The older Package names article remains linked by current Go Code Review Comments and is not identified as superseded. [uncertain] The living Go pages expose no stable update date, so page-level change chronology cannot be independently reconstructed from the rendered documents.",
+  "source_disagreements": "There is no material contradiction. Generic layered-architecture advice might object that internal/jetkvm imports request/result types from internal/mcpserver, but the current official Go interface guidance puts the Device interface in its consuming package, which is exactly mcpserver. For this one bounded executable, introducing a generic api, types, or domain package solely to reverse that import would conflict with first-party Go guidance against catch-all API/type packages and would add mappings without a demonstrated second consumer. The resolution is to retain the current consumer-owned seam and revisit only if another real consumer requires a transport-independent device service contract.",
+  "source_limitations": "Official Go sources provide general language and module-design guidance, not a security or architecture certification for this repository. The assessment is static and test-source based; it does not include maintainer time studies, contributor comprehension studies, runtime profiles, physical hardware execution, or production incident history. go list returned the package inventory but also reported that it could not write a module-cache stat-cache temporary file because the available module cache was read-only; the inventory itself completed. Live GitHub settings and external-user import behavior were not needed to establish the Go internal boundary and were not inspected in this workstream. [uncertain] No evidence establishes whether current package size has caused real maintainer errors or whether a second programmatic consumer is planned.",
+  "exact_baseline_commit": "Studied local HEAD: 6e52f0027b13f928b768de0feeab4847ef9ca53e. This differs from the mission's expected baseline 176ec421f9ee6c801517180e1ad0ec9c84570e8e; the exact diff removes cmd/jetkvm-ci-check and internal/cipolicy plus small Makefile/docs/ci-quality.md adjustments. At the initial check, tracked files had no modifications and the pre-existing untracked entries were .agents/, jetkvm_mcp_2026_public_release_baseline/, and skills-lock.json. This result does not treat those research/tooling files as product evidence.",
+  "current_repository_evidence": [
+    "The module has five cmd/* command packages and seven production internal packages (config, httporigin, jetkvm, mcpserver, protocolgate, telemetry, plus test-only compatibility/fuzzpolicy packages); it has no root or other externally importable library package. This matches Go's official server-project layout guidance.",
+    "cmd/jetkvm-mcp/main.go is the composition root: it parses commands, loads config, constructs the concrete WebRTCProvider and FFmpeg Decoder, constructs Manager, constructs the MCP server, and selects stdio or HTTP. Device and protocol code do not construct the application around themselves.",
+    "internal/config.Load owns YAML/file/environment parsing and converts it once into Runtime containing []jetkvm.DeviceConfig, jetkvm.Limits, and HTTP settings. Manager.NewManager independently enforces runtime invariants. There is deliberate validation overlap at the untrusted configuration and runtime-constructor boundaries, not a reflection-based configuration framework.",
+    "internal/mcpserver.Device is a consumer-owned seven-method interface used by MCP handlers; jetkvm.Manager is the concrete implementation. The interface exactly covers list, status, power, capture, keyboard, mouse, and virtual media. Tests supply local fakes such as recordingDevice and contractDevice; no mocking framework or generated interface layer exists.",
+    "Typed public wire projections live next to their MCP use: mcpserver.Status, DeviceList, PowerResult, CaptureOutput, KeyboardResult, MouseResult, VirtualMediaState, and VirtualMediaResult. jetkvm.Manager returns those types and therefore depends on the MCP adapter, but this avoids duplicate transport/domain projections and mapping code in the only real consumer.",
+    "Device-private transport abstractions remain in internal/jetkvm: SessionProvider and Session support the Manager/WebRTC seam, and Decoder supports the capture/FFmpeg seam. WebRTCProvider and NewFFmpegDecoder return concrete implementations; tests use focused fake providers/sessions/decoders. These interfaces are tied to actual production consumers and extensive cancellation/error/media tests.",
+    "Error ownership is layered: internal/jetkvm/errors.go classifies device-operation failures and delivery outcomes through OperationError methods; internal/mcpserver/errors.go projects only a closed, sanitized tool-error schema and defaults unclassified mutation failures to unknown/non-retryable. The MCP layer does not expose raw firmware errors.",
+    "The command packages are purpose-specific. jetkvm-mcp is the shipped server; jetkvm-mcp-validate is a black-box source-run read-only validator; jetkvm-mcp-mutation-checklist is an offline dry-run parser; protocol-gates and upstream-drift are repository verification tools. docs/product-contract.md explicitly distinguishes their support and packaging status.",
+    "The large jetkvm and mcpserver packages are divided by cohesive files rather than by additional packages: device auth/signaling/session/video/HID/media/provider logic remains under one appliance boundary, while MCP registration/schema/transport/error logic remains under one adapter boundary. Splitting them would require exporting additional implementation details across packages.",
+    "internal/mcpserver/testdata/tool-manifest.json plus manifest_contract_test.go exercises the typed MCP surface over in-memory, subprocess stdio, and stateless HTTP. typed_results_test.go and error_result_test.go protect result and failure projections. Architecture_decisions_test.go checks seven accepted ADRs for status, rationale, code/test/contract evidence, rejected alternatives, and revisit triggers.",
+    "Only cmd/jetkvm-mcp-validate and cmd/jetkvm-mcp-mutation-checklist begin with useful command package comments; the principal server, protocol-gates, upstream-drift, and the production internal packages lack package comments. Many exported internal symbols also lack doc comments. This is a documentation/navigability gap under official Go guidance, not evidence of an unsupported external API.",
+    "Compared with 176ec421f9ee6c801517180e1ad0ec9c84570e8e, the studied tree deletes a bespoke CI wrapper/policy package instead of accumulating another abstraction. That direction is consistent with the stated preference for conventional tooling and low process machinery."
+  ],
+  "implementation_and_documentation_agreement": "Implementation substantially agrees with CONTEXT.md and docs/product-contract.md: one bounded product context, a single-process composition root, internal-only Go implementation packages, static typed MCP tools, local-only raw RPC, separate source-run validators, and code/tests as executable authority. ADRs 0001-0007 link to the actual code and tests for transport/auth, fresh sessions, FFmpeg, media integrity, local raw RPC, URL origins, and browser origins; architecture_decisions_test.go verifies their structure and discoverability. The product contract correctly treats CLI/configuration/MCP/result/artifact behavior as compatibility surfaces rather than declaring internal Go packages a library API. The main discrepancy is documentary: official Go guidance says every package should have a package comment, but most production packages and three command packages do not. No documentation falsely claims that package comments or an importable Go API exist.",
+  "current_state": "substantially_satisfied: the current design is proportional, conventional, testable, and intentionally internal. Responsibilities and high-risk seams are visible and backed by typed contracts, focused interfaces, black-box fixtures, and ADRs. The main gap is low-cost package-level orientation/documentation, while the main residual design risk is localized coupling of jetkvm.Manager to MCP-owned types. That coupling is acceptable for the present single consumer and should not trigger a pre-release architecture rewrite.",
+  "evidence_missing": [
+    "No retained review-time, defect, onboarding, or code-ownership evidence shows that the current package sizes or import direction impede maintenance.",
+    "No accepted requirement or implementation exists for a second non-MCP programmatic consumer of Manager operations.",
+    "No external consumer survey establishes confusion between supported binary/wire surfaces and internal Go implementation symbols.",
+    "Runtime, hardware, soak, and performance evidence are outside this static architecture assessment and are required before converting architectural cleanliness into compatibility or qualification claims.",
+    "[uncertain] The maintainer's future intent to publish a reusable Go library API is unknown."
+  ],
+  "concrete_threat_or_failure_scenarios": [
+    "A refactor that treats exported identifiers under internal/ as a promised Go API could freeze implementation details, increase SemVer burden, and induce adapters/configuration abstractions that no shipped client uses. The current internal layout prevents external modules from importing them and limits this failure path.",
+    "A generic api/types/interfaces package introduced to remove jetkvm's import of mcpserver could become a dependency magnet, duplicate privacy-sensitive projections, and allow firmware fields to leak into MCP outputs through automatic mapping. Keeping reviewed public result projections at the MCP boundary makes that leakage easier to audit.",
+    "Because Manager methods directly use mcpserver request/result types, a future second consumer could either import an MCP-named package or force an invasive mapping refactor. This is a real but currently conditional change-cost risk, not a current correctness failure.",
+    "The seven-method Device interface means a narrow MCP unit test fake must normally satisfy the whole interface, encouraging embedding of a broad recordingDevice test fake. If the surface grows substantially, test doubles could conceal newly added behavior. At 18 static tools grouped into seven operations, the interface remains reviewable and contractDevice exercises all methods.",
+    "Missing package comments make repository navigation harder for a new human or coding agent. An agent may infer the wrong owner for errors, typed results, origin parsing, or protocol gates, increasing duplicate or misplaced code even when compilation and tests still pass.",
+    "Splitting the large jetkvm package prematurely could expose session, signaling, RTP/H.264, admission, or media internals across package boundaries; those new exported seams would make cross-cutting cleanup and unknown-outcome changes harder to review without proving any reduction in defects."
+  ],
+  "affected_assets_and_trust_boundaries": "The design protects the supported MCP/CLI/configuration compatibility contract, the privacy-safe result/error projection, JetKVM credentials and device/host authority, local media paths and content, WebRTC/FFmpeg resources, and maintainer review attention. Relevant boundaries are untrusted configuration to Runtime, MCP JSON to typed handlers, mcpserver.Device to Manager, Manager to SessionProvider/WebRTC session, capture to Decoder/FFmpeg, and source-run validation commands to the shipped server. Architecture mistakes at these seams can broaden physical authority or leak private firmware/configuration data even without a conventional memory-safety flaw.",
+  "plausible_impact": "The highest plausible architectural impact is an incorrectly mapped consequence or privacy field at the MCP-device seam, producing unsafe client behavior, private-data exposure, or a breaking wire change. More likely impacts are review friction, duplicated validation, test-fake drift, and unnecessary long-term compatibility work. The current typed and internal boundaries materially limit these outcomes; missing package comments mainly affect comprehension rather than runtime safety.",
+  "likelihood_or_preconditions": "Current runtime failure likelihood from package layout alone is low because the code compiles as one module and contract tests cover the wire boundary. Coupling cost requires a real second consumer or major transport-independent reuse requirement. Interface/test-fake drift requires the Device surface to grow without complete contract fixtures. Navigation mistakes require a contributor or agent unfamiliar with the ownership documents and package roles. [uncertain] There is no measured contributor-error or maintenance-time dataset from which to estimate frequency.",
+  "existing_controls": [
+    "All implementation packages are internal and all programs are under cmd/.",
+    "One explicit composition root wires concrete configuration, provider, decoder, manager, telemetry, MCP server, and transport.",
+    "Interfaces are small, consumer/use driven, and have real production plus test implementations; no dependency-injection container or mocking framework exists.",
+    "Configuration decoding is strict and Manager construction rechecks device/runtime invariants.",
+    "MCP outputs and tool errors are product-owned typed/sanitized projections rather than raw firmware JSON.",
+    "Static manifest fixtures, typed-result tests, error-result tests, transport tests, fake-provider tests, and fuzz tests protect seams.",
+    "Seven accepted ADRs contain code/test/contract evidence, consequences, rejected alternatives, and measurable revisit triggers, with a test enforcing those properties.",
+    "The product contract explicitly owns compatibility and distinguishes declared support from test/build evidence.",
+    "The studied commit removes a custom CI policy wrapper, reducing locally maintained process abstraction."
+  ],
+  "residual_risk": "Manager remains coupled to MCP-owned operation types, so a future alternate consumer would face mapping or relocation work. The Device interface can become too broad if more tools are added. Large cohesive packages still require disciplined file ownership and navigation, and most packages lack introductory comments. These risks are acceptable before public release because the repository has one bounded product context, one actual device-operation consumer, internal-only implementation APIs, and strong wire-level contract tests. They should be monitored against concrete change pressure rather than pre-solved.",
+  "compatibility_or_SemVer_effect": "No pre-release wire or CLI change is needed. Refactoring internal packages without observable behavior would not itself alter the supported Go API because no external Go package is exposed, but any change to MCP schemas/results/errors, configuration, CLI, or artifact behavior remains governed by the repository's explicit SemVer contract. Adding package comments is compatibility-neutral. Creating a public Go package would establish a new compatibility surface and should be a deliberate minor/additive product decision, not an incidental extraction.",
+  "privacy_effect": "Retaining MCP-owned typed projections keeps redaction decisions adjacent to schemas and handler serialization, reducing the chance that raw firmware values, media URLs/paths, or credentials become generic domain objects reused as public results. Package comments can make that ownership clearer without collecting data. A future mapping layer must preserve the same explicit projections; automatic serialization of device/provider structs would increase privacy risk.",
+  "operational_effect": "The retained architecture keeps one executable process and direct startup wiring, so diagnosis follows config -> manager -> provider/decoder -> MCP transport without a runtime plugin registry or control plane. Brief package comments have no runtime or CI cost beyond review. A speculative layer split would increase build/test and debugging hops without demonstrated availability benefit.",
+  "maintainer_effect": "For one maintainer, the current architecture has favorable economics: few packages, no framework, concrete constructors, local fakes, and ADRs for only consequential choices. The cost is that jetkvm and mcpserver are large packages and ownership must be learned from files/documents rather than package comments. Adding concise package comments is a one-time XS task with negligible recurring work. Maintaining an abstract domain layer, generated mocks, a service container, plugin/provider registry, or separate modules would create recurring synchronization and compatibility work disproportionate to current use.",
+  "disposition": "retain",
+  "recommendation": "Retain the current cmd/ plus internal/ architecture, the single composition root, consumer-owned Device/Decoder seams, concrete WebRTCProvider and Manager constructors, typed MCP-owned results/errors, strict configuration conversion, and separate black-box validation commands. Treat the MCP/CLI/config/artifact surfaces—not internal Go identifiers—as the supported API. Before or shortly after public release, add concise package comments that state responsibility and sensitive-data boundary for each production internal package and command. Do not move types or split packages merely to make a textbook dependency diagram. Revisit the Manager-to-mcpserver type coupling only when a second real consumer, independently useful reusable library, or repeated change friction provides evidence for a transport-neutral service contract.",
+  "minimal_practical_change": "Add one short package comment per production package and currently uncommented command, preferably in a doc.go or the natural first file: config owns strict untrusted-file-to-runtime conversion; httporigin owns exact origin/authority parsing; jetkvm owns configured-device sessions and operations; mcpserver owns MCP schemas/results/errors/transport adapters; protocolgate owns pinned conformance evidence parsing; telemetry owns privacy-safe bounded events; each cmd comment states whether it is shipped or source-run. Add one sentence to the maintained product/architecture documentation only if needed to make explicit that no importable Go library API is supported. This is XS, wire-neutral, and creates navigation value without new layers.",
+  "optional_stronger_control": "If an accepted second consumer needs device operations without MCP concepts, prototype a narrow transport-neutral service API based on that consumer's concrete calls, then adapt it explicitly to mcpserver types and measure the mapping/test burden. Consider splitting only the part with an independently testable lifecycle and stable vocabulary; keep interfaces in each consumer. An import-graph policy check becomes justified only after a documented direction is repeatedly violated, not as a preemptive custom CI framework.",
+  "rejected_or_overengineered_alternatives": [
+    "Reject a generic domain, api, types, interfaces, common, or util package created solely to invert imports; it would obscure ownership and conflicts with official Go package-design guidance.",
+    "Reject Clean Architecture/hexagonal layer multiplication, a dependency-injection container, service locator, provider/plugin registry, generated mocks, and repository-wide factories; there is one product, one JetKVM provider, one decoder strategy, and direct constructors already provide test seams.",
+    "Reject publishing internal/jetkvm or internal/mcpserver as a reusable public Go SDK before a real external use case exists; it would create a new SemVer and security-review surface.",
+    "Reject splitting files by line-count thresholds or one package per WebRTC/RTP/HID/media concept; package boundaries should follow independent responsibility and lifecycle evidence, not size metrics.",
+    "Reject moving all CLI parsing into a framework or combining source-run validators into the shipped server. Their separate process/package boundaries constrain authority and preserve black-box evidence.",
+    "Reject a new custom architecture linter or import-rule service for the current seven-package graph; ordinary review, go list, tests, and ADR triggers are sufficient."
+  ],
+  "rationale": "The exact tree implements the repository's stated bounded context with conventional Go mechanics: commands under cmd, implementation under internal, direct construction, small actual-use interfaces, and typed boundary objects. Official Go guidance specifically supports internal server packages, cmd layout, consumer-owned interfaces, and avoiding generic API/type packages. The unusual jetkvm -> mcpserver dependency is therefore not by itself a defect: mcpserver is the only real consumer and owns the wire-safe projections, while moving them now would add mappings and broaden the chance of privacy or consequence drift. Contract fixtures and ADR tests make the current seams reviewable. Package comments are the only clear official-guidance miss with a favorable cost/benefit ratio. This yields retain plus a small documentation improvement, not an architectural rewrite.",
+  "dependencies_or_prerequisites": "The package-comment improvement needs only maintainer agreement on concise ownership wording and should be coordinated with the product contract so it does not accidentally promise a public Go API. Any future service extraction requires an accepted second-consumer requirement, representative call patterns, explicit privacy/error mapping, compatibility classification, and tests proving unchanged MCP manifests/results/errors. No GitHub plan feature, hardware access, or upstream dependency change is required for the retained design.",
+  "migration_or_rollout_considerations": "Land package comments as a behavior-neutral documentation change and run gofmt plus changed-surface tests/full repository validation under the normal delivery workflow. Do not rename packages or move types in the same change. If a future neutral service seam is justified, first freeze current MCP manifest fixtures, introduce explicit adapters while preserving existing constructors, verify errors/outcomes and privacy projections, and only then remove direct type use. Because internal APIs are not externally importable, source migration is locally controllable, but observable MCP/config/CLI behavior must remain SemVer-classified.",
+  "priority": "P3: retain as-is for public-release readiness; concise package ownership comments are worthwhile but not a release blocker. Escalate the type-coupling question only upon a real second consumer or repeated maintenance failures.",
+  "implementation_effort": "XS for package/command comments and an explicit no-public-Go-API clarification; M or larger for a future evidence-backed service/adapter extraction, which is not recommended now.",
+  "ongoing_maintenance_burden": "low: package comments change only when package responsibility changes, and existing constructors/interfaces/tests already evolve with code. The rejected architectural frameworks would impose medium-to-high recurring synchronization and review burden.",
+  "confidence": "high for the retained current architecture and identified documentation gap because the complete Go tree, imports, core symbols, tests, contracts, and ADRs were inspected and align with current official Go guidance; medium for predictions about future second-consumer pressure because that depends on maintainer intent and adoption.",
+  "acceptance_evidence": [
+    "go list ./... continues to show all implementation packages beneath internal/ and all executable entry points beneath cmd/, with no unintended public library package.",
+    "Each production internal package and each command has one concise package comment accurately naming its responsibility and, where relevant, whether it is shipped or source-run.",
+    "README/product contract continue to identify the supported CLI/config/MCP/result/artifact surfaces without promising internal Go packages as an API.",
+    "Existing manifest contract, typed result, error result, config, manager/provider/decoder, validator, and architecture-decision tests pass without fixture changes for the comment-only improvement.",
+    "Any later boundary refactor supplies a before/after import graph, explicit adapter tests, an unchanged MCP manifest unless separately classified, and evidence of the second consumer or repeated maintenance failure that justified it."
+  ],
+  "proposed_tests_or_checks": [
+    "Run gofmt on any added doc.go files and go test ./...; use make verify and make race under the repository's normal delivery policy for the complete change set.",
+    "Use go list -deps or go list -json ./... during review to confirm no new externally importable package or dependency cycle and to inspect new cross-package dependencies.",
+    "Keep internal/mcpserver/manifest_contract_test.go and typed_results_test.go unchanged for a package-comment-only patch; any fixture delta requires the documented compatibility classification.",
+    "For a future service extraction, run focused negative mapping tests that attempt to propagate raw firmware fields, URLs, paths, typed text, and raw errors and assert they remain absent from MCP results.",
+    "Review new interfaces against actual production consumers: each method must be called by the consumer, and the constructor should return a concrete implementation unless an external contract requires otherwise."
+  ],
+  "negative_or_abuse_cases": [
+    "Attempt from a separate module to import github.com/BenDManning/jetkvm-mcp/internal/jetkvm or internal/mcpserver; the Go tool must reject the import under the internal rule.",
+    "Add a new Manager method/tool and verify contractDevice/recording fakes plus the manifest fixture force an intentional review rather than silently defaulting behavior.",
+    "Return unexpected firmware fields, URLs, paths, filenames, query strings, or raw error messages from a fake session and verify only MCP-owned projections leave the server.",
+    "Pass invalid Runtime-equivalent device configuration directly to NewManager and verify constructor validation remains effective even when config.Load is bypassed in tests or future callers.",
+    "Cancel or fail provider/decoder calls and verify errors cross the jetkvm-to-mcpserver seam with the correct failed/not_sent/unknown classification; detailed concurrency behavior is owned by workstream 3.",
+    "Introduce a proposed generic package or interface and require the change to name its actual second consumer, stable vocabulary, and removed duplication; reject it if it only moves existing names."
+  ],
+  "evidence_needed_before_claiming_support": "A public Go library claim requires an explicitly selected import path, package documentation, stable API design, examples, external-package tests, Go compatibility/SemVer policy, vulnerability and privacy review, and at least one real consumer; none exists now. A transport-neutral Manager claim requires adapter and mapping evidence independent of MCP. A reusable provider/plugin claim requires at least two qualified implementations and lifecycle/error compatibility evidence. Architecture and fake-device tests alone do not establish JetKVM model/firmware, OS/runtime, FFmpeg, physical-device, performance, or soak support.",
+  "revisit_trigger": "Revisit when an accepted issue adds a second non-MCP consumer or reusable Go library; the Device interface grows materially beyond the present seven operations; repeated changes require duplicate mapping or cause privacy/consequence defects; package ownership becomes unclear in review; a new provider or decoder implementation has genuinely different lifecycle needs; the MCP SDK forces transport/domain coupling changes; external contribution volume makes ownership enforcement valuable; or an incident traces to a package/interface boundary. Otherwise review the decision with consequential architecture changes and releases through the existing ADR process, not on a calendar-driven rewrite.",
+  "unresolved_questions": [
+    "[uncertain] Does the maintainer intend jetkvm-mcp ever to expose a supported Go library, or should the binary/wire-only boundary be made explicit permanently?",
+    "[uncertain] Have the large jetkvm or mcpserver packages caused concrete review mistakes or unacceptable navigation time in real maintenance?",
+    "[uncertain] Will any planned non-MCP consumer need Manager operations, making explicit adapter mapping valuable?",
+    "Should package comments be completed before the first public release or accepted as a P3 follow-up when each package is next touched?"
+  ],
+  "uncertain": [
+    "authoritative_sources",
+    "freshness_and_supersession",
+    "source_limitations",
+    "evidence_missing",
+    "likelihood_or_preconditions",
+    "unresolved_questions"
+  ]
+}

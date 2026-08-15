@@ -1,0 +1,262 @@
+{
+  "item_name": "Correctness, concurrency, cancellation, errors, and resource lifecycles",
+  "research_question": "At exact commit 6e52f0027b13f928b768de0feeab4847ef9ca53e, do jetkvm-mcp's contexts, deadlines, goroutine and channel ownership, fresh WebRTC sessions, pending RPC calls, subprocesses, files, cleanup, shutdown, error taxonomy, and retry rules safely bound work and preserve honest outcomes for consequential device mutations; and what minimal change is required before public release?",
+  "scope": "This workstream examines request-to-device cancellation propagation; global, per-device, session, capture, decoder, and mutation admission; RPC send serialization and pending-call lifecycle; WebRTC signaling/video pump ownership; FFmpeg process and pipe termination; local-media file and cleanup lifecycles; HTTP and stdio process shutdown; partial multi-step HID/media failures; typed error classification; and leak evidence. It includes MCP-client, process, device/WebRTC, appliance mutation, filesystem, subprocess, and stderr boundaries where lifecycle affects correctness. It does not independently reassess authentication, parser security, physical compatibility, or release supply-chain controls. No physical JetKVM was accessed.",
+  "repository_surfaces": [
+    "cmd/jetkvm-mcp/main.go: main, run, finishTelemetry, and serveHTTP",
+    "cmd/jetkvm-mcp/stdio_integration_test.go: malformed-input process recovery and shutdown telemetry tests",
+    "internal/jetkvm/manager.go: Manager admission channels, withOperation, runOperation, withSession, tryAcquire, acquireContext, and release",
+    "internal/jetkvm/rpc_session.go and session_test.go: rpcSession, sendGate, pending map, request timeout, Close, pending limit, and dispatch-phase outcome tests",
+    "internal/jetkvm/provider.go, provider_test.go, signaling.go, and session_protocol_test.go: per-operation connectedSession ownership, signaling and RTP pumps, CloseContext, Pion PeerConnection, WebSocket closure, and setup/teardown tests",
+    "internal/jetkvm/video_receiver.go, video.go, video_test.go, capture.go, and capture_test.go: single capture waiter, receiver closure, bounded H.264 assembly, 30-second capture deadline, decoder admission, cancellation precedence, and permit-release tests",
+    "internal/jetkvm/decoder_ffmpeg.go, decoder_test.go, and decoder_real_test.go: CommandContext, WaitDelay, bounded stdin/stdout/stderr, cancellation, timeout, and PNG validation",
+    "internal/jetkvm/hid.go, controls_manager_test.go, and internal/mcpserver/controls.go: serialized mutation sequences, pressed-key/button cleanup, partial-sequence classification, and consequence-aware handlers",
+    "internal/jetkvm/virtual_media.go, upload_test.go, virtual_media_test.go, and docs/adr/0004-virtual-media-integrity-and-cleanup.md: file ownership, hashing, upload phases, detached bounded cleanup, and ambiguous partial artifacts",
+    "internal/jetkvm/errors.go, internal/mcpserver/errors.go, error_result_test.go, typed_results_test.go, and telemetry.go: stable code/outcome/retryable taxonomy and redaction boundary",
+    "internal/telemetry/recorder.go, recorder_test.go, and docs/telemetry.md: bounded queues, one writer goroutine, nonblocking producers, terminal-event fallback, flush deadline, and synthetic goroutine/memory test",
+    "docs/product-contract.md, docs/threat-model.md, docs/mutation-validation.md, docs/adr/0002-fresh-in-process-webrtc-sessions.md, and docs/adr/0003-ffmpeg-screenshot-decoding.md",
+    "Makefile and .github workflows insofar as make race and test execution cover these paths"
+  ],
+  "applicability_stage": [
+    "current_private",
+    "before_public_release"
+  ],
+  "authoritative_sources": [
+    {
+      "title": "jetkvm-mcp exact studied tree",
+      "publisher": "BenDManning/jetkvm-mcp",
+      "url": "https://github.com/BenDManning/jetkvm-mcp/commit/6e52f0027b13f928b768de0feeab4847ef9ca53e",
+      "publication_or_update_date": "2026-08-15 commit-date context",
+      "version_or_revision": "6e52f0027b13f928b768de0feeab4847ef9ca53e",
+      "access_date": "2026-08-15",
+      "supported_claims": "Exact source, test, documentation, and configuration behavior. Executable code and tests control where documentation differs."
+    },
+    {
+      "title": "Package context",
+      "publisher": "The Go Project",
+      "url": "https://pkg.go.dev/context",
+      "publication_or_update_date": "Living standard-library documentation; rendered for the current Go release on access date",
+      "version_or_revision": "Go standard library as accessed 2026-08-15; includes Cause and WithoutCancel",
+      "access_date": "2026-08-15",
+      "supported_claims": "Incoming-to-outgoing call chains should propagate context; derived cancellation releases work; CancelFuncs release resources; nil Context is discouraged; WithoutCancel deliberately detaches cancellation and therefore needs a new bound."
+    },
+    {
+      "title": "Go Concurrency Patterns: Context",
+      "publisher": "The Go Project",
+      "url": "https://go.dev/blog/context",
+      "publication_or_update_date": "2014-07-29",
+      "version_or_revision": "Canonical first-party context guidance",
+      "access_date": "2026-08-15",
+      "supported_claims": "Request-related goroutines should observe cancellation and exit promptly so resources are reclaimed; child operations should inherit request deadlines."
+    },
+    {
+      "title": "Package net/http: Server.Shutdown, Server.Close, and Server fields",
+      "publisher": "The Go Project",
+      "url": "https://pkg.go.dev/net/http#Server.Shutdown",
+      "publication_or_update_date": "Living standard-library documentation; rendered for the current Go release on access date",
+      "version_or_revision": "Go standard library as accessed 2026-08-15",
+      "access_date": "2026-08-15",
+      "supported_claims": "Shutdown closes listeners and idle connections but does not interrupt active connections; it waits until idle or context expiry. Serve returns ErrServerClosed immediately after Shutdown starts. BaseContext can establish the base context for incoming requests."
+    },
+    {
+      "title": "Package os/exec",
+      "publisher": "The Go Project",
+      "url": "https://pkg.go.dev/os/exec",
+      "publication_or_update_date": "Living standard-library documentation; rendered for the current Go release on access date",
+      "version_or_revision": "Go standard library as accessed 2026-08-15",
+      "access_date": "2026-08-15",
+      "supported_claims": "CommandContext associates process cancellation with a Context; WaitDelay bounds delay from a child that does not exit or inherited pipes that do not close; os/exec does not invoke a shell."
+    },
+    {
+      "title": "Data Race Detector",
+      "publisher": "The Go Project",
+      "url": "https://go.dev/doc/articles/race_detector",
+      "publication_or_update_date": "[uncertain] Living official documentation does not expose a stable page update date",
+      "version_or_revision": "Official race-detector guidance as accessed 2026-08-15",
+      "access_date": "2026-08-15",
+      "supported_claims": "The race detector reports races only on executed paths; realistic concurrent workloads are required in addition to enabling -race."
+    },
+    {
+      "title": "RFC 9110: HTTP Semantics, section 9.2.2 Idempotent Methods",
+      "publisher": "IETF / RFC Editor",
+      "url": "https://www.rfc-editor.org/rfc/rfc9110.html#section-9.2.2",
+      "publication_or_update_date": "2022-06",
+      "version_or_revision": "RFC 9110",
+      "access_date": "2026-08-15",
+      "supported_claims": "A client SHOULD NOT automatically retry a non-idempotent request unless it knows the semantics are idempotent or can detect that the original was never applied; a proxy MUST NOT automatically retry non-idempotent requests."
+    },
+    {
+      "title": "Making retries safe with idempotent APIs",
+      "publisher": "Amazon Web Services, Amazon Builders' Library",
+      "url": "https://aws.amazon.com/builders-library/making-retries-safe-with-idempotent-APIs/",
+      "publication_or_update_date": "2021-01-15 announcement; living article accessed 2026-08-15",
+      "version_or_revision": "Malcolm Featonby article",
+      "access_date": "2026-08-15",
+      "supported_claims": "A timeout after a mutating request creates uncertainty because the operation may have succeeded; blind retry can duplicate effects; safe retry normally requires service-owned idempotency semantics such as a durable client token, which adds real implementation complexity."
+    },
+    {
+      "title": "Package github.com/pion/webrtc/v4",
+      "publisher": "Pion WebRTC maintainers",
+      "url": "https://pkg.go.dev/github.com/pion/webrtc/v4#PeerConnection",
+      "publication_or_update_date": "Living module documentation accessed 2026-08-15",
+      "version_or_revision": "Repository dependency v4.2.18; documentation distinguishes Close and GracefulClose",
+      "access_date": "2026-08-15",
+      "supported_claims": "PeerConnection.Close ends a connection; GracefulClose additionally waits for Pion-started goroutines and must be called outside callbacks or in its own goroutine."
+    }
+  ],
+  "source_class": [
+    "The exact commit, its code, tests, fixtures, ADRs, product contract, threat model, and mutation checklist are repository_evidence.",
+    "context, net/http, os/exec, the Go context article, and the race-detector article are official_documentation from the Go Project.",
+    "RFC 9110 is a normative_specification for HTTP retry semantics; its principle is applied by analogy to JetKVM RPC mutations rather than misrepresented as an MCP requirement.",
+    "The Amazon Builders' Library article is a maintainer_case_study from the operator of real distributed APIs, not a normative standard.",
+    "Pion package documentation is official_documentation for the exact upstream lifecycle API used by this repository."
+  ],
+  "normative_status": [
+    "Repository source and tests are observation of current behavior; docs/product-contract.md and docs/mutation-validation.md are repository-owned policy.",
+    "Go context propagation, cancel-function use, net/http Shutdown behavior, os/exec WaitDelay behavior, and Pion Close/GracefulClose behavior are official API contracts or guidance, not external product certification.",
+    "RFC 9110 section 9.2.2 says clients SHOULD NOT automatically retry non-idempotent requests without idempotency or proof of non-application, and proxies MUST NOT do so. JetKVM MCP calls are not HTTP methods, so the RFC supplies an authoritative safety principle rather than direct protocol conformance language.",
+    "AWS client-token design is guidance and observation. It demonstrates what would be needed to make retries safe but does not imply this small server MUST implement durable idempotency.",
+    "The repository-specific decisions to retain conservative unknown outcomes, cancel active HTTP request contexts on process shutdown, and defer durable idempotency are engineering judgments."
+  ],
+  "freshness_and_supersession": "The exact repository evidence is current at the stipulated 2026-08-15 date and supersedes the mission-expected 176ec421f9ee6c801517180e1ad0ec9c84570e8e tree. The Go and Pion package pages are living upstream documentation retrieved on the access date; the Pion version actually pinned by this tree is v4.2.18. RFC 9110 (June 2022) superseded RFC 7230-era HTTP semantics and remains the current HTTP semantics RFC identified by the RFC Editor. The 2014 Go context article and 2021 AWS article remain canonical first-party explanations and are consistent with current APIs. [uncertain] Rendered living package pages do not expose stable document-level update histories, so every wording change cannot be dated independently.",
+  "source_disagreements": "There is no substantive disagreement about ambiguous non-idempotent retries: RFC 9110 discourages them without proof or idempotency, AWS explains the same lost-response dilemma, and the repository conservatively returns unknown/non-retryable. There is a lifecycle tradeoff between Go net/http's graceful Shutdown, which intentionally leaves active handlers running, and this product's need to stop device work on process termination. Resolve it by giving request contexts a server-lifecycle parent and then calling Shutdown with a bounded grace period: handlers receive cancellation and perform their existing bounded cleanup while the server still drains responses. Pion documents GracefulClose as the goroutine-waiting primitive, but it has no Context and can block; the repository instead closes peer, signal, RPC, and video state and bounds its own pump wait. Retain that design until a repeated-session test demonstrates a Pion-owned leak, rather than replacing bounded shutdown with an unbounded call.",
+  "source_limitations": "Static inspection and fake/in-process tests cannot prove goroutine termination under every Pion, OS, FFmpeg, network, or firmware behavior. No physical device, soak test, production shutdown trace, pprof goroutine dump, or fault-injected reverse proxy was used. The focused go test command passed, but the Go race detector only observes executed paths and was not independently rerun in this item because repository-wide make race is another workstream's evidence. [uncertain] Whether Pion v4.2.18 ever leaves internal goroutines after PeerConnection.Close under hostile ICE/RTP timing is not established by current tests. [uncertain] The MCP Go SDK's exact behavior for an HTTP response whose request context is canceled during server shutdown was not exercised here. AWS guidance is a case study, and RFC 9110 governs HTTP methods rather than JetKVM's WebRTC RPC protocol.",
+  "exact_baseline_commit": "Studied local HEAD: 6e52f0027b13f928b768de0feeab4847ef9ca53e, not the mission-expected 176ec421f9ee6c801517180e1ad0ec9c84570e8e. At this delegated item's initial check, the shared worktree showed go.sum modified plus pre-existing untracked .agents/, jetkvm_mcp_2026_public_release_baseline/, and skills-lock.json; the go.sum delta was concurrent research-tool checksum material and was restored by the coordinating agent before completion. No source file was modified, and product conclusions use the committed source at HEAD. Only this required research result was created.",
+  "current_repository_evidence": [
+    "manager.go uses bounded buffered channels for global operations (default 16), per-device operations (4), sessions (8), captures (2), decoders (2), and a one-slot per-device mutation semaphore. General capacity fails immediately as busy/not_sent; only same-device mutation ordering waits, and acquireContext observes caller cancellation. Every acquired permit has an adjacent defer or explicit rollback.",
+    "rpc_session.go gives each call a bounded timeout, serializes DataChannel SendText with sendGate, caps pending requests at 64, protects the pending map with a mutex, removes waiters on every pre-send/send/wait exit, and releases all waiters on idempotent Close. Buffered waiter channels prevent response delivery from blocking after the caller leaves.",
+    "RPC outcome classification is phase-aware: validation/admission/cancellation before send is not_sent; SendText failure, timeout/cancellation after send, session loss, malformed success response, or unclassified response failure is unknown; an explicit firmware RPC error is failed. session_test.go exercises these phases and verifies pending removal and the admission cap.",
+    "mcpserver/errors.go projects only stable version/code/message/outcome/retryable fields. Mutation errors are never retryable; unclassified mutation failures fall back to unknown. Read cancellation, timeout, device-unavailable, and no-signal failures can be failed/retryable. error_result_test.go verifies unknown mutations are neither completed nor blindly retryable and that raw causes do not leak.",
+    "provider.go creates a fresh authenticated HTTP client/cookie jar, Pion PeerConnection, RPC session, signaling WebSocket, and optional videoReceiver per operation. connectedSession owns a cancellable lifetime, a WaitGroup for the repository-created signaling/RTP pumps, closeOnce, and explicit closure of video waiter, RPC waiters, WebSocket, peer, and idle HTTP connections. ADR 0002 correctly describes this ownership and rejects pooling.",
+    "CloseContext performs cancellation and all close signals before waiting for pumps. Its wait is bounded by the supplied operation/setup context, so teardown cannot extend an already-expired tool deadline. provider_test.go verifies that property and authentication-failure idle-connection cleanup. The remaining WaitGroup-wait helper goroutine can outlive CloseContext if an upstream read never unblocks; current code closes both reads first, but no repeated hostile-session leak test proves eventual exit.",
+    "capture.go imposes a server-owned 30-second deadline across session setup, fresh-frame capture, decode, PNG validation, and result construction, while preserving an earlier caller cancellation. videoReceiver permits one waiter, removes it on cancellation, and releases it on Close. capture tests cover setup cancellation/deadline precedence and admission-permit release.",
+    "decoder_ffmpeg.go uses an absolute validated executable, exec.CommandContext, fixed non-shell arguments, a scrubbed environment, bounded input/output/stderr buffers, a 15-second deadline, and 250ms WaitDelay. This bounds the direct child and pipe wait; it does not establish a process group or sandbox, which is acceptable only because FFmpeg is a trusted deployment prerequisite.",
+    "hid.go serializes keyboard/mouse mutations per device and, if a key or mouse button may remain pressed, uses a new two-second background cleanup context before the session is closed. Multi-call failures after any prior dispatch are promoted to unknown. controls_manager_test.go covers release after cancellation and partial-sequence unknown outcomes.",
+    "virtual_media.go confines and owns opened files with defers, hashes before/during/after upload, classifies partial sequences conservatively, and uses context.WithoutCancel only underneath a new two-second cleanup timeout to abort/delete partial artifacts. Tests cover cancellation during hashing, post-upload cleanup, and partial deletion timeouts. Appliance-side cleanup remains best effort and cannot prove deletion after an ambiguous loss.",
+    "telemetry.Recorder uses one writer goroutine and bounded queues; producer calls never block, and tool-terminal events have a separate fallback queue. Close has a caller deadline. A permanently blocked stderr writer can strand that one goroutine and lose queued evidence, but cannot create one goroutine per operation; synthetic load checks bounded goroutine/memory growth.",
+    "stdio serving receives the signal-derived top-level context directly. HTTP serving does not: serveHTTP constructs http.Server without BaseContext/ConnContext, and on ctx cancellation it calls Shutdown with a fresh five-second context. Go's documented Shutdown semantics do not cancel active handlers. If a long HTTP mutation/upload is active, Shutdown can time out, run returns an error, main calls os.Exit(1), and the operation is terminated without a delivered unknown result or guaranteed detached cleanup.",
+    "No HTTP shutdown test exists; the only shutdown integration hit located was TestRunCanceledContextFlushesShutdownTelemetry for stdio. This makes the HTTP lifecycle gap both implementation-visible and evidence-visible.",
+    "Focused verification on 2026-08-15 passed: go test ./internal/jetkvm ./internal/mcpserver ./internal/telemetry ./cmd/jetkvm-mcp. This is useful regression evidence, not hardware, soak, or all-schedule proof."
+  ],
+  "implementation_and_documentation_agreement": "Implementation and documentation agree on bounded admission, cancellation propagation inside an accepted tool call, fresh per-operation sessions, pending-RPC limits, FFmpeg deadlines, detached-but-bounded HID/media cleanup, and unknown/non-retryable mutation outcomes. The product contract and threat model accurately state that cancellation cannot undo a physical effect and that no durable idempotency journal exists. ADR 0002's claim that closing an operation tears down repository-owned pumps is supported structurally and by bounded-teardown tests but lacks repeated hostile-session leak evidence. The material disagreement is HTTP process shutdown: documentation broadly claims cancellation propagation and bounded shutdown, but serveHTTP does not parent request contexts to the signal context, and net/http Shutdown explicitly does not interrupt active handlers. Therefore a signal does not reliably reach active HTTP tools before forced exit.",
+  "current_state": "substantially_satisfied: Core call-level concurrency, cancellation, resource ownership, partial-failure classification, and non-retry semantics are unusually explicit and well tested for a small server. One concrete before-public-release gap remains: process cancellation is not propagated into active Streamable HTTP request contexts, so the five-second shutdown path can forcibly terminate consequential work without its typed unknown outcome or full cleanup. Pion-owned goroutine termination and hardware-side reconciliation remain unknown rather than demonstrated gaps.",
+  "evidence_missing": [
+    "A deterministic HTTP integration test with an in-flight mutating handler, lifecycle cancellation, observed handler context cancellation, cleanup completion, and Serve goroutine exit",
+    "Repeated connect/cancel/close tests using the real Pion/WebSocket fixture with eventual repository-pump completion and a stable goroutine profile under race execution",
+    "Fault-injection evidence for lost acknowledgement at each real JetKVM mutation phase and retained physical-state reconciliation evidence from an explicitly authorized expendable device",
+    "Soak evidence for pending RPC count, admission permits, file descriptors, subprocesses, and goroutines across many cancellations and malformed peer events",
+    "[uncertain] Direct evidence that Pion v4.2.18 Close terminates all internal goroutines for the repository's ICE/RTP paths without GracefulClose",
+    "[uncertain] A maintainer decision on whether signal-triggered HTTP shutdown should return success after clean cancellation or a nonzero exit when the bounded grace period expires"
+  ],
+  "concrete_threat_or_failure_scenarios": [
+    "An HTTP client begins a slow virtual-media upload or a power/HID call, then SIGTERM arrives. Shutdown leaves the active handler running; after five seconds it returns deadline exceeded, main exits, and the process can die after appliance dispatch but before acknowledgement, result delivery, or cleanup. The caller sees transport loss and may retry, duplicating a physical effect.",
+    "A JetKVM applies power/reset/HID/media mutation but the DataChannel response is lost. The server cannot distinguish success from failure. Current unknown/non-retryable output correctly prevents the server from asserting completion or safety to retry; independent observation is required.",
+    "A multi-report keyboard string, click press/release pair, or upload/mount sequence fails after an earlier step. Retrying the whole logical tool could duplicate typed characters, clicks, uploads, or mounting. Current mutationSequenceError and detached release/cleanup reduce harm but cannot reverse already-applied device/host effects.",
+    "A signaling or RTP read fails to unblock after session close due to an upstream defect. CloseContext returns at the operation deadline while its WaitGroup-wait helper remains. Repetition could accumulate goroutines. Current close ordering makes this unlikely, but current tests intentionally inject a pump that exits only later and do not prove real hostile Pion/WebSocket eventual termination.",
+    "A telemetry destination blocks forever. Operation paths keep moving and bounded queues drop events, but the sole writer goroutine and flush cannot complete. This trades diagnostic completeness for availability and is acceptable for stderr-only best-effort telemetry, provided it is not described as an audit log.",
+    "A trusted FFmpeg executable misbehaves or a replaced executable forks descendants that inherit descriptors. CommandContext and WaitDelay kill/bound the direct child and pipe wait, but do not manage a descendant process group. A malicious replacement already crosses the trusted-executable boundary and should be addressed by deployment isolation rather than portable process-tree machinery in this workstream."
+  ],
+  "affected_assets_and_trust_boundaries": [
+    "Physical host power, reset, wake, keyboard, mouse, boot-media, and storage state across the MCP client -> server -> authenticated JetKVM boundary",
+    "Truthfulness of caller-visible completion, failed, not_sent, unknown, and retryable fields",
+    "JetKVM credentials/cookies and fresh WebRTC signaling, ICE, DataChannel, RTP, and HTTP session state",
+    "Process availability and bounded goroutines, channels, pending RPC map entries, sockets, HTTP connections, file descriptors, files, subprocesses, and memory",
+    "Local media content and appliance-side partial artifacts across the filesystem/upload boundary",
+    "Diagnostic completeness at the process -> stderr consumer boundary"
+  ],
+  "plausible_impact": "The highest impact is duplicated or ambiguously completed physical mutation: data loss from repeated reset/power-off, unintended UI activation or repeated typed text, inconsistent virtual-media/storage state, or a host left with pressed input. Shutdown truncation can also prevent callers from receiving the designed unknown warning and can skip best-effort cleanup. Resource leaks can degrade availability or eventually exhaust the single process. Read-only timeouts primarily reduce availability. Telemetry loss impairs incident reconstruction but does not change device state. No reviewed path establishes memory safety or physical compatibility merely from these controls.",
+  "likelihood_or_preconditions": "Lost responses, cancellation, and process termination are ordinary distributed-system conditions; duplication additionally requires a caller or agent to retry despite the result or transport loss. The HTTP shutdown gap requires an active handler lasting beyond the five-second grace window, plausible for uploads and network trouble and possible for any stuck device call. Per-operation Pion leak accumulation requires an upstream close defect or hostile timing and repeated sessions; likelihood is [uncertain] without soak evidence. FFmpeg descendant leakage requires a nonstandard or compromised executable. Admission exhaustion requires concurrent trusted-client demand or abuse but is immediately bounded and rejected.",
+  "existing_controls": [
+    "Strict positive hierarchical admission limits and immediate busy/not_sent rejection without an unbounded operation queue",
+    "Cancelable one-at-a-time per-device mutation sequencing",
+    "Fresh WebRTC session ownership per operation with closeOnce, session cancellation, explicit RPC/video/signal/peer/HTTP cleanup, and owned pump WaitGroup",
+    "Per-RPC deadline, serialized sends, 64 pending-call maximum, waiter removal on all exits, and Close release",
+    "Server-owned 30-second capture bound and bounded H.264/PNG/decoder resources",
+    "CommandContext, fixed FFmpeg arguments/environment, bounded buffers, and WaitDelay",
+    "Deferred file closure, root-confined file opens, size/hash/reopen checks, and detached two-second media cleanup",
+    "Detached two-second HID key/button release after cancellation",
+    "Stable typed error outcomes with every mutation non-retryable and unknown used after possible dispatch",
+    "Focused cancellation/timeout/partial-sequence/permit-release tests, race validation in the repository quality command, and a limited telemetry goroutine/memory synthetic test",
+    "Operator mutation checklist requiring stop, independent observation, and no retry on unknown"
+  ],
+  "residual_risk": "The active-HTTP-request shutdown gap is unacceptable before public release because it bypasses the product's strongest safety communication exactly during process termination. Even after fixing it, a response can still be lost after a device effect and before client receipt; without appliance-supported idempotency tokens or a durable device-correlated operation record, exactly-once physical mutation cannot be promised. Best-effort HID/media cleanup can itself time out or have an unknown outcome. Fresh sessions reduce cross-call state but add repeated lifecycle exposure. Pion internal goroutine termination and real hardware behavior remain unqualified. These residuals must remain documented and reconciled operationally rather than hidden behind retries.",
+  "compatibility_or_SemVer_effect": "Preserving the existing error schema and conservative unknown semantics is no-action compatibility. Parenting HTTP request contexts to server lifecycle and making shutdown deterministic is a compatible correctness fix if normal request behavior, five-second bound, response taxonomy, and CLI exit contract remain unchanged; if shutdown exit status or grace duration is documented as stable and deliberately changed, classify that separately under the product contract. Adding durable idempotency keys, operation-status resources, or a journal would alter tool schemas and semantics and should not be slipped in as a patch.",
+  "privacy_effect": "Cancellation and cleanup changes need not collect new data. Retaining bounded structured telemetry avoids sensitive request logs. A leak/soak test should use synthetic values and inspect counts or sanitized goroutine stacks, not credentials, typed text, paths, URLs, screenshots, RPC bodies, or device identifiers. Durable idempotency/audit storage would create a new retention and privacy boundary and is therefore rejected absent a real requirement.",
+  "operational_effect": "A lifecycle-parented HTTP server should stop accepting work, cancel active handlers, permit their bounded cleanup and typed response attempt, and then finish within the existing grace period; this makes container/systemd termination more predictable. Focused repeated-cancellation tests add modest CI time. Preserving fail-fast admission and no internal retry avoids retry storms and queues. Operators still need independent read-only reconciliation after unknown physical outcomes.",
+  "maintainer_effect": "The existing explicit channels, mutexes, contexts, closeOnce values, and small interfaces are locally comprehensible and should be retained. The HTTP fix and one integration test are low recurring burden. A deterministic repeated-session lifecycle test is more valuable than adopting a broad goroutine-leak framework immediately. Durable journals, transactions, generalized retry middleware, circuit breakers, process supervisors, or pooled session recovery would impose state migrations, privacy policy, incident handling, and substantial concurrency expertise on one maintainer without upstream device support.",
+  "disposition": "change",
+  "recommendation": "Retain the current bounded-admission, fresh-session, phase-aware error, non-retryable unknown-outcome, FFmpeg WaitDelay, and detached bounded-cleanup designs. Before public release, connect Streamable HTTP request contexts to a server-lifecycle context, cancel that lifecycle on SIGTERM/SIGINT, then perform bounded http.Server.Shutdown and a deterministic final Close fallback if grace expires; ensure the Serve goroutine is always joined. Add focused tests proving an in-flight HTTP handler receives cancellation, its cleanup is attempted within its own bound, Shutdown does not leave Serve running, and a possibly dispatched mutation is never reported completed or retryable. Add a repeated real-fixture session cancellation/close test that asserts repository-owned pumps and pending calls return; treat Pion-owned leak behavior as monitor-until-demonstrated rather than introducing a new framework. Continue to require independent reconciliation and never automatically retry unknown physical mutations.",
+  "minimal_practical_change": "In serveHTTP, establish an explicit request-lifecycle context through http.Server.BaseContext (or an equivalent top-level handler context), retain a cancel function, and on process-context completion cancel requests before or together with bounded Shutdown. If Shutdown reaches its deadline, call Server.Close to force connection release and still receive/join the buffered Serve result before returning. Add one in-flight-handler integration test for cancellation/exit and one outcome assertion for a mutation canceled after dispatch. Keep the existing five-second grace unless test evidence shows bounded HID/media cleanup cannot fit.",
+  "optional_stronger_control": "If real repeated-session tests or production pprof evidence shows Pion-owned goroutines survive PeerConnection.Close, evaluate the exact pinned Pion version's GracefulClose in a design that cannot block process shutdown, and upstream any defect. If a future JetKVM firmware/API supplies durable idempotency tokens and authoritative operation status, consider opt-in idempotent retry for only those precisely defined operations. If outside adoption produces sustained leak incidents, add a narrowly configured leak checker or scheduled soak job with explicit baselines; do not gate every unit test preemptively.",
+  "rejected_or_overengineered_alternatives": [
+    "Automatic retry of power, reset, HID, upload, mount, or unmount after timeout/cancellation/transport loss: rejected because no end-to-end idempotency proof or never-applied proof exists.",
+    "A durable operation journal, transaction coordinator, exactly-once claim, generalized saga engine, or internal message queue: rejected because the appliance does not participate atomically and the machinery creates new storage, privacy, recovery, and migration burdens without making physical effects transactional.",
+    "Persistent or pooled WebRTC sessions: retain ADR 0002's rejection until an accepted latency objective and evidence justify cross-call lifecycle complexity.",
+    "Replacing bounded PeerConnection.Close with unconditional unbounded Pion GracefulClose: rejected because public shutdown must remain bounded and current evidence does not demonstrate a Pion leak.",
+    "A blanket third-party goroutine-leak framework in every package, continuous pprof server, or production control plane: rejected now; focused deterministic ownership tests and incident-triggered profiles are more proportional.",
+    "Portable process-group/session-tree supervision for trusted FFmpeg on every platform: defer unless real descendant leakage appears; a compromised FFmpeg already requires deployment isolation and supply-chain remediation.",
+    "Longer global timeouts or queued admission as a reliability fix: rejected because they increase resource retention and do not resolve ambiguity."
+  ],
+  "rationale": "The repository already implements the essential distributed-safety rule correctly: once a consequential request may have crossed the device boundary, failure is unknown and never retryable. RFC 9110's normative retry rule and AWS's lost-response/idempotency analysis support that decision; without an appliance-correlated durable token, stronger exactly-once language would be false. Go's context and os/exec APIs support the repository's call-level design, and the focused tests pass. The remaining defect is narrowly evidenced by serveHTTP and net/http's documented semantics: Shutdown does not cancel active handlers, and no BaseContext ties them to the signal. Fixing that seam restores the existing safety taxonomy during shutdown at low cost. Broader lifecycle frameworks would add more burden than verified risk reduction.",
+  "dependencies_or_prerequisites": [
+    "Maintainer confirmation that the existing five-second HTTP grace period and current CLI exit semantics are intended compatibility surfaces",
+    "A fake/in-memory MCP device operation that blocks until request cancellation and records cleanup without physical hardware",
+    "Use of the exact pinned MCP Go SDK and Go toolchain in the HTTP integration test",
+    "For any Pion lifecycle change, a reproducing test against pinned github.com/pion/webrtc/v4 v4.2.18 and review of upstream release/advisory state",
+    "For any safe-retry expansion, documented JetKVM firmware support for durable idempotency and authoritative operation reconciliation; absent that, no retry"
+  ],
+  "migration_or_rollout_considerations": "Land the HTTP lifecycle test first or with the fix, exercise clean idle shutdown, in-flight read cancellation, in-flight post-dispatch mutation cancellation, a handler that exceeds grace, and repeated startup/shutdown. Preserve the wire error version and mutation retryable=false. Document that termination can still produce client-side transport loss and therefore requires no retry plus reconciliation. Run focused tests, make race, and make verify. Roll out without new configuration if the existing five-second constant remains sufficient; only expose a configurable grace period if real deployment evidence requires it, because configuration creates a permanent support surface.",
+  "priority": "P1: propagate and bound active HTTP request shutdown before public release; the call-level unknown-outcome and lifecycle controls themselves should be retained. Repeated Pion leak evidence is P2 monitoring/testing unless a reproducer appears.",
+  "implementation_effort": "S: one HTTP lifecycle context/fallback adjustment plus focused integration tests; M only if an upstream Pion leak is reproduced and requires redesign.",
+  "ongoing_maintenance_burden": "low: maintain a small shutdown integration test and existing phase/outcome tests; investigate Pion/FFmpeg lifecycle only on dependency updates, advisories, or observed leak evidence.",
+  "confidence": "high for the repository's call-level behavior and the HTTP shutdown gap because both follow directly from source and official net/http semantics; medium for absence of Pion-owned leaks and physical cleanup because no soak or hardware evidence exists.",
+  "acceptance_evidence": [
+    "A focused HTTP integration test starts an admitted handler, cancels the server lifecycle, observes the same request context become canceled, observes bounded cleanup invocation, and proves serveHTTP and the Serve goroutine return within the grace bound",
+    "A grace-expiry test proves Server.Close fallback releases the listener/connections and no Serve goroutine remains",
+    "A post-dispatch mutation shutdown test yields unknown/retryable=false when a response can be delivered, and never yields completed or retryable; client transport loss is documented as unknown",
+    "Repeated real-fixture WebRTC operations under cancellation leave rpcSession.pendingCount()==0, repository pump completion, receiver.waiter==nil, and stable file-descriptor/goroutine evidence within a justified tolerance",
+    "go test for changed packages, make race, and make verify pass on the exact changed commit; no physical-compatibility claim is derived"
+  ],
+  "proposed_tests_or_checks": [
+    "Add TestServeHTTPShutdownCancelsActiveHandlerAndJoinsServe using a blocking fake Device and a real Streamable HTTP request",
+    "Add a shutdown-time mutation phase table: canceled before admission => not_sent; canceled after fake dispatch => unknown; confirmed device error => failed; every mutation retryable=false",
+    "Add a grace-expiry fake handler that ignores cancellation until released, verify forced Close and deterministic return, then release test resources to avoid test-induced leaks",
+    "Repeat WebRTC fixture connect/call/cancel/close enough times to detect monotonic repository-owned goroutine, pending-call, or connection growth; use eventual synchronization and goroutine profiles for diagnosis rather than brittle exact global counts",
+    "Retain RPC tests for 64 pending calls, cancellation while waiting for sendGate, late responses, duplicate/unsolicited IDs, and Close racing with HandleMessage under make race",
+    "Retain FFmpeg timeout/cancellation tests and, only if a real supported platform needs it, add a helper that holds inherited pipes to confirm WaitDelay returns",
+    "During an explicitly authorized hardware qualification window, inject response loss around one expendable mutation, stop without retry, and reconcile through an independent read-only path"
+  ],
+  "negative_or_abuse_cases": [
+    "SIGTERM before provider dispatch, during DataChannel SendText, after appliance application but before acknowledgement, during detached cleanup, and while the HTTP response is being serialized",
+    "Concurrent same-device mutations with the waiter canceled, plus unrelated-device operations proving no cross-device serialization",
+    "Pending RPC map at capacity, sendGate holder cancellation, late reply after timeout, malformed/duplicate/unsolicited reply, and Close concurrent with a reply",
+    "Signaling WebSocket stalls, duplicate answer, excessive queued ICE candidates, RTP read stall, track close, and connection failure during CloseContext",
+    "Keyboard press acknowledged but release lost; mouse-down acknowledged but mouse-up lost; upload begun but body/response lost; mount requested after upload then acknowledgement lost",
+    "FFmpeg direct child ignores cancellation, output pipe remains open, output exceeds limit, stderr floods, and executable disappears/replaces after startup validation",
+    "stderr writer blocks forever and event queues saturate; verify operations remain nonblocking and telemetry is described as lossy",
+    "HTTP handler ignores cancellation past grace; verify force-close, joined Serve, nonzero/selected exit semantics, and no false completed result"
+  ],
+  "evidence_needed_before_claiming_support": "Before claiming reliable shutdown, retain the HTTP cancellation/join/fallback tests under race. Before claiming leak-free operation, provide repeated real Pion/FFmpeg lifecycle evidence with goroutine/file-descriptor profiles and an explicit workload; ordinary unit-test success is insufficient. Before claiming a mutation is safe to retry or exactly once, require appliance-supported durable idempotency correlated to authoritative status and fault-injection evidence across lost-response phases. Before claiming device compatibility or cleanup guarantees, retain explicitly authorized model/firmware-specific physical evidence; fake sessions and cross-builds do not qualify hardware.",
+  "revisit_trigger": [
+    "Any incident involving a repeated physical effect, lost acknowledgement, stuck key/button, partial media artifact, shutdown timeout, or monotonic goroutine/file-descriptor growth",
+    "A Pion, coder/websocket, MCP Go SDK, Go net/http, or FFmpeg release/advisory that changes Close, cancellation, transport, or subprocess behavior",
+    "Introduction of persistent sessions, server-side MCP sessions, background operations, queues, retries, multiple principals, or more than one process",
+    "JetKVM firmware adds durable operation identifiers/idempotency tokens or authoritative mutation-status reconciliation",
+    "Uploads or other valid operations routinely exceed the shutdown grace period in measured deployments",
+    "Outside adoption creates enough concurrency or long-lived deployment evidence to justify scheduled soak/leak testing"
+  ],
+  "unresolved_questions": [
+    "Should a clean signal-triggered shutdown with all handlers canceled return success even though individual clients may receive canceled/unknown results, and what exit status should a grace timeout produce?",
+    "Is five seconds enough for the current two-second detached cleanup plus SDK/session teardown under supported deployments, or should the fixed grace be modestly larger? Evidence should decide before adding configuration.",
+    "[uncertain] Does Pion v4.2.18 PeerConnection.Close always terminate its internal goroutines promptly for this repository's signaling/ICE/RTP profile, or is GracefulClose needed after a reproduced leak?",
+    "[uncertain] Can any supported JetKVM firmware expose a durable request identifier or authoritative operation history that would permit narrowly safe reconciliation?",
+    "What exact hardware-observable state is sufficient to authorize a new attempt after each unknown HID, power, wake, upload, mount, or unmount outcome?"
+  ],
+  "uncertain": [
+    "freshness_and_supersession",
+    "source_limitations",
+    "evidence_missing",
+    "likelihood_or_preconditions",
+    "unresolved_questions"
+  ]
+}

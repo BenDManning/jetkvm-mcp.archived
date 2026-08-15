@@ -1,0 +1,317 @@
+{
+  "item_name": "AI-assisted development and untrusted contribution security",
+  "research_question": "What minimal, evidence-based controls should jetkvm-mcp use to accept AI-assisted work and untrusted public contributions without letting generated plausibility, malicious instructions, new dependencies, shallow tests, excessive automation authority, or report volume overwhelm one maintainer or compromise a safety-relevant release?",
+  "scope": "This item covers coding-agent and generated-patch errors; automated dependency and contribution pull requests; fabricated APIs and packages, slopsquatting, hidden behavior and unfamiliar dependencies; shallow or self-fulfilling tests; malicious instructions in repository, issue, PR, review and artifact content; local/cloud agent secret, GitHub, runner, device and release authority; copied-code license/provenance uncertainty; control-bypass verification; review overload, low-evidence vulnerability reports and spam; and preserving accountable human judgment over shipment. It excludes general branch/ruleset design, detailed Actions/action-pin analysis, release provenance, and the project's own runtime agent threat model except where those boundaries constrain development automation.",
+  "repository_surfaces": [
+    "AGENTS.md commands, credential/hardware boundaries, canonical document routing, GitHub-write authority and delivery rules",
+    "CONTEXT.md bounded vocabulary and code/tests-authoritative statement",
+    "docs/agents/issue-tracker.md complete issue/comment reads, GitHub mutations, leases, fail-closed checks and authority rules",
+    "docs/agents/triage-labels.md live-state and maintainer-approval rules",
+    "docs/ci-quality.md and Makefile quality gates, evidence boundaries and local parity",
+    ".github/workflows/ci.yml pull_request trigger, contents:read permission, hosted runners, jobs and artifacts",
+    ".github/dependabot.yml monthly grouped updates and one-open-PR limits",
+    "go.mod, go.sum and testdata/mcp-gates/package-lock.json dependency identities and integrity evidence",
+    "docs/product-contract.md, docs/threat-model.md, docs/protocol-sources.md, docs/adr/, README.md and exact tool manifest as review contracts",
+    "Repository negative/no-dispatch, privacy-sentinel, race, fuzz, cancellation, malformed-input, protocol, cross-build and container tests",
+    "Absence of CONTRIBUTING.md, SECURITY.md, CODEOWNERS, issue/PR templates, AI contribution policy and automated merge workflow at the studied tree",
+    "Live GitHub repository metadata and recent owner-authored issue/PR history read 2026-08-15"
+  ],
+  "applicability_stage": ["current_private", "before_public_release", "after_external_adoption"],
+  "authoritative_sources": [
+    {
+      "title": "Exact jetkvm-mcp repository tree associated with 6e52f0027b13f928b768de0feeab4847ef9ca53e",
+      "publisher": "BenDManning/jetkvm-mcp",
+      "url": "https://github.com/BenDManning/jetkvm-mcp/commit/6e52f0027b13f928b768de0feeab4847ef9ca53e",
+      "publication_or_update_date": "2026-08-15",
+      "version_or_revision": "commit 6e52f0027b13f928b768de0feeab4847ef9ca53e; tree 34e8b4451d76821950c23d7c06958d021700f3a7",
+      "access_date": "2026-08-15",
+      "supported_claims": "Exact agent instructions, CI authority, dependency/update configuration, executable evidence, public-contribution gaps and development history evaluated."
+    },
+    {
+      "title": "Review AI-generated code",
+      "publisher": "GitHub",
+      "url": "https://docs.github.com/en/enterprise-cloud@latest/copilot/tutorials/review-ai-generated-code",
+      "publication_or_update_date": "2026",
+      "version_or_revision": "GitHub Enterprise Cloud documentation current 2026-08-15",
+      "access_date": "2026-08-15",
+      "supported_claims": "Human oversight, functional and contextual review, dependency existence/maintenance/license checks, hallucinated APIs and packages, slopsquatting, deleted/skipped tests and CONTRIBUTING guidance."
+    },
+    {
+      "title": "GitHub Copilot agents application card",
+      "publisher": "GitHub",
+      "url": "https://docs.github.com/en/copilot/responsible-use/agents",
+      "publication_or_update_date": "2026 [uncertain]",
+      "version_or_revision": "Responsible-use documentation current 2026-08-15",
+      "access_date": "2026-08-15",
+      "supported_claims": "Agent output can be inaccurate, semantically wrong, vulnerable, destructive, expose local context, or match public code; issue/comment context is input to cloud agents; outputs require review before merge."
+    },
+    {
+      "title": "Secure use reference for GitHub Actions",
+      "publisher": "GitHub",
+      "url": "https://docs.github.com/en/actions/reference/security/secure-use",
+      "publication_or_update_date": "Continuously maintained [uncertain]",
+      "version_or_revision": "GitHub.com documentation current 2026-08-15",
+      "access_date": "2026-08-15",
+      "supported_claims": "Untrusted PR checkout under privileged triggers can compromise repositories; minimize token permissions and secrets; third-party actions execute with job authority; hosted runners are ephemeral whereas self-hosted runners can be persistently compromised."
+    },
+    {
+      "title": "Events that trigger workflows",
+      "publisher": "GitHub",
+      "url": "https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows",
+      "publication_or_update_date": "Continuously maintained [uncertain]",
+      "version_or_revision": "GitHub.com documentation current 2026-08-15",
+      "access_date": "2026-08-15",
+      "supported_claims": "Fork pull_request workflows receive read-only GITHUB_TOKEN and no ordinary secrets by default; pull_request_target has a materially different privileged context."
+    },
+    {
+      "title": "Securing Open Source in the Age of AI: A Practical Guide",
+      "publisher": "OpenSSF and CNCF",
+      "url": "https://openssf.org/resources/securing-open-source-in-the-age-of-ai-a-practical-guide/",
+      "publication_or_update_date": "2026",
+      "version_or_revision": "Practical guide current 2026-08-15",
+      "access_date": "2026-08-15",
+      "supported_claims": "AI changes contribution/report velocity but established security fundamentals remain; maintainers need proportional handling of hallucinations, slopsquatting and inflated findings."
+    },
+    {
+      "title": "AI-SLOP: Develop best current practices for Open Source maintainers",
+      "publisher": "OpenSSF Vulnerability Disclosures Working Group",
+      "url": "https://github.com/ossf/wg-vulnerability-disclosures/issues/178",
+      "publication_or_update_date": "2026-02-04; open work item on access date",
+      "version_or_revision": "Issue 178, emerging guidance rather than final policy",
+      "access_date": "2026-08-15",
+      "supported_claims": "Low-quality AI reports consume finite maintainer attention; reliable AI-content detection does not exist; emerging policies emphasize human understanding/accountability, unchanged quality bars, disclosure and limiting autonomous submissions."
+    },
+    {
+      "title": "We Have a Package for You! A Comprehensive Analysis of Package Hallucinations by Code Generating LLMs",
+      "publisher": "34th USENIX Security Symposium",
+      "url": "https://www.usenix.org/conference/usenixsecurity25/presentation/spracklen",
+      "publication_or_update_date": "2025",
+      "version_or_revision": "USENIX Security 2025 peer-reviewed paper; 576,000 samples across 16 models",
+      "access_date": "2026-08-15",
+      "supported_claims": "Code models invent package names at nontrivial rates and recurrent hallucinations create a package-squatting attack opportunity; registry resolution alone does not establish trust."
+    },
+    {
+      "title": "Secure Software Development Framework (SSDF) Version 1.1",
+      "publisher": "NIST",
+      "url": "https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-218.pdf",
+      "publication_or_update_date": "2022-02; official copy accessed 2026-08-15",
+      "version_or_revision": "NIST SP 800-218 v1.1",
+      "access_date": "2026-08-15",
+      "supported_claims": "Risk-based review and approval of changes, verification of acquired components, secure development environments, provenance and recorded security/design decisions are durable practices independent of authorship method."
+    },
+    {
+      "title": "Vulnerability Disclosure Policy",
+      "publisher": "curl project",
+      "url": "https://curl.se/dev/vuln-disclosure.html",
+      "publication_or_update_date": "Maintained through 2026-08 [uncertain]",
+      "version_or_revision": "curl disclosure policy current on access date",
+      "access_date": "2026-08-15",
+      "supported_claims": "A detailed maintainer case study requires concise, understood, reproducible reports rather than pasted AI explanations and protects finite triage capacity."
+    },
+    {
+      "title": "What to do when you receive a vulnerability report: a maintainer's guide",
+      "publisher": "GitHub Security",
+      "url": "https://github.blog/security/vulnerability-research/a-maintainers-guide-to-vulnerability-disclosure-github-tools-to-make-it-simple/",
+      "publication_or_update_date": "2025 [uncertain]",
+      "version_or_revision": "GitHub maintainer guidance current on access date",
+      "access_date": "2026-08-15",
+      "supported_claims": "Private vulnerability reporting and draft advisories provide a bounded coordination route; reports still require triage and evidence."
+    }
+  ],
+  "source_class": [
+    "Repository tree, test execution, commit/PR history and live GitHub metadata: repository_evidence.",
+    "GitHub Actions and Copilot documentation: official_documentation and vendor responsible-use guidance; it is not neutral evidence of product efficacy.",
+    "OpenSSF/CNCF guide and working-group issue: security_framework and evolving community guidance; issue 178 is explicitly unfinished.",
+    "NIST SSDF: security_framework.",
+    "USENIX package-hallucination study: peer_reviewed_research.",
+    "curl policy: maintainer_case_study, useful for proportional intake controls rather than a rule this smaller project must copy."
+  ],
+  "normative_status": [
+    "Repository AGENTS.md authority and CI configuration are executable/local policy for contributors and automation.",
+    "GitHub workflow permission/trigger behavior is official platform behavior; recommendations are guidance unless enforced in repository settings.",
+    "NIST SSDF and OpenSSF recommendations are risk-based guidance, not legal or protocol requirements.",
+    "GitHub Copilot limitations are vendor observations and warnings, not proof that other agents behave identically.",
+    "The USENIX study is an empirical observation about sampled models/languages; it supports verification of every new dependency, not a precise Go-specific incident probability.",
+    "Emerging AI-disclosure/no-autonomous-submission policies in OpenSSF issue 178 are proposals/observations, not final consensus."
+  ],
+  "freshness_and_supersession": "Research was performed 2026-08-15 against current GitHub platform documentation, the 2026 OpenSSF guide and emerging working-group discussion, while retaining final NIST SSDF 1.1 and the peer-reviewed 2025 package study. NIST's SSDF 1.2 was still an initial public draft and does not supersede the final 1.1 baseline. AI contribution/report practices remain unsettled; no reliable AI-authorship detector exists. Several continuously maintained pages do not expose exact update dates [uncertain].",
+  "source_disagreements": [
+    "Some emerging policies demand AI-use disclosure or ban autonomous submissions, while evidence also shows high-quality AI-assisted findings exist and authorship is not reliably detectable. Resolution: require a human contributor to understand, reproduce and own every submission; request material AI/provenance disclosure to aid review, but triage by evidence and behavior rather than attempting authorship detection or imposing a categorical AI ban.",
+    "GitHub documentation suggests AI-assisted review can supplement humans, but its own responsible-use material says generated reviews/code can be inaccurate and require human validation. Resolution: use a second agent as a hypothesis generator only; it is not an independent approval or branch gate.",
+    "Broad frameworks encourage many automated security scanners. The repository has a small, safety-relevant surface and finite attention. Resolution: retain targeted race/vet/staticcheck/govulncheck/fuzz/protocol gates and add controls only when they test a concrete claim; do not accept scanner volume as assurance.",
+    "A contribution-policy checklist can improve consistency but can also become bureaucracy. Resolution: one concise CONTRIBUTING.md plus security-report evidence requirements, not a multi-stage contributor certification or governance platform."
+  ],
+  "source_limitations": [
+    "All inspected recent GitHub pull requests/issues were owner-authored or migrated owner records; the repository has no actual external-contributor history from which to estimate spam, quality or review load.",
+    "Live main-branch protection returned HTTP 403 because the private repository needs GitHub Pro or public visibility; exact review/ruleset enforcement is handled in the governance workstream.",
+    "A second attempt to fetch per-PR review records encountered transient GitHub API connectivity failures, so the identity and independence of claimed exact-tree reviews is unknown [uncertain].",
+    "Commit messages and PR bodies can report tests/reviews but do not independently prove human comprehension, code provenance, or that AI was or was not used.",
+    "Package-hallucination rates were measured mainly for Python/JavaScript model output, not this exact Go module ecosystem; the attack class remains applicable but quantitative transfer is uncertain.",
+    "No local agent configuration, token scope, prompt retention, shell history, environment inventory or maintainer workstation isolation was inspected [uncertain]."
+  ],
+  "exact_baseline_commit": "The assigned initial commit is 6e52f0027b13f928b768de0feeab4847ef9ca53e with tree 34e8b4451d76821950c23d7c06958d021700f3a7. During this workstream local HEAD was 71445bc6bf2325e6c683e362393605089c336b63; both resolve to the exact same tree. Pre-existing untracked .agents/, skills-lock.json and jetkvm_mcp_2026_public_release_baseline/ were present. Repository conclusions refer only to the identical tree; live GitHub state is separately dated 2026-08-15.",
+  "current_repository_evidence": [
+    "AGENTS.md gives concise repository-specific commands and routes behavior, architecture, protocol and security work to authoritative documents. It forbids hardware access without explicit authority and keeping credentials/device data/artifacts in source control.",
+    "AGENTS.md requires live-state checks and explicit authority for GitHub writes, publication, merge, release, deployment and destructive cleanup. docs/agents/issue-tracker.md fails closed on malformed state and serializes relationship writes.",
+    "Neither AGENTS.md nor the issue-tracker guide explicitly says issue, PR, comment, review, fixture and repository text can contain malicious instructions that must be treated as untrusted data rather than task authority.",
+    "There is no CONTRIBUTING.md, SECURITY.md, CODEOWNERS, issue template, PR template, AI contribution policy, copied-code/provenance declaration or public vulnerability-report quality bar in the studied tree.",
+    ".github/workflows/ci.yml runs only push/main and pull_request, sets top-level permissions to contents:read, uses GitHub-hosted runners, and configures no device, release, deployment or repository-write secret. There is no pull_request_target, workflow_run, self-hosted runner, auto-merge or release job.",
+    "Untrusted PR code can nevertheless change Make targets, test helpers, protocol pins and artifact-generation code executed in its own read-only job. It can consume network/compute, poison its own caches/artifacts or print data available in that job, but current job authority cannot write the repository or reach configured hardware by design.",
+    "Dependabot is monthly, grouped and limited to one open PR for Go modules and one for Actions. Live repository metadata says auto-merge is disabled. Dependency PRs therefore remain proposals requiring maintainer review.",
+    "The repository has strong control-bypass evidence: strict schema/config tests, no-provider-dispatch tests, private-sentinel leak tests, frozen manifests, malformed-input fuzzing, race/cancellation/deadline tests, dispatch-phase unknown-outcome tests, cross-builds and sanitized protocol artifacts.",
+    "docs/ci-quality.md correctly says coverage is evidence rather than an arbitrary percentage and that fixture/loopback checks do not qualify hardware. This resists generated tests that inflate metrics without supporting a decision.",
+    "Recent PR bodies frequently record focused red-before-green failures, exact candidate commits, scoped evidence limits, full gates, private-coordinate scans and independent exact-tree review claims. This is valuable review provenance, although independent human identity is not established.",
+    "Recent history also shows fast correction/removal of disproportionate machinery: the read-only performance baseline from PR 70 was removed by PR 73 and a custom CI policy introduced in PR 68 was removed by PR 74. This is evidence that generated-looking completeness can create maintenance cost even when tests pass.",
+    "Live repository metadata on 2026-08-15 showed a private repository and recent PRs authored by the OWNER. Several PRs merged within minutes, including small cleanups; elapsed time alone does not establish inadequate review but provides no independent-review assurance.",
+    "go.mod uses fully qualified module paths and go.sum; protocol npm dependencies have a lock/integrity pin. These reduce accidental substitution but do not prove a new package name, maintainer, source or license is trustworthy.",
+    "No workflow automatically turns issue/comment text into a privileged patch, merge, release or deployment. Local agent tooling documented under .agents/ exists as untracked workspace state and is not part of the studied release tree."
+  ],
+  "implementation_and_documentation_agreement": "The executable CI agrees with docs/ci-quality.md: PR code runs in a read-only, secret-free, fixture-only environment and all listed gates have local Make targets. AGENTS.md accurately emphasizes code/tests as behavior authority, exact state and scoped authorization. Repository history supports the claimed evidence-oriented workflow. The public-contribution and AI-assistance boundary is undocumented because the necessary public files do not exist. The agent guide's authority rules reduce poisoned-issue risk indirectly but do not explicitly label inbound text/code/artifacts as adversarial. Claims of independent review in PR prose cannot be verified from the accessible evidence [uncertain].",
+  "current_state": "partial: the repository already has an excellent executable verification core and safely unprivileged PR CI, but it lacks a concise public contribution contract, an explicit untrusted-instruction rule for agents, a dependency/provenance review requirement, and a reproducibility bar for security reports. These are low-cost gaps before public release; a complex AI governance system is neither present nor warranted.",
+  "evidence_missing": [
+    "A public CONTRIBUTING/security-report policy accepted by the maintainer and tested for discoverability.",
+    "Exact local/cloud coding-agent permissions, data retention, environment access and GitHub token scopes [uncertain].",
+    "External contribution/report volume and false-positive rate after public launch.",
+    "Evidence that exact-tree 'independent review' is performed by a human who did not author the patch, rather than another model or the same operator [uncertain].",
+    "A complete license/provenance review for any future novel dependency or substantial copied/generated code, performed when proposed rather than inferred now."
+  ],
+  "concrete_threat_or_failure_scenarios": [
+    {
+      "scenario": "Poisoned issue, PR, comment, repository file or test fixture instructs a coding agent to reveal environment values, run a download, alter unrelated policy, contact hardware, approve/merge itself or close the ticket.",
+      "preconditions": "An agent reads the untrusted content and has shell, network, secret or GitHub-write authority beyond the maintainer's actual task.",
+      "current_controls_and_gap": "Explicit task authority, no-hardware rules and GitHub write checks reduce scope; PR CI is read-only. Missing explicit instruction/data separation leaves local/cloud agents dependent on platform behavior."
+    },
+    {
+      "scenario": "An AI patch invents a plausible Go module/API or selects a freshly registered malicious repository at the hallucinated path; go mod download succeeds and executes code during builds/tests or ships it.",
+      "preconditions": "A contributor/agent adds the dependency and the maintainer reviews only compilation/tests or package existence.",
+      "current_controls_and_gap": "go.sum and module verification authenticate bytes, Dependabot manages known updates, and the graph is small. No policy requires origin, history, maintainer, license, necessity and source review for a new module."
+    },
+    {
+      "scenario": "Generated code calls a real SDK API with fabricated semantics, ignores cancellation/unknown outcomes, leaks private result fields, or subtly broadens URL/file/device authority while compiling successfully.",
+      "preconditions": "Review focuses on syntax/green CI rather than product contract, threat model and negative paths.",
+      "current_controls_and_gap": "Canonical docs and deep semantic tests are strong. Human must still trace the full path and independently derive abuse cases; an AI self-review is not proof."
+    },
+    {
+      "scenario": "A patch supplies shallow tests that mirror its implementation, mocks away the trust boundary, deletes/relaxes a failing assertion, regenerates the manifest, or raises coverage while never proving no dispatch/leak/retry.",
+      "preconditions": "Maintainer accepts passing gates without inspecting test sensitivity or first seeing the intended failure.",
+      "current_controls_and_gap": "Many existing PRs record semantic RED cases and the repo rejects arbitrary coverage thresholds. A contribution policy should require test purpose, failure evidence where practical, and control-bypass negatives for sensitive changes."
+    },
+    {
+      "scenario": "A malicious PR changes CI/Make/protocol harness code so its own job prints available metadata, consumes resources, poisons caches/artifacts, disguises failures, or produces a deceptive report that a maintainer later trusts.",
+      "preconditions": "Untrusted code runs automatically; later privileged automation consumes its artifacts or a reviewer trusts generated output without inspecting workflow changes.",
+      "current_controls_and_gap": "Hosted PR jobs have contents:read and no secrets/write/hardware. No privileged follow-on exists. Review must treat PR artifacts/caches as untrusted and scrutinize workflow/harness diffs."
+    },
+    {
+      "scenario": "A coding agent with a broad PAT, repository admin, release credential, signing identity, SSH keys, production config or device password is prompt-injected or simply wrong and pushes, merges, tags, releases, changes settings or touches hardware.",
+      "preconditions": "The agent receives standing authority not required for patch construction/testing.",
+      "current_controls_and_gap": "Repository instructions require authorization but local agent credentials were not inspected. Deterministic least privilege and fresh human authorization are needed outside the repository."
+    },
+    {
+      "scenario": "Generated/copied code closely matches incompatible or unattributed public code, or a new dependency's license conflicts with MIT distribution.",
+      "preconditions": "Contributor assumes model output is original or code-reference filtering is complete.",
+      "current_controls_and_gap": "Repository has an MIT license and dependency inventory evidence elsewhere, but no contributor provenance statement. Vendor matching is partial and cannot replace source/license review."
+    },
+    {
+      "scenario": "After publication, automated or low-effort AI PRs and vulnerability reports flood a sole maintainer with plausible prose, inflated severity and non-reproducible claims; genuine reports are delayed and burnout increases.",
+      "preconditions": "Low submission cost, no evidence template/quality bar, publicity or bounty-like incentives.",
+      "current_controls_and_gap": "No external history yet. GitHub is canonical and triage fails closed, but no public intake policy says reports need exact revision, attack path, minimal reproduction and reporter understanding."
+    },
+    {
+      "scenario": "Multiple agents generate and approve the same patch, creating an appearance of independent consensus while sharing the same misunderstood premise, fabricated source or shallow test strategy.",
+      "preconditions": "Maintainer treats agent count or confident agreement as an approval gate.",
+      "current_controls_and_gap": "PRs sometimes record independent review, but identity/method is unknown. Human shipment judgment and evidence diversity must remain explicit."
+    }
+  ],
+  "affected_assets_and_trust_boundaries": "Assets are source and test integrity, Go/npm dependency graph, GitHub issues/PRs/main/tags/releases/settings, CI cache/artifacts and minutes, maintainer credentials and attention, license compliance, private device configuration/secrets, release/signing authority, and the physical hosts controlled by shipped code. Boundaries include untrusted contributor/issue text to human or coding agent; repository files to an instruction-following agent; PR code to hosted runner; third-party registry/module source to build; CI artifact to reviewer or later job; local agent to shell/environment/GitHub; and generated patch/review claims to the sole human release decision.",
+  "plausible_impact": "Failures can introduce a backdoor, secret leak, supply-chain compromise, unsafe retry, physical power/HID/media behavior, privacy regression, dependency/license obligation, false compatibility claim, CI/repository takeover if privilege later expands, corrupted release, or maintainer denial of service. Less dramatic AI-generated abstraction and test machinery can still make a small project incomprehensible and raise recurring maintenance cost. False security reports consume the same scarce review capacity needed for real vulnerabilities.",
+  "likelihood_or_preconditions": "Generated semantic mistakes and shallow tests are likely whenever AI assistance is used without domain review; malicious poisoned instructions require an agent to read attacker-controlled content and possess useful authority. Slopsquatting requires a novel/unfamiliar dependency suggestion plus inadequate provenance review; Go's fully qualified paths and checksum database reduce but do not eliminate it. CI repository takeover is currently low because PR jobs have read-only tokens/no secrets and no privileged follow-up. Contribution/report flood likelihood is unknown before public adoption [uncertain] but well documented in larger projects, so a lightweight intake bar is prudent rather than heavy automation now.",
+  "existing_controls": [
+    "Concise canonical domain/product/threat/protocol/ADR documents and code/tests-authoritative rule.",
+    "Explicit no-hardware, no-credential, scoped external-write and live-state instructions for agents.",
+    "Single pull_request CI workflow with contents:read, hosted ephemeral runners, no secrets, no self-hosted runner, no privileged trigger and no auto-merge/release/deployment.",
+    "Monthly grouped Dependabot with one-open-PR limits and manual merge boundary.",
+    "Exact dependency locks/checksums plus module verification.",
+    "Race, vet, staticcheck, govulncheck, fuzz, protocol, malformed-input, cancellation, privacy-sentinel, manifest, cross-build and container evidence.",
+    "Strong product-specific negative tests proving no dispatch, redaction, bounds, cleanup and non-retryable ambiguous mutations.",
+    "Issue/PR tracker as one canonical system with fail-closed mutation rules; no autonomous issue-to-release pipeline.",
+    "Recent practice of exact-candidate checks, scoped PR evidence and removal of disproportional machinery."
+  ],
+  "residual_risk": "A sole maintainer remains the only shipment authority and can be persuaded by polished generated prose or green but insensitive tests. Local/cloud agents may have more authority than repository CI, and their actual token/environment boundaries are unknown. Any new dependency can be malicious despite valid checksums. Source review cannot prove model output originality. Public intake can exceed maintainer capacity. No policy can technically identify all AI-authored content, so controls must judge evidence, scope and contributor accountability rather than style.",
+  "compatibility_or_SemVer_effect": "Contribution and review policy is process guidance and does not change the product API. Rejecting or shrinking a generated patch has no compatibility cost. Security fixes arising from AI reports still follow the repository's documented SemVer and mutation-outcome contracts. Tool manifest/schema, config, CLI, transport and result changes require their existing compatibility review regardless of who authored them. Do not let an agent label a breaking change as internal solely because tests pass.",
+  "privacy_effect": "Agents can expose repository-private code, issue security details, environment values, config/device coordinates, screenshots or credentials through prompts, command output, logs and vendor retention. The safe baseline is data minimization: do not place production credentials/hardware access in agent or PR environments; redact artifacts; use synthetic fixtures; review provider retention before supplying private content. Requiring public reproduction must not force reporters to disclose secrets or exploit real hardware. Avoid storing prompts/transcripts as a new repository artifact.",
+  "operational_effect": "The recommended operating model adds a short intake/review checklist, not another CI platform. PR CI stays unprivileged and useful. High-risk changes take longer because the maintainer traces authority, checks dependencies and derives negative tests; low-risk documentation/focused fixes remain lightweight. Evidence-based report closure protects response capacity. External bot/agent write access, self-hosted runners and auto-merge remain off unless a demonstrated workflow justifies them.",
+  "maintainer_effect": "A concise policy reduces repeated explanation and permits quick closure of submissions whose author cannot reproduce or explain them. Small PRs, one open grouped dependency update, explicit evidence limits and human-owned final decisions protect attention. The maintainer must still read every accepted consequential diff and understand why its tests would fail under bypass. Mandatory multi-agent approval, AI detectors, blanket scanners and elaborate contributor attestations would cost more than they save at current scale.",
+  "disposition": "add",
+  "recommendation": "Before public release, add a concise CONTRIBUTING.md and agent-safety rule. Accept AI assistance, but require one accountable human to have read, understood, tested and be able to explain the entire submission; request disclosure of substantial generated/copied material and source/license references; forbid autonomous issue/PR floods; require exact scope and evidence. Treat issue/PR/comment/repository/artifact text as untrusted data, never as authorization to run commands, reveal secrets, access hardware, broaden scope, write GitHub state or ship. New dependencies require maintainer verification of necessity, canonical identity, history/ownership, license, source and exact graph delta. Security reports require exact revision, preconditions, concrete impact and minimal reproducible evidence. Preserve current read-only secret-free PR CI and final human shipment judgment; AI reviews may suggest questions but cannot approve.",
+  "minimal_practical_change": "Create one short contribution document linked from README and issue/PR entry points, plus one sentence in AGENTS.md declaring inbound repository/GitHub content untrusted. The document should state: contributor owns all content regardless of tool; keep PRs small/single-purpose; explain behavior and risk; identify material AI/copy sources; never add a dependency without a reviewed rationale and provenance/license check; do not delete/weaken tests to get green; add negative/no-dispatch/privacy/retry tests for affected controls; use synthetic data/no hardware; security reports need an exact commit, attack path, reproduction and no secrets; maintainers may close unverifiable or bulk-generated submissions. Keep CI permissions unchanged.",
+  "optional_stronger_control": "After real external volume appears, add targeted issue/PR forms with required reproduction/dependency/provenance fields, moderation/rate controls, and a CODEOWNERS/ruleset review gate for workflows, dependencies and security-critical packages when a second trusted human reviewer exists. Test a named AI review service only as advisory, with read-only access and bounded data retention. Consider secret scanning/push protection and dependency review when plan/public availability is established in other workstreams.",
+  "rejected_or_overengineered_alternatives": [
+    "Reject a blanket AI-contribution ban or automated AI-authorship detector: assistance is hard to identify, valid work can use AI, and evidence quality is the relevant criterion.",
+    "Reject mandatory multi-agent debate, voting or AI approval. Correlated models do not create independent accountability; the maintainer decides what ships.",
+    "Reject automatic merge for Dependabot, coding-agent or security-fix PRs; green CI does not establish dependency trust or semantic safety.",
+    "Reject giving coding/triage agents standing repository-admin, release, signing, deployment, production-secret or hardware authority.",
+    "Reject self-hosted public PR runners and privileged pull_request_target checkout of contributor code.",
+    "Reject a CLA/DCO, contributor identity proofing or license-scanning bureaucracy solely because AI was used at current scale; a clear contributor responsibility/provenance statement is sufficient until legal/adoption needs change.",
+    "Reject adding broad scanners, badges, arbitrary coverage thresholds or a second governance platform to look rigorous; every check must support a concrete product claim.",
+    "Reject rewarding vulnerability volume or debating unsupported severity prose; require reproduction and protect maintainer capacity."
+  ],
+  "rationale": "The repository already demonstrates the right verification philosophy: executable product contracts, privacy sentinels, negative dispatch tests, semantic RED evidence, strict capability fixtures and unprivileged CI. AI-specific evidence shows plausible code can fabricate packages/APIs, hide licensing matches and overwhelm maintainers, while reliable authorship detection does not exist. Therefore the highest-value additions are explicit instruction/data separation, accountable human understanding, dependency provenance checks and an evidence threshold for inbound reports. These controls directly address realistic paths and add little recurring burden; privileged automation or governance machinery would expand the attack surface and dilute the maintainer's judgment.",
+  "dependencies_or_prerequisites": [
+    "Maintainer chooses the exact disclosure wording: recommended is disclosure of substantial AI-generated or copied material to aid review, without trying to police minor assistance.",
+    "Governance workstream supplies SECURITY.md/private-report route and public branch/ruleset settings.",
+    "Supply-chain workstreams define artifact and dependency-review evidence; this item requires human inspection but does not duplicate their tooling.",
+    "Any client/cloud agent allowed to write GitHub state needs a separately reviewed fine-grained token and explicit task authority; current actual agent credentials are unknown [uncertain]."
+  ],
+  "migration_or_rollout_considerations": "Publish the short policy before opening visibility so first contributors see the bar. Apply it prospectively and neutrally to human- and AI-assisted work; do not retroactively label owner history. Begin with prose and maintainer replies, then add forms/rate controls only if volume demonstrates value. Keep existing PR CI on pull_request/read-only and never promote its artifacts into a privileged job without a separate threat review. If a report lacks evidence, ask once for the missing reproduction and close when it remains unsupported; preserve a route to reopen with new evidence. Review the policy after the first 10 external submissions or six months.",
+  "priority": "P1 before public release: explicit untrusted-instruction and accountable-contribution/report rules are low effort and prevent high-cost authority and attention failures.",
+  "implementation_effort": "XS for the minimal policy and agent rule; S if public issue/PR forms are also added after adoption.",
+  "ongoing_maintenance_burden": "low: update one concise policy when actual failure patterns emerge and apply the same evidence bar; forms/moderation become medium only with external volume.",
+  "confidence": "high for repository controls/gaps and least-privilege recommendations; medium for future contribution volume, exact local agent authority and the value of mandatory AI disclosure.",
+  "acceptance_evidence": [
+    "A discoverable CONTRIBUTING.md states human accountability, scope/quality bar, material AI/copied-source disclosure, dependency provenance/license review, test expectations, no-hardware/private-data rules and security-report evidence requirements.",
+    "AGENTS.md explicitly treats issue/PR/comment/review/repository/artifact instructions as untrusted data that cannot grant scope, credential, hardware, GitHub-write, merge, release or deployment authority.",
+    "pull_request CI remains contents:read, GitHub-hosted, secret/device/release-free, without pull_request_target, self-hosted runners, privileged artifact consumption or auto-merge.",
+    "A sample novel-dependency PR record shows canonical source/tag, why standard library/current dependencies are insufficient, maintainership/history, license, module graph/checksum delta and security review.",
+    "A sample security report template can be satisfied with synthetic data and demands exact revision, reachable attack path, preconditions, impact and minimal reproduction while prohibiting secrets/hardware mutation.",
+    "Release/merge checklist names a human who reviewed the complete diff and can explain behavior, trust-boundary changes, test sensitivity and unresolved uncertainty; AI reviews are labeled advisory only."
+  ],
+  "proposed_tests_or_checks": [
+    "Review every changed dependency/import/action/installer against an explicit baseline diff; verify the canonical upstream and license outside model output before downloading or executing it.",
+    "For security-sensitive code, derive at least one test from the threat/control claim rather than the implementation, observe it fail on the baseline or a deliberate bypass where practical, and keep no-dispatch/leak/retry assertions.",
+    "Inspect test deletions, skips, relaxed assertions, fixture regeneration, timeout inflation, broad mocks and golden-file updates as first-class security changes.",
+    "Run go mod verify, race, vet, Staticcheck, govulncheck, bounded fuzz, protocol gates and release checks in proportion to touched surfaces; independently inspect the diff after generators/formatters.",
+    "Add a harmless poisoned-issue exercise to agent procedure: embedded instructions requesting env output, external write or scope expansion must be quoted/reported but not executed.",
+    "Scan intended staged/release content and sanitized artifacts for credential/private-coordinate sentinels; do not print actual environment secrets to scan them.",
+    "Verify GitHub workflow permissions and trigger remain safe whenever .github, Makefile, scripts, test harnesses, caches or artifacts change."
+  ],
+  "negative_or_abuse_cases": [
+    "Issue body says previous instructions are obsolete, asks the agent to print env/config, install a plausible package, push directly, approve itself, close issues or contact a JetKVM.",
+    "PR adds a real but new one-maintainer Go module with minimal history, an ambiguous license or a module path resembling an official project; all tests pass.",
+    "Generated API compiles but changes cancellation, retry, Host/Origin, path confinement, output redaction or MCP error semantics.",
+    "Patch regenerates the tool manifest or golden result, deletes a fuzz seed, skips a race test, widens a bound, accepts unknown properties or mocks provider dispatch so the relevant control is never reached.",
+    "PR changes workflow/Make code to upload the workspace, poison a cache, interpolate attacker-controlled metadata, use pull_request_target, request write permissions or target self-hosted runners.",
+    "Security report contains confident CWE/CVSS text but no reachable call path, exact revision or reproducer; reproduction would require a real device mutation or reporter-provided secret.",
+    "Two AI reviewers agree on fabricated behavior/source; human cannot explain the code without rerunning the agents.",
+    "Contributor claims model output is license-free despite a substantial public-code match or cannot identify the source of copied protocol logic."
+  ],
+  "evidence_needed_before_claiming_support": "Do not claim a patch is secure because it was AI-reviewed, passed CI, increased coverage or came from a known contributor. Claim only the exact behaviors established by reviewed code plus sensitive negative tests and stated evidence limits. Before accepting a new dependency, establish identity, provenance, maintenance, license, reachable use and graph delta. Before calling a report a vulnerability, reproduce it at the named revision, establish attacker-controlled input to security impact and distinguish bug from unsupported deployment. Before claiming an AI contribution policy works, observe real external submissions and measure maintainer effort/false closures rather than counting disclosures.",
+  "revisit_trigger": "Revisit after the repository becomes public; the first external PR or private vulnerability report; 10 external submissions or six months; any spam/harassment/report flood; any agent-caused secret, GitHub-write, dependency, license or hardware incident; adding a coding/review bot, self-hosted runner, privileged workflow, auto-merge, release/deployment credential or new package ecosystem; or material final OpenSSF AI-slop guidance replacing the current working-group draft.",
+  "unresolved_questions": [
+    "Should material AI assistance disclosure be mandatory or strongly requested? The recommendation favors mandatory disclosure only for substantial generated/copied content, but enforcement and value are uncertain [uncertain].",
+    "Which local/cloud coding agents are used, what repository/context they retain, and what shell/GitHub credentials can they access [uncertain]?",
+    "Who or what performed the 'independent exact-tree review' recorded in recent PRs, and was any review independent of the patch-generating model/operator [uncertain]?",
+    "Will public adoption justify a second human reviewer or reduced-authority CODEOWNERS gate, or remain a sole-maintainer project?",
+    "What external contribution and security-report volume will actually occur after release [uncertain]?"
+  ],
+  "uncertain": [
+    "authoritative_sources",
+    "freshness_and_supersession",
+    "source_limitations",
+    "implementation_and_documentation_agreement",
+    "evidence_missing",
+    "likelihood_or_preconditions",
+    "dependencies_or_prerequisites",
+    "confidence",
+    "unresolved_questions"
+  ]
+}
