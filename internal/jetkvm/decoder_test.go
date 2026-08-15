@@ -71,7 +71,7 @@ func TestFFmpegDecoderRejectsMalformedOutput(t *testing.T) {
 	}
 }
 
-func TestFFmpegDecoderKeepsCleanupWithinCallerDeadline(t *testing.T) {
+func TestFFmpegDecoderBoundsCleanupAfterCallerDeadline(t *testing.T) {
 	directory := t.TempDir()
 	executable := filepath.Join(directory, "ffmpeg-fixture")
 	if err := os.WriteFile(executable, []byte("#!/bin/sh\nsleep 2 &\nwait\n"), 0o700); err != nil {
@@ -90,8 +90,36 @@ func TestFFmpegDecoderKeepsCleanupWithinCallerDeadline(t *testing.T) {
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("error = %v, want deadline exceeded", err)
 	}
-	if elapsed > budget+150*time.Millisecond {
-		t.Fatalf("decode elapsed = %v, want cleanup within %v caller budget", elapsed, budget)
+	if elapsed > budget+ffmpegWaitDelay+150*time.Millisecond {
+		t.Fatalf("decode elapsed = %v, want cleanup within caller budget plus WaitDelay", elapsed)
+	}
+}
+
+func TestFFmpegDecoderMayCompleteBeforeCallerDeadline(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell fixture is Unix-specific")
+	}
+	directory := t.TempDir()
+	pngPath := filepath.Join(directory, "fixture.png")
+	if err := os.WriteFile(pngPath, testPNG(t, 2, 1), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	executable := filepath.Join(directory, "ffmpeg-fixture")
+	if err := os.WriteFile(executable, []byte("#!/bin/sh\nsleep 2.8\n/bin/cat '"+pngPath+"'\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	decoder, err := newFFmpegDecoder(executable, 5*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	decoded, width, height, err := decoder.Decode(ctx, []byte{0, 0, 0, 1, 0x65}, 800, 600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if width != 2 || height != 1 || len(decoded) == 0 {
+		t.Fatalf("decoded=%d bytes %dx%d", len(decoded), width, height)
 	}
 }
 

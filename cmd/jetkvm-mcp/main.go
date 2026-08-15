@@ -103,11 +103,14 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	if err != nil {
 		return err
 	}
+	provider := jetkvm.NewWebRTCProvider(jetkvm.WebRTCProviderOptions{})
 	if options.kind == commandConfigValidate {
+		if _, err := jetkvm.NewManager(loaded.Devices, provider, jetkvm.WithLimits(loaded.Limits)); err != nil {
+			return err
+		}
 		_, err := io.WriteString(stdout, "configuration valid\n")
 		return err
 	}
-	provider := jetkvm.NewWebRTCProvider(jetkvm.WebRTCProviderOptions{})
 	if options.kind == commandDebugRPC {
 		manager, err := jetkvm.NewManager(loaded.Devices, provider, jetkvm.WithLimits(loaded.Limits))
 		if err != nil {

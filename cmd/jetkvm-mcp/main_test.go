@@ -177,6 +177,42 @@ func TestRunConfigValidateIsOfflineAndDoesNotRequireFFmpeg(t *testing.T) {
 	}
 }
 
+func TestRunConfigValidateRejectsManagerInvalidConfiguration(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		config  string
+		wantErr string
+	}{
+		{
+			name: "invalid Wake-on-LAN MAC",
+			config: "devices:\n  lab:\n    url: https://lab.invalid\n" +
+				"    wake_on_lan:\n      server:\n        mac_address: invalid\n",
+			wantErr: `Wake-on-LAN target "server" has invalid MAC address`,
+		},
+		{
+			name: "device names collide after trimming",
+			config: "devices:\n  lab:\n    url: https://lab.invalid\n" +
+				"  ' lab ':\n    url: https://other.invalid\n",
+			wantErr: `duplicate device "lab"`,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			configPath := filepath.Join(t.TempDir(), "config.yaml")
+			if err := os.WriteFile(configPath, []byte(test.config), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			var stdout, stderr bytes.Buffer
+			err := run(context.Background(), []string{"config", "validate", "--config", configPath}, strings.NewReader(""), &stdout, &stderr, nil)
+			if err == nil || !strings.Contains(err.Error(), test.wantErr) {
+				t.Fatalf("error = %v, want substring %q", err, test.wantErr)
+			}
+			if stdout.Len() != 0 || stderr.Len() != 0 {
+				t.Fatalf("stdout=%q stderr=%q", stdout.String(), stderr.String())
+			}
+		})
+	}
+}
+
 func TestRunConfigValidateFailureWritesNoPrivateStreams(t *testing.T) {
 	const sentinel = "PRIVATE-CONFIG-VALUE-SENTINEL-b531"
 	configPath := filepath.Join(t.TempDir(), sentinel+".yaml")

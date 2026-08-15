@@ -113,11 +113,7 @@ func runHelperCommand(command *exec.Cmd) error {
 }
 
 func ffmpegDecodeContext(ctx context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {
-	deadline := time.Now().Add(timeout)
-	if callerDeadline, ok := ctx.Deadline(); ok && callerDeadline.Before(deadline) {
-		deadline = callerDeadline
-	}
-	return context.WithDeadline(ctx, deadline.Add(-ffmpegWaitDelay))
+	return context.WithTimeout(ctx, timeout)
 }
 
 func buildFFmpegArgs(maxWidth, maxHeight int) ([]string, error) {
