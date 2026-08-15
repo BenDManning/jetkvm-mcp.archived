@@ -19,7 +19,8 @@ same compiler before running `make ci-minimum`.
 
 ## Local gate commands
 
-- `make format`: non-mutating bounded `gofmt` comparison.
+- `make format`: non-mutating `gofmt -l` check that fails when Go files require
+  formatting.
 - `make tidy`: non-mutating `go mod tidy -diff` with workspace mode disabled.
 - `make module-verify`: module checksum verification.
 - `make test`, `make race`, `make vet`: repository tests, race detector, and vet.
@@ -33,15 +34,6 @@ same compiler before running `make ci-minimum`.
   harness. `MCP_GATE_SERVER` and `MCP_GATE_DIR` may redirect temporary outputs.
 - `make container-verify`: run the same Buildx amd64/arm64 binary architecture
   checks and multi-platform image build as the container CI lane.
-
-`cmd/jetkvm-ci-check` owns format/tidy checks. Tidy rejects symlinked module
-files, applies a two-minute deadline, and terminates its process group on Unix.
-Its tests intentionally provide an unformatted Go file, a stale `go.mod`,
-symlinked module files, and a timed-out descendant and require every gate to
-fail safely.
-`internal/cipolicy` verifies the workflow-to-Make mapping, both Go lanes,
-analyzer pins, read-only workflow permissions, exactly one `.yml` or `.yaml`
-workflow, container-lane parity, and absence of a coverage percentage policy.
 
 ## Coverage and evidence
 

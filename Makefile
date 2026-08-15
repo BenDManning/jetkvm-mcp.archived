@@ -14,10 +14,10 @@ build:
 	go build -trimpath -o $(BINARY) ./cmd/jetkvm-mcp
 
 format:
-	go run ./cmd/jetkvm-ci-check format
+	test -z "$$(gofmt -l .)"
 
 tidy:
-	go run ./cmd/jetkvm-ci-check tidy
+	GOWORK=off go mod tidy -diff
 
 module-verify:
 	go mod verify
