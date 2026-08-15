@@ -233,9 +233,6 @@ verification scope are documented in [`docs/telemetry.md`](docs/telemetry.md).
 The canonical GitHub Actions/local quality matrix, minimum and release Go
 lanes, analyzer pins, fuzz/protocol gates, and coverage evidence policy are in
 [`docs/ci-quality.md`](docs/ci-quality.md).
-The fixture-only read performance and cleanup baseline, sanitized report schema,
-and separately gated hardware procedure are documented in
-[`docs/performance-baseline.md`](docs/performance-baseline.md).
 
 ```sh
 go test -race ./...

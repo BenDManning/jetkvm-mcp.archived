@@ -123,43 +123,6 @@ func TestFFmpegDecoderMayCompleteBeforeCallerDeadline(t *testing.T) {
 	}
 }
 
-func TestActiveHelperProcessCountTracksRunningDecoder(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("shell fixture is Unix-specific")
-	}
-	directory := t.TempDir()
-	executable := filepath.Join(directory, "ffmpeg-fixture")
-	if err := os.WriteFile(executable, []byte("#!/usr/bin/python3\nimport time\ntime.sleep(30)\n"), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	decoder, err := newFFmpegDecoder(executable, 5*time.Second)
-	if err != nil {
-		t.Fatal(err)
-	}
-	ctx, cancel := context.WithCancel(context.Background())
-	done := make(chan error, 1)
-	go func() {
-		_, _, _, err := decoder.Decode(ctx, []byte{0, 0, 0, 1, 0x65}, 800, 600)
-		done <- err
-	}()
-	deadline := time.After(time.Second)
-	for ActiveHelperProcesses() != 1 {
-		select {
-		case <-deadline:
-			cancel()
-			t.Fatal("running helper was not counted")
-		case <-time.After(time.Millisecond):
-		}
-	}
-	cancel()
-	if err := <-done; !errors.Is(err, context.Canceled) {
-		t.Fatalf("decode error=%v", err)
-	}
-	if count := ActiveHelperProcesses(); count != 0 {
-		t.Fatalf("active helpers after cleanup=%d", count)
-	}
-}
-
 func TestValidateDecodedPNGStopsWhenContextEndsBetweenReads(t *testing.T) {
 	ctx := newCancelOnSecondReadContext()
 

@@ -10,7 +10,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
-	"sync/atomic"
 	"time"
 )
 
@@ -20,17 +19,7 @@ const (
 	ffmpegWaitDelay = 250 * time.Millisecond
 )
 
-var (
-	errDecoderOutputLimit = errors.New("decoder output limit exceeded")
-	activeHelperProcesses atomic.Int64
-)
-
-// ActiveHelperProcesses returns the number of helper commands currently run by
-// the decoder. It is process-local, bounded, and does not inspect host process
-// metadata.
-func ActiveHelperProcesses() int {
-	return int(activeHelperProcesses.Load())
-}
+var errDecoderOutputLimit = errors.New("decoder output limit exceeded")
 
 type ffmpegDecoder struct {
 	executable string
@@ -87,14 +76,7 @@ func (decoder *ffmpegDecoder) Decode(ctx context.Context, annexB []byte, maxWidt
 	command.Stdout = stdout
 	command.Stderr = stderr
 	command.WaitDelay = ffmpegWaitDelay
-	ffmpegStage := startStage(ctx, StageFFmpeg)
-	runErr := runHelperCommand(command)
-	stageErr := runErr
-	if decodeCtx.Err() != nil {
-		stageErr = decodeCtx.Err()
-	}
-	ffmpegStage.Finish(stageErr)
-	if runErr != nil {
+	if err := command.Run(); err != nil {
 		if errors.Is(decodeCtx.Err(), context.Canceled) || errors.Is(decodeCtx.Err(), context.DeadlineExceeded) {
 			return nil, 0, 0, decodeCtx.Err()
 		}
@@ -104,12 +86,6 @@ func (decoder *ffmpegDecoder) Decode(ctx context.Context, annexB []byte, maxWidt
 		return nil, 0, 0, ErrInvalidResponse
 	}
 	return validateDecodedPNG(decodeCtx, stdout.Bytes(), maxWidth, maxHeight)
-}
-
-func runHelperCommand(command *exec.Cmd) error {
-	activeHelperProcesses.Add(1)
-	defer activeHelperProcesses.Add(-1)
-	return command.Run()
 }
 
 func ffmpegDecodeContext(ctx context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {

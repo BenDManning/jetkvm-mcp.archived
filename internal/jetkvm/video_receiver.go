@@ -32,9 +32,7 @@ func newVideoReceiver() *videoReceiver {
 	return &videoReceiver{stream: newH264Stream()}
 }
 
-func (receiver *videoReceiver) Capture(ctx context.Context) (_ []byte, _ time.Time, returnErr error) {
-	videoStage := startStage(ctx, StageVideoWait)
-	defer func() { videoStage.Finish(returnErr) }()
+func (receiver *videoReceiver) Capture(ctx context.Context) ([]byte, time.Time, error) {
 	if receiver == nil {
 		return nil, time.Time{}, ErrSessionClosed
 	}

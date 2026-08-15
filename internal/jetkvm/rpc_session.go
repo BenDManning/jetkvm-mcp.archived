@@ -48,9 +48,7 @@ func newRPCSession(parent context.Context, sender textSender, timeout time.Durat
 	return session
 }
 
-func (session *rpcSession) Call(ctx context.Context, method string, params any, result any) (returnErr error) {
-	rpcStage := startStage(ctx, StageRPC)
-	defer func() { rpcStage.Finish(returnErr) }()
+func (session *rpcSession) Call(ctx context.Context, method string, params any, result any) error {
 	if session == nil || session.sender == nil {
 		return classifyOperationError(ErrSessionClosed, ToolOutcomeNotSent)
 	}
