@@ -46,8 +46,10 @@ func (provider *WebRTCProvider) WithSession(ctx context.Context, device DeviceCo
 	connectCtx, cancel := context.WithTimeout(ctx, provider.options.ConnectTimeout)
 	defer cancel()
 	connectStage := telemetry.BeginStage(ctx, telemetry.StageConnect)
+	setupStage := startStage(ctx, StageSessionSetup)
 	connected, err := provider.connect(connectCtx, device, profile)
 	finishTelemetryStage(connectStage, err)
+	setupStage.Finish(err)
 	if err != nil {
 		return err
 	}
@@ -83,11 +85,14 @@ func (provider *WebRTCProvider) connect(ctx context.Context, device DeviceConfig
 		}
 	}()
 	authStage := telemetry.BeginStage(ctx, telemetry.StageAuth)
+	performanceAuthStage := startStage(ctx, StageAuth)
 	if _, err := authenticate(ctx, httpClient, device.BaseURL, device.Password); err != nil {
 		finishTelemetryStage(authStage, err)
+		performanceAuthStage.Finish(err)
 		return nil, err
 	}
 	finishTelemetryStage(authStage, nil)
+	performanceAuthStage.Finish(nil)
 
 	connectedCtx, cancel := context.WithCancel(context.Background())
 	connected := &connectedSession{
@@ -136,12 +141,14 @@ func (provider *WebRTCProvider) connect(ctx context.Context, device DeviceConfig
 		signalingURL.Scheme = "ws"
 	}
 	signalingStage := telemetry.BeginStage(ctx, telemetry.StageSignaling)
+	performanceSignalingStage := startStage(ctx, StageSignaling)
 	connection, response, err := websocket.Dial(ctx, signalingURL.String(), &websocket.DialOptions{HTTPClient: httpClient})
 	if response != nil && response.Body != nil {
 		_ = response.Body.Close()
 	}
 	if err != nil {
 		finishTelemetryStage(signalingStage, err)
+		performanceSignalingStage.Finish(err)
 		return nil, fmt.Errorf("%w: signaling", ErrDeviceUnreachable)
 	}
 	connection.SetReadLimit(maxSignalingFrame)
@@ -159,12 +166,14 @@ func (provider *WebRTCProvider) connect(ctx context.Context, device DeviceConfig
 	if err != nil || peer.SetLocalDescription(offer) != nil {
 		err = fmt.Errorf("%w: local offer", ErrProtocol)
 		finishTelemetryStage(signalingStage, err)
+		performanceSignalingStage.Finish(err)
 		return nil, err
 	}
 	envelope, err := newOfferEnvelope(offer)
 	if err != nil || connected.signal.write(ctx, envelope) != nil {
 		err = fmt.Errorf("%w: signaling offer", ErrDeviceUnreachable)
 		finishTelemetryStage(signalingStage, err)
+		performanceSignalingStage.Finish(err)
 		return nil, err
 	}
 	connected.pumps.Add(1)
@@ -173,13 +182,18 @@ func (provider *WebRTCProvider) connect(ctx context.Context, device DeviceConfig
 		connected.readSignaling()
 	}()
 	finishTelemetryStage(signalingStage, nil)
+	performanceSignalingStage.Finish(nil)
 
+	dataStage := startStage(ctx, StageDataReady)
 	select {
 	case <-ready:
+		dataStage.Finish(nil)
 		return connected, nil
 	case <-ctx.Done():
+		dataStage.Finish(ctx.Err())
 		return nil, ctx.Err()
 	case <-connectedCtx.Done():
+		dataStage.Finish(ErrSessionClosed)
 		return nil, ErrSessionClosed
 	}
 }
@@ -277,6 +291,8 @@ func (session *connectedSession) CloseContext(ctx context.Context) {
 		ctx = context.Background()
 	}
 	session.closeOnce.Do(func() {
+		cleanupStage := startStage(ctx, StageSessionCleanup)
+		defer func() { cleanupStage.Finish(ctx.Err()) }()
 		session.pumpMu.Lock()
 		session.closed = true
 		session.cancel()

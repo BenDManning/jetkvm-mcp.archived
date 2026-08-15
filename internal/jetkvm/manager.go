@@ -137,6 +137,20 @@ type Manager struct {
 	mutations  map[string]chan struct{}
 }
 
+// ResourceSnapshot reports bounded process-local admission occupancy without
+// exposing devices, operations, or other request data.
+type ResourceSnapshot struct {
+	ActiveSessions int
+	ActiveDecoders int
+}
+
+func (manager *Manager) ResourceSnapshot() ResourceSnapshot {
+	if manager == nil {
+		return ResourceSnapshot{}
+	}
+	return ResourceSnapshot{ActiveSessions: len(manager.sessions), ActiveDecoders: len(manager.decoders)}
+}
+
 func NewManager(devices []DeviceConfig, provider SessionProvider, options ...ManagerOption) (*Manager, error) {
 	if provider == nil {
 		return nil, errors.New("session provider is required")
