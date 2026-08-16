@@ -116,7 +116,18 @@ func (device *virtualMediaRecordingDevice) VirtualMedia(_ context.Context, name 
 	device.mu.Lock()
 	defer device.mu.Unlock()
 	device.calls = append(device.calls, virtualMediaCall{device: name, request: request})
-	return VirtualMediaResult{Device: name, Operation: request.Operation, Status: "completed"}, device.err
+	status := ResultStatusCompleted
+	result := VirtualMediaResult{Device: name, Operation: request.Operation, Status: status}
+	if request.Operation == VirtualMediaStatus {
+		result.Status = ResultStatusObserved
+	} else if request.Operation == VirtualMediaMountURL {
+		result.Mounted, result.SourceType, result.Mode = true, VirtualMediaSourceHTTP, request.Mode
+	} else if request.Operation == VirtualMediaMountFile {
+		result.Mounted, result.SourceType, result.Mode = true, VirtualMediaSourceStorage, request.Mode
+	} else if request.Operation == VirtualMediaUpload {
+		result.SourceType, result.Mode = VirtualMediaSourceStorage, "read_only"
+	}
+	return result, device.err
 }
 
 func (device *virtualMediaRecordingDevice) recorded() []virtualMediaCall {

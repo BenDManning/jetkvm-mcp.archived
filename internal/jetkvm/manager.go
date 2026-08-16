@@ -268,7 +268,7 @@ func (manager *Manager) Status(ctx context.Context, name string) (mcpserver.Stat
 				System      string `json:"systemVersion"`
 			}
 			probeErr := session.Call(ctx, methodLocalVersion, nil, &version)
-			if err := statusProbeResult(ctx, &status, probeErr, "version unavailable"); err != nil {
+			if err := statusProbeResult(ctx, &status, probeErr, mcpserver.StatusWarningVersionUnavailable); err != nil {
 				return err
 			}
 			if probeErr == nil {
@@ -276,18 +276,18 @@ func (manager *Manager) Status(ctx context.Context, name string) (mcpserver.Stat
 			}
 
 			probeErr = session.Call(ctx, methodActiveExtension, nil, &status.Extension)
-			if err := statusProbeResult(ctx, &status, probeErr, "active extension unavailable"); err != nil {
+			if err := statusProbeResult(ctx, &status, probeErr, mcpserver.StatusWarningActiveExtensionUnavailable); err != nil {
 				return err
 			}
 
 			var media *firmwareVirtualMediaState
 			probeErr = session.Call(ctx, methodVirtualMediaState, nil, &media)
-			if err := statusProbeResult(ctx, &status, probeErr, "virtual media unavailable"); err != nil {
+			if err := statusProbeResult(ctx, &status, probeErr, mcpserver.StatusWarningVirtualMediaUnavailable); err != nil {
 				return err
 			}
 			if probeErr == nil {
 				if projected, projectErr := publicVirtualMediaState(media); projectErr != nil {
-					status.Warnings = append(status.Warnings, "virtual media unavailable")
+					status.Warnings = append(status.Warnings, mcpserver.StatusWarningVirtualMediaUnavailable)
 				} else {
 					status.VirtualMedia = projected
 				}
@@ -300,7 +300,7 @@ func (manager *Manager) Status(ctx context.Context, name string) (mcpserver.Stat
 				FPS    int   `json:"fps"`
 			}
 			probeErr = session.Call(ctx, methodVideoState, nil, &video)
-			if err := statusProbeResult(ctx, &status, probeErr, "video unavailable"); err != nil {
+			if err := statusProbeResult(ctx, &status, probeErr, mcpserver.StatusWarningVideoUnavailable); err != nil {
 				return err
 			}
 			if probeErr == nil {
@@ -308,7 +308,7 @@ func (manager *Manager) Status(ctx context.Context, name string) (mcpserver.Stat
 			}
 
 			probeErr = session.Call(ctx, methodUSBState, nil, &status.USBState)
-			if err := statusProbeResult(ctx, &status, probeErr, "USB unavailable"); err != nil {
+			if err := statusProbeResult(ctx, &status, probeErr, mcpserver.StatusWarningUSBUnavailable); err != nil {
 				return err
 			}
 			if probeErr == nil {
@@ -322,7 +322,7 @@ func (manager *Manager) Status(ctx context.Context, name string) (mcpserver.Stat
 					Power *bool `json:"power"`
 				}
 				probeErr = session.Call(ctx, methodATXState, nil, &atx)
-				if err := statusProbeResult(ctx, &status, probeErr, "ATX state unavailable"); err != nil {
+				if err := statusProbeResult(ctx, &status, probeErr, mcpserver.StatusWarningATXUnavailable); err != nil {
 					return err
 				}
 				if probeErr == nil {
@@ -334,7 +334,7 @@ func (manager *Manager) Status(ctx context.Context, name string) (mcpserver.Stat
 					Voltage float64 `json:"voltage"`
 				}
 				probeErr = session.Call(ctx, methodDCPowerState, nil, &dc)
-				if err := statusProbeResult(ctx, &status, probeErr, "DC state unavailable"); err != nil {
+				if err := statusProbeResult(ctx, &status, probeErr, mcpserver.StatusWarningDCUnavailable); err != nil {
 					return err
 				}
 				if probeErr == nil {
@@ -350,7 +350,7 @@ func (manager *Manager) Status(ctx context.Context, name string) (mcpserver.Stat
 	return status, nil
 }
 
-func statusProbeResult(ctx context.Context, status *mcpserver.Status, probeErr error, warning string) error {
+func statusProbeResult(ctx context.Context, status *mcpserver.Status, probeErr error, warning mcpserver.StatusWarning) error {
 	if ctxErr := ctx.Err(); ctxErr != nil {
 		if probeErr != nil && errors.Is(probeErr, ctxErr) {
 			return probeErr
@@ -379,7 +379,7 @@ func (manager *Manager) Power(ctx context.Context, name string, action mcpserver
 	}); err != nil {
 		return mcpserver.PowerResult{}, err
 	}
-	return mcpserver.PowerResult{Device: device.Name, Action: action, Target: targetName, Status: "completed"}, nil
+	return mcpserver.PowerResult{Device: device.Name, Action: action, Target: targetName, Status: mcpserver.ResultStatusCompleted}, nil
 }
 
 func (manager *Manager) withSession(ctx context.Context, device DeviceConfig, profile SessionProfile, operation func(Session) error) error {

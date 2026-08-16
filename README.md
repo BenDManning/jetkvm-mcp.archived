@@ -219,6 +219,12 @@ Tool annotations are client-facing consequence hints, not authorization. All
 tool execution failures use the structured `code`, `outcome`, and `retryable`
 taxonomy. `outcome: unknown` means a mutation may have reached the appliance or
 host: **Do not blindly retry** it; inspect status or host state first.
+Device and Wake-on-LAN target aliases contain 1–128 Unicode code points after
+trimming. Keyboard keys contain 1–32 code points, and modifier lists contain at
+most one each of `ctrl`, `alt`, `shift`, and `meta`. Rejected inputs return a
+value-free `invalid_input` result. Every success includes schema-validated
+structured content; screen capture returns the PNG first and safe JSON metadata
+second without duplicating image bytes in text.
 
 | Tool | Arguments and consequence | Retry |
 | --- | --- | --- |

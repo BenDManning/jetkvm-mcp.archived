@@ -192,16 +192,16 @@ func TestManagerStatusKeepsOrdinaryProbeFailuresAsWarnings(t *testing.T) {
 		name         string
 		extension    string
 		failedMethod string
-		warning      string
+		warning      mcpserver.StatusWarning
 		wantMethods  []string
 	}{
-		{name: "version", extension: "atx-power", failedMethod: methodLocalVersion, warning: "version unavailable", wantMethods: []string{methodPing, methodLocalVersion, methodActiveExtension, methodVirtualMediaState, methodVideoState, methodUSBState, methodATXState}},
-		{name: "active extension", extension: "atx-power", failedMethod: methodActiveExtension, warning: "active extension unavailable", wantMethods: []string{methodPing, methodLocalVersion, methodActiveExtension, methodVirtualMediaState, methodVideoState, methodUSBState}},
-		{name: "virtual media", extension: "atx-power", failedMethod: methodVirtualMediaState, warning: "virtual media unavailable", wantMethods: []string{methodPing, methodLocalVersion, methodActiveExtension, methodVirtualMediaState, methodVideoState, methodUSBState, methodATXState}},
-		{name: "video", extension: "atx-power", failedMethod: methodVideoState, warning: "video unavailable", wantMethods: []string{methodPing, methodLocalVersion, methodActiveExtension, methodVirtualMediaState, methodVideoState, methodUSBState, methodATXState}},
-		{name: "USB", extension: "atx-power", failedMethod: methodUSBState, warning: "USB unavailable", wantMethods: []string{methodPing, methodLocalVersion, methodActiveExtension, methodVirtualMediaState, methodVideoState, methodUSBState, methodATXState}},
-		{name: "ATX", extension: "atx-power", failedMethod: methodATXState, warning: "ATX state unavailable", wantMethods: []string{methodPing, methodLocalVersion, methodActiveExtension, methodVirtualMediaState, methodVideoState, methodUSBState, methodATXState}},
-		{name: "DC", extension: "dc-power", failedMethod: methodDCPowerState, warning: "DC state unavailable", wantMethods: []string{methodPing, methodLocalVersion, methodActiveExtension, methodVirtualMediaState, methodVideoState, methodUSBState, methodDCPowerState}},
+		{name: "version", extension: "atx-power", failedMethod: methodLocalVersion, warning: mcpserver.StatusWarningVersionUnavailable, wantMethods: []string{methodPing, methodLocalVersion, methodActiveExtension, methodVirtualMediaState, methodVideoState, methodUSBState, methodATXState}},
+		{name: "active extension", extension: "atx-power", failedMethod: methodActiveExtension, warning: mcpserver.StatusWarningActiveExtensionUnavailable, wantMethods: []string{methodPing, methodLocalVersion, methodActiveExtension, methodVirtualMediaState, methodVideoState, methodUSBState}},
+		{name: "virtual media", extension: "atx-power", failedMethod: methodVirtualMediaState, warning: mcpserver.StatusWarningVirtualMediaUnavailable, wantMethods: []string{methodPing, methodLocalVersion, methodActiveExtension, methodVirtualMediaState, methodVideoState, methodUSBState, methodATXState}},
+		{name: "video", extension: "atx-power", failedMethod: methodVideoState, warning: mcpserver.StatusWarningVideoUnavailable, wantMethods: []string{methodPing, methodLocalVersion, methodActiveExtension, methodVirtualMediaState, methodVideoState, methodUSBState, methodATXState}},
+		{name: "USB", extension: "atx-power", failedMethod: methodUSBState, warning: mcpserver.StatusWarningUSBUnavailable, wantMethods: []string{methodPing, methodLocalVersion, methodActiveExtension, methodVirtualMediaState, methodVideoState, methodUSBState, methodATXState}},
+		{name: "ATX", extension: "atx-power", failedMethod: methodATXState, warning: mcpserver.StatusWarningATXUnavailable, wantMethods: []string{methodPing, methodLocalVersion, methodActiveExtension, methodVirtualMediaState, methodVideoState, methodUSBState, methodATXState}},
+		{name: "DC", extension: "dc-power", failedMethod: methodDCPowerState, warning: mcpserver.StatusWarningDCUnavailable, wantMethods: []string{methodPing, methodLocalVersion, methodActiveExtension, methodVirtualMediaState, methodVideoState, methodUSBState, methodDCPowerState}},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -214,7 +214,7 @@ func TestManagerStatusKeepsOrdinaryProbeFailuresAsWarnings(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if !status.Connected || !reflect.DeepEqual(status.Warnings, []string{test.warning}) {
+			if !status.Connected || !reflect.DeepEqual(status.Warnings, []mcpserver.StatusWarning{test.warning}) {
 				t.Fatalf("status = %+v, want connected status with warning %q", status, test.warning)
 			}
 			if got := calledMethods(session.calls); !reflect.DeepEqual(got, test.wantMethods) {
@@ -236,7 +236,7 @@ func TestManagerStatusKeepsInternalRequestTimeoutAsWarning(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !status.Connected || !reflect.DeepEqual(status.Warnings, []string{"video unavailable"}) {
+	if !status.Connected || !reflect.DeepEqual(status.Warnings, []mcpserver.StatusWarning{mcpserver.StatusWarningVideoUnavailable}) {
 		t.Fatalf("status = %+v, want connected partial status with video warning", status)
 	}
 	wantMethods := []string{methodPing, methodLocalVersion, methodActiveExtension, methodVirtualMediaState, methodVideoState, methodUSBState, methodATXState}

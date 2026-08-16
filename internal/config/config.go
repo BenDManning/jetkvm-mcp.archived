@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/BenDManning/jetkvm-mcp/internal/httporigin"
+	"github.com/BenDManning/jetkvm-mcp/internal/identifier"
 	"github.com/BenDManning/jetkvm-mcp/internal/jetkvm"
 	"gopkg.in/yaml.v3"
 )
@@ -118,7 +119,16 @@ func Load(path string, lookup LookupEnvironment) (Runtime, error) {
 	}
 	sort.Strings(names)
 	runtime := Runtime{Devices: make([]jetkvm.DeviceConfig, 0, len(names)), Limits: limits}
+	seenDeviceNames := make(map[string]struct{}, len(names))
 	for _, name := range names {
+		normalizedName, ok := identifier.Normalize(name)
+		if !ok {
+			return Runtime{}, fmt.Errorf("device alias must contain 1 through %d Unicode code points", identifier.MaxCodePoints)
+		}
+		if _, duplicate := seenDeviceNames[normalizedName]; duplicate {
+			return Runtime{}, errors.New("device aliases must be unique after trimming")
+		}
+		seenDeviceNames[normalizedName] = struct{}{}
 		configured := source.Devices[name]
 		rawURL := strings.TrimSpace(configured.URL)
 		parsed, err := url.Parse(rawURL)
@@ -157,12 +167,19 @@ func Load(path string, lookup LookupEnvironment) (Runtime, error) {
 		}
 		wakeTargets := make(map[string]jetkvm.WakeOnLANTarget, len(configured.WakeOnLAN))
 		for targetName, target := range configured.WakeOnLAN {
-			wakeTargets[targetName] = jetkvm.WakeOnLANTarget{
+			normalizedTarget, ok := identifier.Normalize(targetName)
+			if !ok {
+				return Runtime{}, fmt.Errorf("Wake-on-LAN target alias must contain 1 through %d Unicode code points", identifier.MaxCodePoints)
+			}
+			if _, duplicate := wakeTargets[normalizedTarget]; duplicate {
+				return Runtime{}, errors.New("Wake-on-LAN target aliases must be unique after trimming")
+			}
+			wakeTargets[normalizedTarget] = jetkvm.WakeOnLANTarget{
 				MACAddress: strings.TrimSpace(target.MACAddress), BroadcastIP: strings.TrimSpace(target.BroadcastIP),
 			}
 		}
 		runtime.Devices = append(runtime.Devices, jetkvm.DeviceConfig{
-			Name: strings.TrimSpace(name), BaseURL: *parsed, Password: password,
+			Name: normalizedName, BaseURL: *parsed, Password: password,
 			InsecureSkipVerify: configured.InsecureSkipVerify, MediaDirectory: mediaDirectory,
 			MediaURLAllowedOrigins: mediaOrigins, WakeOnLAN: wakeTargets,
 		})

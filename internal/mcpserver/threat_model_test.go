@@ -110,7 +110,7 @@ func TestThreatModelThreatToControlTraceability(t *testing.T) {
 	}
 }
 
-func TestThreatModelAccountsForSchemaErrorsEchoingClientArguments(t *testing.T) {
+func TestThreatModelRequiresValueFreeSchemaErrors(t *testing.T) {
 	const privateArgument = "JETKVM-PRIVATE-ARGUMENT-7eea7c9f"
 	serverTransport, clientTransport := mcp.NewInMemoryTransports()
 	serverSession, err := New(&recordingDevice{}, "test").Connect(context.Background(), serverTransport, nil)
@@ -138,11 +138,11 @@ func TestThreatModelAccountsForSchemaErrorsEchoingClientArguments(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !result.IsError || !bytes.Contains(content, []byte(privateArgument)) {
-		t.Fatalf("schema rejection no longer echoes the rejected argument: %#v", result)
+	if !result.IsError || bytes.Contains(content, []byte(privateArgument)) {
+		t.Fatalf("schema rejection reflected the rejected argument: %#v", result)
 	}
-	if !strings.Contains(readThreatModel(t), "SDK input-schema failures can echo rejected client-supplied values") {
-		t.Fatal("threat model does not classify client-supplied values echoed by SDK schema errors")
+	if !strings.Contains(readThreatModel(t), "All MCP input-schema failures return the same value-free") {
+		t.Fatal("threat model does not document value-free MCP schema failures")
 	}
 }
 

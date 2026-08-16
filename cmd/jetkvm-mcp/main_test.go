@@ -193,7 +193,7 @@ func TestRunConfigValidateRejectsManagerInvalidConfiguration(t *testing.T) {
 			name: "device names collide after trimming",
 			config: "devices:\n  lab:\n    url: https://lab.invalid\n" +
 				"  ' lab ':\n    url: https://other.invalid\n",
-			wantErr: `duplicate device "lab"`,
+			wantErr: "device aliases must be unique after trimming",
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {

@@ -1,12 +1,51 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
 )
+
+func TestLoadAppliesUnicodeIdentifierBoundsAfterTrimming(t *testing.T) {
+	boundaryAlias := strings.Repeat("界", 128)
+	boundaryTarget := strings.Repeat("機", 128)
+	loaded, err := Load(writeConfig(t, fmt.Sprintf(`
+devices:
+  ' %s ':
+    url: https://lab.invalid
+    wake_on_lan:
+      ' %s ':
+        mac_address: "02:00:00:00:00:01"
+`, boundaryAlias, boundaryTarget)), func(string) (string, bool) { return "", false })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(loaded.Devices) != 1 || loaded.Devices[0].Name != boundaryAlias {
+		t.Fatalf("device aliases = %#v", loaded.Devices)
+	}
+	if _, ok := loaded.Devices[0].WakeOnLAN[boundaryTarget]; !ok {
+		t.Fatalf("Wake-on-LAN targets = %#v", loaded.Devices[0].WakeOnLAN)
+	}
+
+	for _, test := range []struct {
+		name string
+		yaml string
+	}{
+		{name: "empty alias", yaml: "devices:\n  '   ':\n    url: https://lab.invalid\n"},
+		{name: "overlong alias", yaml: fmt.Sprintf("devices:\n  '%s':\n    url: https://lab.invalid\n", strings.Repeat("界", 129))},
+		{name: "empty target", yaml: "devices:\n  lab:\n    url: https://lab.invalid\n    wake_on_lan:\n      '   ':\n        mac_address: '02:00:00:00:00:01'\n"},
+		{name: "overlong target", yaml: fmt.Sprintf("devices:\n  lab:\n    url: https://lab.invalid\n    wake_on_lan:\n      '%s':\n        mac_address: '02:00:00:00:00:01'\n", strings.Repeat("機", 129))},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if _, err := Load(writeConfig(t, test.yaml), func(string) (string, bool) { return "", false }); err == nil {
+				t.Fatal("Load accepted an out-of-bound identifier")
+			}
+		})
+	}
+}
 
 func TestLoadResolvesEnvironmentWithoutInlineSecrets(t *testing.T) {
 	path := writeConfig(t, `

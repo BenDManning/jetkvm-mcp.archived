@@ -76,7 +76,7 @@ func (manager *Manager) Keyboard(ctx context.Context, name string, request mcpse
 	if err != nil {
 		return mcpserver.KeyboardResult{}, err
 	}
-	return mcpserver.KeyboardResult{Device: device.Name, Operation: request.Operation, Status: "completed"}, nil
+	return mcpserver.KeyboardResult{Device: device.Name, Operation: request.Operation, Status: mcpserver.ResultStatusCompleted}, nil
 }
 
 func (manager *Manager) Mouse(ctx context.Context, name string, request mcpserver.MouseRequest) (mcpserver.MouseResult, error) {
@@ -113,7 +113,7 @@ func (manager *Manager) Mouse(ctx context.Context, name string, request mcpserve
 	if err != nil {
 		return mcpserver.MouseResult{}, err
 	}
-	return mcpserver.MouseResult{Device: device.Name, Operation: request.Operation, Status: "completed"}, nil
+	return mcpserver.MouseResult{Device: device.Name, Operation: request.Operation, Status: mcpserver.ResultStatusCompleted}, nil
 }
 
 func mutationSequenceError(err error, priorDispatch bool) error {

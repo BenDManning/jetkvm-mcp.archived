@@ -87,7 +87,7 @@ func (manager *Manager) virtualMedia(ctx context.Context, device DeviceConfig, r
 		if err != nil {
 			return mcpserver.VirtualMediaResult{}, err
 		}
-		return mcpserver.VirtualMediaResult{Device: device.Name, Operation: request.Operation, Mounted: true, SourceType: mcpserver.VirtualMediaSourceHTTP, Mode: publicMode, Status: "completed"}, nil
+		return mcpserver.VirtualMediaResult{Device: device.Name, Operation: request.Operation, Mounted: true, SourceType: mcpserver.VirtualMediaSourceHTTP, Mode: publicMode, Status: mcpserver.ResultStatusCompleted}, nil
 	case mcpserver.VirtualMediaUnmount:
 		err := manager.withSession(ctx, device, SessionProfileData, func(session Session) error {
 			return session.Call(ctx, "unmountImage", nil, nil)
@@ -95,7 +95,7 @@ func (manager *Manager) virtualMedia(ctx context.Context, device DeviceConfig, r
 		if err != nil {
 			return mcpserver.VirtualMediaResult{}, err
 		}
-		return mcpserver.VirtualMediaResult{Device: device.Name, Operation: request.Operation, Status: "completed"}, nil
+		return mcpserver.VirtualMediaResult{Device: device.Name, Operation: request.Operation, Status: mcpserver.ResultStatusCompleted}, nil
 	case mcpserver.VirtualMediaUpload, mcpserver.VirtualMediaMountFile:
 		return manager.uploadLocalMedia(ctx, device, request, mode)
 	default:
@@ -118,7 +118,7 @@ func (manager *Manager) virtualMediaStatus(ctx context.Context, device DeviceCon
 	return mcpserver.VirtualMediaResult{
 		Device: device.Name, Operation: mcpserver.VirtualMediaStatus,
 		Mounted: projected.Mounted, SourceType: projected.SourceType,
-		Mode: projected.Mode, Status: "observed",
+		Mode: projected.Mode, Status: mcpserver.ResultStatusObserved,
 	}, nil
 }
 
@@ -203,7 +203,7 @@ func (manager *Manager) uploadLocalMedia(ctx context.Context, device DeviceConfi
 	}
 	return mcpserver.VirtualMediaResult{
 		Device: device.Name, Operation: request.Operation, Mounted: request.Operation == mcpserver.VirtualMediaMountFile,
-		SourceType: mcpserver.VirtualMediaSourceStorage, Mode: publicMode, Status: "completed",
+		SourceType: mcpserver.VirtualMediaSourceStorage, Mode: publicMode, Status: mcpserver.ResultStatusCompleted,
 	}, nil
 }
 

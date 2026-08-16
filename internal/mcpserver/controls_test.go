@@ -129,12 +129,16 @@ func TestMalformedControlCallsAreSchemaRejectedBeforeProviderDispatch(t *testing
 			if err != nil || result == nil || !result.IsError {
 				t.Fatalf("CallTool = %#v, %v", result, err)
 			}
+			failure := decodeToolError(t, result)
+			if failure.Code != "invalid_input" || failure.Outcome != "not_sent" || failure.Retryable {
+				t.Fatalf("schema failure = %+v", failure)
+			}
 			content, err := json.Marshal(result.Content)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if !strings.Contains(string(content), "validating \\\"arguments\\\"") || strings.Contains(string(content), "private-argument") {
-				t.Fatalf("schema error content = %s", content)
+			if strings.Contains(string(content), "private-argument") {
+				t.Fatalf("schema error reflected private input: %s", content)
 			}
 		})
 	}

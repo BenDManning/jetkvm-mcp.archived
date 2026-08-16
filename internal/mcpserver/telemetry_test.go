@@ -52,7 +52,7 @@ type privacyTelemetryDevice struct {
 }
 
 func (*privacyTelemetryDevice) Status(context.Context, string) (Status, error) {
-	return Status{Device: "PRIVATE-device", Application: "PRIVATE-firmware", Warnings: []string{"PRIVATE-raw-config-token"}}, nil
+	return Status{Device: "PRIVATE-device", Application: "PRIVATE-firmware", Warnings: []StatusWarning{StatusWarningVideoUnavailable}}, nil
 }
 
 func (*privacyTelemetryDevice) CaptureScreen(context.Context, string, CaptureRequest) (CaptureResult, error) {

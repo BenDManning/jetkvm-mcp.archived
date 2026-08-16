@@ -40,6 +40,8 @@
         "properties": {
           "device": {
             "description": "configured JetKVM device name whose host display will be captured",
+            "maxLength": 128,
+            "minLength": 1,
             "type": "string"
           },
           "max_height": {
@@ -73,18 +75,26 @@
           },
           "height": {
             "description": "private PNG height in pixels",
+            "maximum": 2160,
+            "minimum": 1,
             "type": "integer"
           },
           "mimeType": {
             "description": "private PNG image MIME type",
+            "enum": [
+              "image/png"
+            ],
             "type": "string"
           },
           "sizeBytes": {
             "description": "private PNG byte count",
+            "minimum": 1,
             "type": "integer"
           },
           "width": {
             "description": "private PNG width in pixels",
+            "maximum": 3840,
+            "minimum": 1,
             "type": "integer"
           }
         },
@@ -116,6 +126,8 @@
         "properties": {
           "device": {
             "description": "configured JetKVM device name",
+            "maxLength": 128,
+            "minLength": 1,
             "type": "string"
           }
         },
@@ -129,6 +141,9 @@
         "properties": {
           "action": {
             "description": "submitted power or wake action",
+            "enum": [
+              "force_host_power_off"
+            ],
             "type": "string"
           },
           "device": {
@@ -137,6 +152,9 @@
           },
           "status": {
             "description": "completed means the appliance RPC returned, not independent physical-state proof",
+            "enum": [
+              "completed"
+            ],
             "type": "string"
           },
           "target": {
@@ -169,6 +187,8 @@
         "properties": {
           "device": {
             "description": "configured JetKVM device name",
+            "maxLength": 128,
+            "minLength": 1,
             "type": "string"
           }
         },
@@ -281,6 +301,15 @@
           "warnings": {
             "description": "private appliance warnings when reported",
             "items": {
+              "enum": [
+                "version unavailable",
+                "active extension unavailable",
+                "virtual media unavailable",
+                "video unavailable",
+                "USB unavailable",
+                "ATX state unavailable",
+                "DC state unavailable"
+              ],
               "type": "string"
             },
             "type": [
@@ -313,6 +342,8 @@
         "properties": {
           "device": {
             "description": "configured JetKVM device name",
+            "maxLength": 128,
+            "minLength": 1,
             "type": "string"
           }
         },
@@ -343,11 +374,7 @@
           "operation": {
             "description": "submitted or observed virtual-media operation",
             "enum": [
-              "status",
-              "mount_url",
-              "mount_file",
-              "unmount",
-              "upload"
+              "status"
             ],
             "type": "string"
           },
@@ -362,8 +389,7 @@
           "status": {
             "description": "observed for status, completed for an acknowledged mutation; neither independently proves final device state",
             "enum": [
-              "observed",
-              "completed"
+              "observed"
             ],
             "type": "string"
           }
@@ -443,10 +469,13 @@
         "properties": {
           "device": {
             "description": "configured JetKVM device name whose attached host receives HID input",
+            "maxLength": 128,
+            "minLength": 1,
             "type": "string"
           },
           "key": {
             "description": "named key or one printable character for press_key; this host-control intent is private operational data",
+            "maxLength": 32,
             "minLength": 1,
             "pattern": "[!-~]",
             "type": "string"
@@ -462,10 +491,12 @@
               ],
               "type": "string"
             },
+            "maxItems": 4,
             "type": [
               "null",
               "array"
-            ]
+            ],
+            "uniqueItems": true
           },
           "operation": {
             "description": "HID operation: type_text or press_key",
@@ -498,10 +529,17 @@
           },
           "operation": {
             "description": "submitted HID keyboard operation, not typed text",
+            "enum": [
+              "type_text",
+              "press_key"
+            ],
             "type": "string"
           },
           "status": {
             "description": "completed means the HID RPC returned, not independent host-state proof",
+            "enum": [
+              "completed"
+            ],
             "type": "string"
           }
         },
@@ -606,6 +644,8 @@
         "properties": {
           "device": {
             "description": "configured JetKVM device name with a media directory",
+            "maxLength": 128,
+            "minLength": 1,
             "type": "string"
           },
           "mode": {
@@ -645,24 +685,20 @@
             "type": "string"
           },
           "mounted": {
+            "const": true,
             "description": "reported mount state",
             "type": "boolean"
           },
           "operation": {
             "description": "submitted or observed virtual-media operation",
             "enum": [
-              "status",
-              "mount_url",
-              "mount_file",
-              "unmount",
-              "upload"
+              "mount_file"
             ],
             "type": "string"
           },
           "sourceType": {
             "description": "redacted media source class; never a URL, path, or filename",
             "enum": [
-              "http",
               "storage"
             ],
             "type": "string"
@@ -670,7 +706,6 @@
           "status": {
             "description": "observed for status, completed for an acknowledged mutation; neither independently proves final device state",
             "enum": [
-              "observed",
               "completed"
             ],
             "type": "string"
@@ -702,6 +737,8 @@
         "properties": {
           "device": {
             "description": "configured JetKVM device name with an allowed media URL origin",
+            "maxLength": 128,
+            "minLength": 1,
             "type": "string"
           },
           "mode": {
@@ -741,32 +778,27 @@
             "type": "string"
           },
           "mounted": {
+            "const": true,
             "description": "reported mount state",
             "type": "boolean"
           },
           "operation": {
             "description": "submitted or observed virtual-media operation",
             "enum": [
-              "status",
-              "mount_url",
-              "mount_file",
-              "unmount",
-              "upload"
+              "mount_url"
             ],
             "type": "string"
           },
           "sourceType": {
             "description": "redacted media source class; never a URL, path, or filename",
             "enum": [
-              "http",
-              "storage"
+              "http"
             ],
             "type": "string"
           },
           "status": {
             "description": "observed for status, completed for an acknowledged mutation; neither independently proves final device state",
             "enum": [
-              "observed",
               "completed"
             ],
             "type": "string"
@@ -1005,6 +1037,8 @@
           },
           "device": {
             "description": "configured JetKVM device name whose attached host receives HID input",
+            "maxLength": 128,
+            "minLength": 1,
             "type": "string"
           },
           "dx": {
@@ -1069,10 +1103,19 @@
           },
           "operation": {
             "description": "submitted HID mouse operation",
+            "enum": [
+              "move_absolute",
+              "move_relative",
+              "click",
+              "scroll"
+            ],
             "type": "string"
           },
           "status": {
             "description": "completed means the HID RPC returned, not independent host-state proof",
+            "enum": [
+              "completed"
+            ],
             "type": "string"
           }
         },
@@ -1101,6 +1144,8 @@
         "properties": {
           "device": {
             "description": "configured JetKVM device name",
+            "maxLength": 128,
+            "minLength": 1,
             "type": "string"
           }
         },
@@ -1114,6 +1159,9 @@
         "properties": {
           "action": {
             "description": "submitted power or wake action",
+            "enum": [
+              "press_host_power_button"
+            ],
             "type": "string"
           },
           "device": {
@@ -1122,6 +1170,9 @@
           },
           "status": {
             "description": "completed means the appliance RPC returned, not independent physical-state proof",
+            "enum": [
+              "completed"
+            ],
             "type": "string"
           },
           "target": {
@@ -1154,6 +1205,8 @@
         "properties": {
           "device": {
             "description": "configured JetKVM device name",
+            "maxLength": 128,
+            "minLength": 1,
             "type": "string"
           }
         },
@@ -1167,6 +1220,9 @@
         "properties": {
           "action": {
             "description": "submitted power or wake action",
+            "enum": [
+              "press_host_reset_button"
+            ],
             "type": "string"
           },
           "device": {
@@ -1175,6 +1231,9 @@
           },
           "status": {
             "description": "completed means the appliance RPC returned, not independent physical-state proof",
+            "enum": [
+              "completed"
+            ],
             "type": "string"
           },
           "target": {
@@ -1207,6 +1266,8 @@
         "properties": {
           "device": {
             "description": "configured JetKVM device name",
+            "maxLength": 128,
+            "minLength": 1,
             "type": "string"
           }
         },
@@ -1220,6 +1281,9 @@
         "properties": {
           "action": {
             "description": "submitted power or wake action",
+            "enum": [
+              "turn_host_dc_power_off"
+            ],
             "type": "string"
           },
           "device": {
@@ -1228,6 +1292,9 @@
           },
           "status": {
             "description": "completed means the appliance RPC returned, not independent physical-state proof",
+            "enum": [
+              "completed"
+            ],
             "type": "string"
           },
           "target": {
@@ -1260,6 +1327,8 @@
         "properties": {
           "device": {
             "description": "configured JetKVM device name",
+            "maxLength": 128,
+            "minLength": 1,
             "type": "string"
           }
         },
@@ -1273,6 +1342,9 @@
         "properties": {
           "action": {
             "description": "submitted power or wake action",
+            "enum": [
+              "turn_host_dc_power_on"
+            ],
             "type": "string"
           },
           "device": {
@@ -1281,6 +1353,9 @@
           },
           "status": {
             "description": "completed means the appliance RPC returned, not independent physical-state proof",
+            "enum": [
+              "completed"
+            ],
             "type": "string"
           },
           "target": {
@@ -1313,6 +1388,8 @@
         "properties": {
           "device": {
             "description": "configured JetKVM device name",
+            "maxLength": 128,
+            "minLength": 1,
             "type": "string"
           }
         },
@@ -1323,6 +1400,20 @@
       },
       "outputSchema": {
         "additionalProperties": false,
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "sourceType"
+              ]
+            },
+            {
+              "required": [
+                "mode"
+              ]
+            }
+          ]
+        },
         "properties": {
           "device": {
             "description": "configured device identifier",
@@ -1330,39 +1421,27 @@
           },
           "mode": {
             "description": "reported read_only or read_write mode when available",
-            "enum": [
-              "read_only",
-              "read_write"
-            ],
             "type": "string"
           },
           "mounted": {
+            "const": false,
             "description": "reported mount state",
             "type": "boolean"
           },
           "operation": {
             "description": "submitted or observed virtual-media operation",
             "enum": [
-              "status",
-              "mount_url",
-              "mount_file",
-              "unmount",
-              "upload"
+              "unmount"
             ],
             "type": "string"
           },
           "sourceType": {
             "description": "redacted media source class; never a URL, path, or filename",
-            "enum": [
-              "http",
-              "storage"
-            ],
             "type": "string"
           },
           "status": {
             "description": "observed for status, completed for an acknowledged mutation; neither independently proves final device state",
             "enum": [
-              "observed",
               "completed"
             ],
             "type": "string"
@@ -1394,6 +1473,8 @@
         "properties": {
           "device": {
             "description": "configured JetKVM device name with a media directory",
+            "maxLength": 128,
+            "minLength": 1,
             "type": "string"
           },
           "path": {
@@ -1419,22 +1500,18 @@
           "mode": {
             "description": "reported read_only or read_write mode when available",
             "enum": [
-              "read_only",
-              "read_write"
+              "read_only"
             ],
             "type": "string"
           },
           "mounted": {
+            "const": false,
             "description": "reported mount state",
             "type": "boolean"
           },
           "operation": {
             "description": "submitted or observed virtual-media operation",
             "enum": [
-              "status",
-              "mount_url",
-              "mount_file",
-              "unmount",
               "upload"
             ],
             "type": "string"
@@ -1442,7 +1519,6 @@
           "sourceType": {
             "description": "redacted media source class; never a URL, path, or filename",
             "enum": [
-              "http",
               "storage"
             ],
             "type": "string"
@@ -1450,7 +1526,6 @@
           "status": {
             "description": "observed for status, completed for an acknowledged mutation; neither independently proves final device state",
             "enum": [
-              "observed",
               "completed"
             ],
             "type": "string"
@@ -1482,10 +1557,14 @@
         "properties": {
           "device": {
             "description": "configured JetKVM device name",
+            "maxLength": 128,
+            "minLength": 1,
             "type": "string"
           },
           "target": {
             "description": "configured Wake-on-LAN target name; it does not accept arbitrary network destinations",
+            "maxLength": 128,
+            "minLength": 1,
             "type": "string"
           }
         },
@@ -1500,6 +1579,9 @@
         "properties": {
           "action": {
             "description": "submitted power or wake action",
+            "enum": [
+              "wake_host_lan"
+            ],
             "type": "string"
           },
           "device": {
@@ -1508,6 +1590,9 @@
           },
           "status": {
             "description": "completed means the appliance RPC returned, not independent physical-state proof",
+            "enum": [
+              "completed"
+            ],
             "type": "string"
           },
           "target": {
@@ -1540,6 +1625,8 @@
         "properties": {
           "device": {
             "description": "configured JetKVM device name",
+            "maxLength": 128,
+            "minLength": 1,
             "type": "string"
           }
         },
@@ -1553,6 +1640,9 @@
         "properties": {
           "action": {
             "description": "submitted power or wake action",
+            "enum": [
+              "wake_host_usb"
+            ],
             "type": "string"
           },
           "device": {
@@ -1561,6 +1651,9 @@
           },
           "status": {
             "description": "completed means the appliance RPC returned, not independent physical-state proof",
+            "enum": [
+              "completed"
+            ],
             "type": "string"
           },
           "target": {
@@ -1592,6 +1685,19 @@
           "mimeType": "image/png",
           "sizeBytes": 73,
           "type": "image"
+        },
+        {
+          "annotations": null,
+          "json": {
+            "capturedAt": "2026-01-02T03:04:05Z",
+            "device": "fixture-device",
+            "height": 1,
+            "mimeType": "image/png",
+            "sizeBytes": 73,
+            "width": 1
+          },
+          "meta": null,
+          "type": "text"
         }
       ],
       "inputRequests": null,
@@ -1663,7 +1769,7 @@
               "mounted": false
             },
             "warnings": [
-              "fixture warning"
+              "video unavailable"
             ]
           },
           "meta": null,
@@ -1697,7 +1803,7 @@
           "mounted": false
         },
         "warnings": [
-          "fixture warning"
+          "video unavailable"
         ]
       }
     },
@@ -1709,7 +1815,7 @@
             "device": "fixture-device",
             "mounted": false,
             "operation": "status",
-            "status": "completed"
+            "status": "observed"
           },
           "meta": null,
           "type": "text"
@@ -1729,7 +1835,7 @@
         "device": "fixture-device",
         "mounted": false,
         "operation": "status",
-        "status": "completed"
+        "status": "observed"
       }
     },
     "jetkvm_keyboard": {
@@ -1812,7 +1918,7 @@
           "annotations": null,
           "json": {
             "device": "fixture-device",
-            "mounted": false,
+            "mounted": true,
             "operation": "mount_file",
             "sourceType": "storage",
             "status": "completed"
@@ -1833,7 +1939,7 @@
       "requestState": "",
       "structuredContent": {
         "device": "fixture-device",
-        "mounted": false,
+        "mounted": true,
         "operation": "mount_file",
         "sourceType": "storage",
         "status": "completed"
@@ -1845,7 +1951,7 @@
           "annotations": null,
           "json": {
             "device": "fixture-device",
-            "mounted": false,
+            "mounted": true,
             "operation": "mount_url",
             "sourceType": "http",
             "status": "completed"
@@ -1866,7 +1972,7 @@
       "requestState": "",
       "structuredContent": {
         "device": "fixture-device",
-        "mounted": false,
+        "mounted": true,
         "operation": "mount_url",
         "sourceType": "http",
         "status": "completed"

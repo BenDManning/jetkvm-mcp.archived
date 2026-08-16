@@ -5,10 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strings"
 	"sync/atomic"
 	"time"
 
+	"github.com/BenDManning/jetkvm-mcp/internal/identifier"
 	"github.com/BenDManning/jetkvm-mcp/internal/telemetry"
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -39,6 +39,27 @@ const (
 	PowerActionWakeHostLAN          PowerAction = "wake_host_lan"
 )
 
+// ResultStatus is the fixed acknowledgement vocabulary used by successful
+// operation results.
+type ResultStatus string
+
+const (
+	ResultStatusCompleted ResultStatus = "completed"
+	ResultStatusObserved  ResultStatus = "observed"
+)
+
+type StatusWarning string
+
+const (
+	StatusWarningVersionUnavailable         StatusWarning = "version unavailable"
+	StatusWarningActiveExtensionUnavailable StatusWarning = "active extension unavailable"
+	StatusWarningVirtualMediaUnavailable    StatusWarning = "virtual media unavailable"
+	StatusWarningVideoUnavailable           StatusWarning = "video unavailable"
+	StatusWarningUSBUnavailable             StatusWarning = "USB unavailable"
+	StatusWarningATXUnavailable             StatusWarning = "ATX state unavailable"
+	StatusWarningDCUnavailable              StatusWarning = "DC state unavailable"
+)
+
 // Status is the device state returned by the status tool. Optional fields remain
 // absent when a particular firmware does not report them.
 type Status struct {
@@ -57,16 +78,16 @@ type Status struct {
 	VirtualMedia    *VirtualMediaState `json:"virtualMedia,omitempty" jsonschema:"redacted observed virtual-media state when reported"`
 	USBState        string             `json:"usbState,omitempty" jsonschema:"private observed USB state when reported"`
 	USBWakeAttached *bool              `json:"usbWakeAttached,omitempty" jsonschema:"private observed USB wake attachment state when reported"`
-	Warnings        []string           `json:"warnings,omitempty" jsonschema:"private appliance warnings when reported"`
+	Warnings        []StatusWarning    `json:"warnings,omitempty" jsonschema:"private appliance warnings when reported"`
 }
 
 // PowerResult describes the submitted host-power operation without exposing
 // firmware-private RPC details.
 type PowerResult struct {
-	Device string      `json:"device" jsonschema:"configured device identifier"`
-	Action PowerAction `json:"action" jsonschema:"submitted power or wake action"`
-	Target string      `json:"target,omitempty" jsonschema:"configured Wake-on-LAN target identifier when applicable"`
-	Status string      `json:"status" jsonschema:"completed means the appliance RPC returned, not independent physical-state proof"`
+	Device string       `json:"device" jsonschema:"configured device identifier"`
+	Action PowerAction  `json:"action" jsonschema:"submitted power or wake action"`
+	Target string       `json:"target,omitempty" jsonschema:"configured Wake-on-LAN target identifier when applicable"`
+	Status ResultStatus `json:"status" jsonschema:"completed means the appliance RPC returned, not independent physical-state proof"`
 }
 
 type DeviceCapabilities struct {
@@ -172,16 +193,17 @@ func newServerWithTelemetry(device Device, version string, captureTimeout time.D
 		"Wake host over USB", "Send a USB HID wake action to a configured attached host, which may resume or boot it. If the mutation's outcome is unknown, do not blindly retry; inspect status first.", PowerActionWakeHostUSB, false, false)
 
 	addMutationTool(server, &mcp.Tool{
-		Name:        WakeHostLANToolName,
-		Title:       "Wake host over LAN",
-		Description: "Make the configured JetKVM send a Wake-on-LAN network magic packet to a named configured target; callers cannot supply an arbitrary MAC address. If the mutation's outcome is unknown, do not blindly retry; inspect status first.",
-		Annotations: annotations(false, false, false),
+		Name:         WakeHostLANToolName,
+		Title:        "Wake host over LAN",
+		Description:  "Make the configured JetKVM send a Wake-on-LAN network magic packet to a named configured target; callers cannot supply an arbitrary MAC address. If the mutation's outcome is unknown, do not blindly retry; inspect status first.",
+		OutputSchema: powerResultSchema(PowerActionWakeHostLAN),
+		Annotations:  annotations(false, false, false),
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, input wakeLANInput) (*mcp.CallToolResult, PowerResult, error) {
 		if err := validDevice(input.Device); err != nil {
 			return nil, PowerResult{}, invalidInput(err)
 		}
-		if strings.TrimSpace(input.Target) == "" {
-			return nil, PowerResult{}, invalidInput(errors.New("target is required"))
+		if err := validIdentifier(input.Target, "target"); err != nil {
+			return nil, PowerResult{}, invalidInput(err)
 		}
 		result, err := device.Power(ctx, input.Device, PowerActionWakeHostLAN, input.Target)
 		return nil, result, err
@@ -298,10 +320,11 @@ func telemetryToolResult(result mcp.Result, err error, mutation bool) (string, s
 
 func registerPowerTool(server *mcp.Server, device Device, name, title, description string, action PowerAction, destructive, idempotent bool) {
 	addMutationTool(server, &mcp.Tool{
-		Name:        name,
-		Title:       title,
-		Description: description,
-		Annotations: annotations(false, destructive, idempotent),
+		Name:         name,
+		Title:        title,
+		Description:  description,
+		OutputSchema: powerResultSchema(action),
+		Annotations:  annotations(false, destructive, idempotent),
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, input deviceInput) (*mcp.CallToolResult, PowerResult, error) {
 		if err := validDevice(input.Device); err != nil {
 			return nil, PowerResult{}, invalidInput(err)
@@ -312,21 +335,14 @@ func registerPowerTool(server *mcp.Server, device Device, name, title, descripti
 }
 
 func addReadTool[In, Out any](server *mcp.Server, tool *mcp.Tool, handler mcp.ToolHandlerFor[In, Out]) {
-	addInputTool(server, tool, false, func(In) bool { return false }, handler)
+	addInputTool(server, tool, func(In) bool { return false }, handler)
 }
 
 func addMutationTool[In, Out any](server *mcp.Server, tool *mcp.Tool, handler mcp.ToolHandlerFor[In, Out]) {
-	addInputTool(server, tool, false, func(In) bool { return true }, handler)
+	addInputTool(server, tool, func(In) bool { return true }, handler)
 }
 
-// addSanitizedInputMutationTool retains the public JSON Schema while handling
-// its validation locally. The SDK's validation errors include rejected values,
-// which is unsafe for media URLs and local paths that may contain private data.
-func addSanitizedInputMutationTool[In, Out any](server *mcp.Server, tool *mcp.Tool, handler mcp.ToolHandlerFor[In, Out]) {
-	addInputTool(server, tool, true, func(In) bool { return true }, handler)
-}
-
-func addInputTool[In, Out any](server *mcp.Server, tool *mcp.Tool, sanitizeInput bool, mutation func(In) bool, handler mcp.ToolHandlerFor[In, Out]) {
+func addInputTool[In, Out any](server *mcp.Server, tool *mcp.Tool, mutation func(In) bool, handler mcp.ToolHandlerFor[In, Out]) {
 	inputSchema, ok := tool.InputSchema.(*jsonschema.Schema)
 	if !ok || inputSchema == nil {
 		var err error
@@ -336,6 +352,8 @@ func addInputTool[In, Out any](server *mcp.Server, tool *mcp.Tool, sanitizeInput
 		}
 		tool.InputSchema = inputSchema
 	}
+	boundIdentifierProperty(inputSchema, "device")
+	boundIdentifierProperty(inputSchema, "target")
 	inputResolved, err := inputSchema.Resolve(&jsonschema.ResolveOptions{ValidateDefaults: true})
 	if err != nil {
 		panic(fmt.Sprintf("tool %q input schema: %v", tool.Name, err))
@@ -365,11 +383,7 @@ func addInputTool[In, Out any](server *mcp.Server, tool *mcp.Tool, sanitizeInput
 				finishToolTelemetry(ctx, telemetryFailure, mutated)
 			}
 			result := new(mcp.CallToolResult)
-			if sanitizeInput {
-				result.SetError(telemetryFailure)
-			} else {
-				result.SetError(fmt.Errorf("validating \"arguments\": %v", err))
-			}
+			result.SetError(telemetryFailure)
 			return result, nil
 		}
 		mutated := mutation(input)
@@ -389,27 +403,34 @@ func addInputTool[In, Out any](server *mcp.Server, tool *mcp.Tool, sanitizeInput
 		}
 		outputJSON, err := json.Marshal(output)
 		if err != nil {
-			finishToolTelemetry(ctx, err, mutated)
-			return nil, fmt.Errorf("marshaling tool output: %w", err)
+			return sanitizedToolOutputFailure(ctx, mutated)
 		}
 		var outputValue any
 		if err := json.Unmarshal(outputJSON, &outputValue); err != nil {
-			finishToolTelemetry(ctx, err, mutated)
-			return nil, fmt.Errorf("unmarshaling tool output: %w", err)
+			return sanitizedToolOutputFailure(ctx, mutated)
 		}
 		if err := outputResolved.Validate(outputValue); err != nil {
-			finishToolTelemetry(ctx, err, mutated)
-			return nil, fmt.Errorf("validating tool output: %w", err)
+			return sanitizedToolOutputFailure(ctx, mutated)
 		}
 		result.StructuredContent = json.RawMessage(outputJSON)
 		if result.Content == nil {
 			result.Content = []mcp.Content{&mcp.TextContent{Text: string(outputJSON)}}
+		} else {
+			result.Content = append(result.Content, &mcp.TextContent{Text: string(outputJSON)})
 		}
 		if tool.Name != CaptureScreenToolName {
 			finishToolTelemetry(ctx, nil, mutated)
 		}
 		return result, nil
 	})
+}
+
+func sanitizedToolOutputFailure(ctx context.Context, mutation bool) (*mcp.CallToolResult, error) {
+	failure := toolFailure(errors.New("provider returned invalid tool output"), mutation)
+	finishToolTelemetry(ctx, failure, mutation)
+	result := new(mcp.CallToolResult)
+	result.SetError(failure)
+	return result, nil
 }
 
 func decodeSanitizedToolInput[In any](arguments json.RawMessage, schema *jsonschema.Resolved) (In, error) {
@@ -420,6 +441,12 @@ func decodeSanitizedToolInput[In any](arguments json.RawMessage, schema *jsonsch
 	value := make(map[string]any)
 	if err := json.Unmarshal(arguments, &value); err != nil {
 		return input, err
+	}
+	for _, name := range []string{"device", "target"} {
+		if text, ok := value[name].(string); ok {
+			normalized, _ := identifier.Normalize(text)
+			value[name] = normalized
+		}
 	}
 	var instance any = value
 	if err := schema.ApplyDefaults(&instance); err != nil {
@@ -470,9 +497,33 @@ func deviceListOutputSchema() *jsonschema.Schema {
 	return schema
 }
 
+func powerResultSchema(action PowerAction) *jsonschema.Schema {
+	schema, err := jsonschema.For[PowerResult](nil)
+	if err != nil {
+		panic(fmt.Sprintf("power output schema: %v", err))
+	}
+	setStringEnum(schema.Properties["action"], []string{string(action)})
+	setStringEnum(schema.Properties["status"], []string{string(ResultStatusCompleted)})
+	return schema
+}
+
+func boundIdentifierProperty(schema *jsonschema.Schema, name string) {
+	property := schema.Properties[name]
+	if property == nil {
+		return
+	}
+	minimum, maximum := 1, identifier.MaxCodePoints
+	property.MinLength = &minimum
+	property.MaxLength = &maximum
+}
+
 func validDevice(device string) error {
-	if strings.TrimSpace(device) == "" {
-		return errors.New("device is required")
+	return validIdentifier(device, "device")
+}
+
+func validIdentifier(value, name string) error {
+	if _, ok := identifier.Normalize(value); !ok {
+		return fmt.Errorf("%s must contain 1 through %d Unicode code points", name, identifier.MaxCodePoints)
 	}
 	return nil
 }
