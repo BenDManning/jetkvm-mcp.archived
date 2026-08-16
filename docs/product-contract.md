@@ -129,8 +129,181 @@ errors. A report-write failure may leave partial or no stdout, but never exits
 Product releases use ordinary Semantic Versioning. During v0.x, the canonical
 release record identifies the current non-prerelease product version and thus
 the current `v0.<minor>.x` line. Only the latest non-prerelease release in that
-minor line is supported. This document does not duplicate a current release
-number. There is no SLA, blanket backport promise, or EOL service.
+minor line is supported. From v1 onward, only the latest stable release is
+supported. This document does not duplicate a current release number. There is
+no SLA, blanket backport promise, or EOL service.
+
+### Accepted public v1 release destination
+
+The first trustworthy public-release target is `v1.0.0`. The canonical GitHub
+repository is to become public, and that release is to provide native
+`linux/amd64` and `linux/arm64` archives through GitHub Releases plus a
+multi-platform Linux container through GitHub Container Registry. Darwin and
+Windows binaries are not part of the v1 support or artifact matrix. The native
+archives and container must be built from the same protected release tag and
+must report the same product version.
+
+The existing `v0.1.0` tag and assets remain unchanged as unsupported,
+private-era historical evidence. This accepted target does not claim that the
+repository, release, or container is already public, and it does not authorize
+the separate owner-controlled acts of changing repository visibility or
+publishing a release.
+
+One GitHub-hosted workflow builds every supported release deliverable from the
+same protected tag. It produces GoReleaser Linux amd64 and arm64 archives, a
+GHCR Linux amd64 and arm64 image, SHA-256 checksums, artifact-specific SPDX JSON
+SBOMs including container runtime packages, the project license and required
+third-party notices, a keyless Cosign bundle for the checksum manifest, a
+keyless signature for the image digest, and GitHub-hosted provenance or
+attestations for every archive, SBOM, and image digest. The workflow verifies
+subjects and publishes consumer commands constrained to this repository,
+workflow, and tag identity. Release tools and Actions are immutably pinned and
+use OIDC without a long-lived signing key. The project does not claim
+reproducible builds or a SLSA level from this evidence.
+
+The supported container uses a digest-pinned Debian stable-slim runtime with
+distro-provided FFmpeg and CA certificates. Each release records the base
+digest, installed package versions, FFmpeg identity, and SPDX SBOM; carries OCI
+source, revision, version, license, and creation labels; runs as fixed non-root
+UID/GID 10001 without embedded configuration or credentials; and supports a
+read-only root filesystem when writable temporary storage is supplied. Release
+verification performs actual H.264-to-PNG decoding in each platform image. A
+relevant base, FFmpeg, or CA-package security update produces a product patch
+release. Exact apt package pins, custom FFmpeg builds, scratch or distroless
+conversion, and a separate container release cadence are not part of v1.
+
+An owner push of a protected annotated `vX.Y.Z` tag at the exact green `main`
+commit is the single release-publication authorization. The workflow stages,
+rebuilds, and verifies all deliverables before publishing an immutable GitHub
+Release and `ghcr.io/bendmanning/jetkvm-mcp:vX.Y.Z`. Only `latest` moves after a
+stable release succeeds; no moving major or minor image tags are published.
+The version tag and image digest are canonical. Published tags and artifacts
+are never updated, reused, or repaired in place. A failed tagged release
+consumes that version and correction requires a new version.
+
+Ordinary defects are corrected only by a new patch release, movement of
+`latest`, clear identification of affected versions, and a Go module retraction
+when useful. For suspected compromise, the owner may stop workflows and
+publication, revoke affected authority, disable mutable distribution pointers,
+and remove actively dangerous assets only when necessary to prevent continuing
+harm. The response must preserve hashes and available evidence, publish an
+advisory naming affected versions and digests, and issue a clean new version.
+Release revocation, deletion, and replacement publication remain owner-only
+actions; compromised history is never silently rewritten.
+
+Each immutable GitHub Release is the sole canonical changelog record; the
+repository does not duplicate it in a checked-in `CHANGELOG.md`. Curated release
+notes state compatibility and migration changes; exact supported MCP, Go,
+native, container, and physically qualified surfaces; security-relevant fixes
+and known limitations; artifact digests and verification identities; and any
+superseded or retracted versions. A generated commit list may seed the notes but
+is never published without review.
+
+The v1 MCP compatibility surface supports exactly revision `2026-07-28` over
+both stdio and Streamable HTTP. Legacy and unknown revisions must be rejected
+rather than advertised or accepted through incidental Go SDK compatibility.
+The official Go SDK remains an implementation dependency and does not expand
+the product contract. Sessions, legacy HTTP+SSE, tasks, prompts, resources,
+sampling, and other unadvertised SDK capabilities remain unsupported.
+
+The v1 tool surface contains the 17 one-purpose tools and removes the deprecated
+multiplexed `jetkvm_virtual_media` compatibility tool. Release documentation
+must map each removed operation to its dedicated status, URL mount, file mount,
+file upload, or unmount replacement. No evidence of external reliance justifies
+carrying the duplicate private-era surface into the first public release.
+
+V1 consequence annotations are deliberately conservative. Every mutation has
+`idempotentHint=false`; an annotation must never suggest blind retry after an
+`unknown` outcome. Keyboard and mouse operations have `destructiveHint=true`
+because they can execute commands, alter data, or activate destructive UI.
+Read-only tools remain non-destructive and idempotent, and URL mounting remains
+the only open-world tool. These hints communicate consequences but do not grant
+authority or prove user intent.
+
+V1 applies the same identifier boundary in configuration and MCP input:
+configured device aliases and Wake-on-LAN target aliases contain 1 through 128
+Unicode code points after trimming. A keyboard `key` contains 1 through 32
+Unicode code points. A modifier array contains at most the four unique members
+from its existing closed enum. Caller-visible validation failures use stable,
+value-free `invalid_input` messages and never echo submitted text, aliases,
+paths, URLs, keys, or other caller values.
+
+Every successful v1 tool returns typed `structuredContent`, and output schemas
+constrain product-owned fixed vocabularies to the values the server can emit.
+Screen capture preserves PNG `ImageContent` as its first content block and adds
+a second JSON `TextContent` compatibility fallback containing only the device
+alias, capture time, MIME type, dimensions, and byte count. It never duplicates
+PNG data into text. Operational failures remain sanitized `IsError` tool
+results rather than JSON-RPC errors.
+
+V1 publication requires one owner-authorized physical qualification run against
+a disposable attached host. Retained sanitized evidence must identify the exact
+release candidate, JetKVM model and firmware, runtime and FFmpeg, and must cover
+every public operation class: reads and capture, HID, power and DC control,
+wake, upload, mount, unmount, cleanup, and observable outcomes. Claims remain
+limited to the recorded combination and checks. Repeat qualification only when
+device protocol behavior, firmware, relevant runtime, or covered operations
+change; do not infer a model family, firmware range, or indefinite guarantee.
+
+The source-run `jetkvm-mcp-mutation-checklist`, its synthetic JSON plan, and its
+detailed compatibility surface are not part of the public v1 design. An offline
+file of self-asserted booleans neither authorizes execution nor proves a hardware
+safeguard. Physical qualification instead uses a concise fixture-specific
+runbook, separate owner authorization, observable postconditions, retained
+sanitized evidence, and the established rule that an `unknown` outcome ends the
+current mutation window.
+
+Source builds support only the current and immediately previous supported Go
+release families, each at its latest security patch. Compatibility checks use
+`GOTOOLCHAIN=local`. Primary CI, native release archives, and the container
+binary use the same exact current-family Go toolchain. At this decision point
+the minimum is Go `1.25.13` and the release toolchain is Go `1.26.6`; after Go
+1.27 makes the 1.25 family unsupported, the minimum moves to the selected
+current 1.26 patch and release builds move to a selected patched 1.27 release.
+
+Dependency maintenance uses monthly grouped Dependabot updates with at most one
+open PR for each of Go modules and tracked Go tools, GitHub Actions, and Docker
+base images. Security advisories are handled promptly outside that cadence.
+Staticcheck and `govulncheck` are native tracked Go tool dependencies. MCP
+conformance and Inspector npm pins change only through deliberate protocol
+review rather than generic version-update automation. Dependency, toolchain,
+Action, and base-image updates are never auto-merged; review covers upstream
+changes, relevant advisories, licenses, and affected tests. Unreachable
+module-level advisories receive a recorded risk disposition rather than an
+automatic failure or a blind transitive upgrade.
+
+The following are post-adoption decisions, not public-v1 blockers: broader
+hardware, native-runtime, soak, or performance matrices; OAuth, multiple
+principals, or finer authority; a second maintainer or formal governance;
+contribution-volume automation; additional scanners or long fuzzing;
+reproducibility, VEX, notarization, or duplicate SBOM formats; and Kubernetes,
+benchmarks, pooled sessions, sidecars, policy engines, AI firewalls, or
+observability backends. Reconsider one only for a concrete user, failure,
+advisory, contribution volume, or consumer requirement.
+
+SIGINT and SIGTERM cancel one process-root context shared by stdio and every
+active HTTP request. HTTP shutdown permits at most five seconds for handler
+cleanup and graceful draining, then force-closes remaining connections and
+joins the serving goroutine before process exit. A mutation interrupted after
+dispatch may have begun remains `unknown` and non-retryable; shutdown never
+turns process termination into evidence that a physical effect did or did not
+occur.
+
+Streamable HTTP retains one full-authority administrator bearer and does not add
+OAuth, users, roles, or per-tool scopes. Binding is loopback by default. Every
+non-loopback `/mcp` request requires exactly one `Authorization` header with a
+case-insensitive `Bearer` scheme, one nonempty token, and constant-time token
+comparison. Host and Origin admission remain exact; browser use is same-origin,
+CORS is absent, and forwarded headers are not trusted. Requests have a 1 MiB
+body limit, a five-second header timeout, a 15-second body-read timeout, and a
+60-second idle timeout. Tool-specific deadlines replace a global write timeout.
+`/healthz` is unauthenticated and content-minimal. It reports only that startup
+configuration and FFmpeg validation succeeded and the HTTP process is accepting
+requests. Device reachability remains an MCP read concern; v1 adds no `/readyz`,
+background device probe, or aggregate device-health state. TLS, connection-rate
+limits, and public-edge controls belong to the reverse proxy. Multi-principal
+or narrower authority requires an external gateway or a future product
+decision.
 
 GoReleaser-built binaries receive GoReleaser's explicit version value.
 Containers report the explicitly supplied `VERSION` build argument and

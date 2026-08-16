@@ -4,6 +4,60 @@ GitHub Actions workflow `.github/workflows/ci.yml` is the single canonical CI
 authority for pull requests and `main`. Every CI gate has the same local Make
 target; no mirror or second workflow is authoritative.
 
+## Accepted public v1 target
+
+Public v1 uses four stable required checks with non-overlapping claims:
+
+1. **Go quality**, on Go 1.26.6: format, tidy, module integrity, one
+   race-enabled full test run that also emits coverage, vet, Staticcheck,
+   reachable-source `govulncheck`, one-second fuzz-target smoke, and Linux
+   native cross-builds.
+2. **Minimum Go**, on Go 1.25.13 with `GOTOOLCHAIN=local`: one ordinary full
+   test/build pass, without repeating formatting, analyzers, fuzzing, or
+   coverage.
+3. **MCP protocol**: build the server once, then run the pinned applicable
+   official scenarios and isolated Inspector smoke over stdio and HTTP. This is
+   an applicable-scenario gate, not conformance certification.
+4. **Container**: build Linux amd64 and arm64 once and smoke each final image for
+   its product version, FFmpeg availability, non-root identity, and offline
+   configuration validation.
+
+Coverage is diagnostic evidence without a percentage gate. CI does not repeat
+plain tests, vet, protocol builds, real-FFmpeg integration, or cross-builds when
+an earlier execution already establishes the same claim. Long scheduled
+fuzzing requires a concrete failure or adoption-driven decision.
+
+Behavior and evidence gates retain the complete MCP manifest and transport
+parity, pinned protocol scenarios and upstream integrity, bounded fuzz inventory
+and privacy-safe corpora, one real-FFmpeg integration run, and compatibility
+ledger validation of schema, provenance, uniqueness, and claim limits. Ledger
+tests do not freeze the number of historical entries or exact commit IDs. Tests
+do not enforce ADR counts, document headings, index wording, threat-model prose,
+or other administrative document shape; those documents receive ordinary
+review.
+
+The workflow and command tables below describe the current tree until
+implementation brings them into agreement with this accepted target.
+
+Public conversion is an owner-controlled sequence. After visibility changes
+and before further changes are accepted, the repository must enable and read
+back a `main` ruleset requiring pull requests, the four stable checks above,
+conversation resolution, blocked force-push and deletion, zero approving
+reviews, and administrator enforcement. Release tags matching `v*` must be
+protected from update and deletion. A narrow logged owner bypass is reserved
+for emergencies and requires a follow-up GitHub issue and review. The project
+does not require signed commits, CODEOWNERS, or a ceremonial solo approval.
+
+Every public workflow pins each Action to a reviewed full commit SHA and is
+covered by an exact allowlist. Workflow permissions default to `contents: read`;
+write, package, and OIDC permissions exist only on the release job that requires
+them. Pull-request CI uses `pull_request`, GitHub-hosted runners, no secrets or
+release credentials, and checkout with credential persistence disabled;
+`pull_request_target` is prohibited. Concurrency cancels superseded PR runs but
+never `main`, tag, or release runs. Sanitized coverage and protocol evidence is
+retained for 30 days. Release jobs do not consume caches produced by untrusted
+pull requests.
+
 ## Toolchain lanes
 
 | Lane | Toolchain | Command | Purpose |

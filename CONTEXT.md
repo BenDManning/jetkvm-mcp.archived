@@ -12,6 +12,7 @@ JetKVM MCP is one bounded context: a Go MCP server that operates configured JetK
 - **Mutation** — an operation that may change appliance, storage, HID, power, network, or attached-host state.
 - **Unknown outcome** — a mutation result meaning the request may have been sent without a conclusive response. It is never retryable and ends the current approved mutation window; state must be re-established through an independent read-only path before any separately approved future attempt.
 - **Virtual media** — media fetched or uploaded for appliance storage or mounting on the attached host.
+- **Physical qualification** — retained evidence that a named product build, JetKVM model and firmware, runtime, and explicitly listed operations were exercised on actual hardware. It qualifies only that recorded combination and those checks.
 
 ## Canonical documents
 

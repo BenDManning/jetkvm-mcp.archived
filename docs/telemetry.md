@@ -5,6 +5,25 @@ stream. MCP protocol responses remain on stdout for stdio deployments. The
 telemetry path is diagnostic only: a full queue, writer failure, or flush timeout
 never changes an operation result or retry classification.
 
+## Accepted public v1 target
+
+V1 moves to a versioned telemetry schema that adds a UTC event time, a random
+per-process instance identifier, and the public server version. Bounded shutdown
+evidence reports the aggregate dropped-event count and whether a writer failure
+was observed when the sink remains writable. Missing telemetry never proves
+that an operation did not execute.
+
+Telemetry remains local to stderr, bounded, non-blocking, and payload-free. The
+server does not add a network telemetry backend, durable audit database, or
+stable device or user identity. Operators should use access-controlled stderr
+rotation with 14-day routine retention and preserve only the relevant sanitized
+window when investigating an incident. Deployment needs may require a different
+retention period; the server does not enforce one. Sanitized CI evidence has a
+separate 30-day retention contract.
+
+The schema below describes the current tree until implementation brings it into
+agreement with this accepted target.
+
 ## Schema
 
 Every retained line uses `jetkvm.operation.v1` and exactly these fields:
