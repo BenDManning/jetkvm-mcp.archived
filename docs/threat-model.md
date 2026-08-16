@@ -231,9 +231,9 @@ cannot provide user-attributed forensic audit records.
 
 The secret-sentinel verification covers strict-config errors including short
 malformed scalar values, resolved secret handling, missing private configuration
-paths, top-level diagnostic wording, and the validator's sanitized report. It
-complements review; it cannot prove that every future dependency or client avoids
-retention.
+paths, top-level diagnostic wording, the validator's sanitized report, and
+operation telemetry over stdio and loopback HTTP. It complements review; it
+cannot prove that every future dependency or client avoids retention.
 
 ## Threat-to-control traceability register
 

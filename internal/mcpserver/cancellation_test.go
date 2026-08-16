@@ -143,7 +143,7 @@ func TestCaptureDeadlineCoversMCPResultConstruction(t *testing.T) {
 func TestCaptureDeadlineMiddlewarePreservesCallerNotSentOutcome(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	var telemetryOutput bytes.Buffer
-	recorder := telemetry.New(&telemetryOutput)
+	recorder := telemetry.New(&telemetryOutput, "test")
 	operationCtx, span := recorder.Start(ctx, telemetry.TransportStdio, telemetry.OperationCapture)
 	operationCtx = context.WithValue(operationCtx, toolTelemetryKey{}, &toolTelemetryState{span: span})
 	result := new(mcp.CallToolResult)
@@ -180,7 +180,7 @@ func TestCaptureDeadlineMiddlewarePreservesCallerNotSentOutcome(t *testing.T) {
 		Code    string `json:"code"`
 		Outcome string `json:"outcome"`
 	}
-	if err := json.Unmarshal(bytes.TrimSpace(telemetryOutput.Bytes()), &terminal); err != nil {
+	if err := json.NewDecoder(bytes.NewReader(telemetryOutput.Bytes())).Decode(&terminal); err != nil {
 		t.Fatalf("decode telemetry: %v; output=%q", err, telemetryOutput.String())
 	}
 	if terminal.Code != string(toolErrorCanceled) || terminal.Outcome != telemetry.OutcomeNotSent {
@@ -190,7 +190,7 @@ func TestCaptureDeadlineMiddlewarePreservesCallerNotSentOutcome(t *testing.T) {
 
 func TestCaptureDeadlineCoversResponseSerialization(t *testing.T) {
 	var telemetryOutput bytes.Buffer
-	recorder := telemetry.New(&telemetryOutput)
+	recorder := telemetry.New(&telemetryOutput, "test")
 	operationCtx, span := recorder.Start(context.Background(), telemetry.TransportStdio, telemetry.OperationCapture)
 	operationCtx = context.WithValue(operationCtx, toolTelemetryKey{}, &toolTelemetryState{span: span})
 	handler := captureDeadlineMiddleware(10 * time.Millisecond)(func(ctx context.Context, _ string, _ mcp.Request) (mcp.Result, error) {
@@ -236,7 +236,7 @@ func TestCaptureDeadlineCoversResponseSerialization(t *testing.T) {
 		Code    string `json:"code"`
 		Outcome string `json:"outcome"`
 	}
-	if err := json.Unmarshal(bytes.TrimSpace(telemetryOutput.Bytes()), &terminal); err != nil {
+	if err := json.NewDecoder(bytes.NewReader(telemetryOutput.Bytes())).Decode(&terminal); err != nil {
 		t.Fatalf("decode telemetry: %v; output=%q", err, telemetryOutput.String())
 	}
 	if terminal.Stage != telemetry.StageTool || terminal.Code != string(toolErrorTimeout) || terminal.Outcome != telemetry.OutcomeFailed {
@@ -255,7 +255,7 @@ func TestCaptureMalformedInputTerminalMatchesFinalDeadlineOutcome(t *testing.T) 
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			var telemetryOutput bytes.Buffer
-			recorder := telemetry.New(&telemetryOutput)
+			recorder := telemetry.New(&telemetryOutput, "test")
 			serverTransport, clientTransport := mcp.NewInMemoryTransports()
 			serverSession, err := newServerWithTelemetry(test.device, "test", -time.Nanosecond, recorder, telemetry.TransportStdio).Connect(context.Background(), serverTransport, nil)
 			if err != nil {
@@ -286,7 +286,7 @@ func TestCaptureMalformedInputTerminalMatchesFinalDeadlineOutcome(t *testing.T) 
 				Code    string `json:"code"`
 				Outcome string `json:"outcome"`
 			}
-			if err := json.Unmarshal(bytes.TrimSpace(telemetryOutput.Bytes()), &terminal); err != nil {
+			if err := json.NewDecoder(bytes.NewReader(telemetryOutput.Bytes())).Decode(&terminal); err != nil {
 				t.Fatalf("decode telemetry: %v; output=%q", err, telemetryOutput.String())
 			}
 			if wireFailure.Code != toolErrorTimeout || wireFailure.Outcome != toolOutcomeFailed || terminal.Code != string(toolErrorTimeout) || terminal.Outcome != telemetry.OutcomeFailed {

@@ -116,7 +116,7 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		if err != nil {
 			return err
 		}
-		recorder := telemetry.New(stderr)
+		recorder := telemetry.New(stderr, reportedVersion())
 		operationCtx, span := recorder.Start(ctx, telemetry.TransportStdio, telemetry.OperationDebugRPC)
 		result, err := manager.DebugRPC(operationCtx, options.debugDevice, options.debugMethod, options.debugParams, options.debugUnsafeAcknowledged)
 		code, outcome := commandTelemetryResult(err)
@@ -142,7 +142,7 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	if options.httpAddress != "" {
 		transport = telemetry.TransportHTTP
 	}
-	recorder := telemetry.New(stderr)
+	recorder := telemetry.New(stderr, reportedVersion())
 	server := mcpserver.NewWithTelemetry(manager, reportedVersion(), recorder, transport)
 	var serveErr error
 	if options.httpAddress == "" {

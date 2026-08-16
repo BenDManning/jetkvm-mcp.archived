@@ -284,36 +284,55 @@ func TestRunStdioOperationTelemetryKeepsStdoutProtocolOnly(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("stdio runtime did not stop")
 	}
-	if strings.Contains(stdout.String(), "jetkvm.operation.v1") {
+	if strings.Contains(stdout.String(), "jetkvm.operation.v") {
 		t.Fatalf("protocol stdout contains telemetry: %q", stdout.String())
 	}
 	if strings.Contains(stderr.String(), privateSentinel) {
 		t.Fatalf("stderr retained private sentinel: %q", stderr.String())
 	}
-	var toolSeen, shutdownSeen bool
+	var toolSeen, shutdownSeen, summarySeen bool
+	processID := ""
 	for _, line := range strings.Split(stderr.String(), "\n") {
 		if !strings.HasPrefix(line, "{") {
 			continue
 		}
 		var event struct {
-			Schema    string `json:"schema"`
-			Transport string `json:"transport"`
-			Operation string `json:"operation"`
-			Stage     string `json:"stage"`
-			Code      string `json:"code"`
-			Outcome   string `json:"outcome"`
+			Schema            string `json:"schema"`
+			Time              string `json:"time"`
+			ProcessInstanceID string `json:"process_instance_id"`
+			ServerVersion     string `json:"server_version"`
+			CorrelationID     string `json:"correlation_id"`
+			Transport         string `json:"transport"`
+			Operation         string `json:"operation"`
+			Stage             string `json:"stage"`
+			Code              string `json:"code"`
+			Outcome           string `json:"outcome"`
+			DroppedEvents     uint64 `json:"dropped_events"`
+			WriterFailed      bool   `json:"writer_failed"`
 		}
 		if err := json.Unmarshal([]byte(line), &event); err != nil {
 			t.Fatalf("stderr JSON line %q: %v", line, err)
 		}
-		if event.Schema != "jetkvm.operation.v1" || event.Transport != "stdio" {
-			t.Fatalf("event = %#v", event)
+		parsedTime, err := time.Parse(time.RFC3339Nano, event.Time)
+		if err != nil || !strings.HasSuffix(event.Time, "Z") || time.Since(parsedTime) > time.Minute || event.Schema != "jetkvm.operation.v2" || event.ServerVersion == "" || !strings.HasPrefix(event.ProcessInstanceID, "proc_") || !strings.HasPrefix(event.CorrelationID, "op_") || event.Transport != "stdio" {
+			t.Fatalf("event = %#v, time error = %v", event, err)
+		}
+		if processID == "" {
+			processID = event.ProcessInstanceID
+		} else if event.ProcessInstanceID != processID {
+			t.Fatalf("process identity changed from %q to %q", processID, event.ProcessInstanceID)
 		}
 		toolSeen = toolSeen || event.Operation == "inventory" && event.Stage == "tool" && event.Code == "success" && event.Outcome == "succeeded"
 		shutdownSeen = shutdownSeen || event.Operation == "lifecycle" && event.Stage == "shutdown"
+		if event.Code == "telemetry_summary" {
+			summarySeen = true
+			if event.DroppedEvents != 0 || event.WriterFailed {
+				t.Fatalf("unexpected stdio telemetry loss: %#v", event)
+			}
+		}
 	}
-	if !toolSeen || !shutdownSeen {
-		t.Fatalf("tool=%v shutdown=%v stderr=%q", toolSeen, shutdownSeen, stderr.String())
+	if !toolSeen || !shutdownSeen || !summarySeen {
+		t.Fatalf("tool=%v shutdown=%v summary=%v stderr=%q", toolSeen, shutdownSeen, summarySeen, stderr.String())
 	}
 }
 

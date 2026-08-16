@@ -51,7 +51,7 @@ func (telemetryDetachedCleanupSession) CaptureH264(context.Context) ([]byte, tim
 
 func TestDetachedUploadCleanupPreservesOperationCorrelation(t *testing.T) {
 	var output bytes.Buffer
-	recorder := telemetry.New(&output)
+	recorder := telemetry.New(&output, "test")
 	operationCtx, operation := recorder.Start(context.Background(), telemetry.TransportStdio, telemetry.OperationMedia)
 	canceledCtx, cancel := context.WithCancel(operationCtx)
 	cancel()
@@ -71,6 +71,9 @@ func TestDetachedUploadCleanupPreservesOperationCorrelation(t *testing.T) {
 		}
 		if err := decoder.Decode(&event); err != nil {
 			t.Fatal(err)
+		}
+		if event.Stage == telemetry.StageShutdown {
+			continue
 		}
 		if correlation == "" {
 			correlation = event.CorrelationID
@@ -94,7 +97,7 @@ func TestOperationTelemetryStageMatrix(t *testing.T) {
 		t.Fatal(err)
 	}
 	var output bytes.Buffer
-	recorder := telemetry.New(&output)
+	recorder := telemetry.New(&output, "test")
 	baseCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	ctx, operation := recorder.Start(baseCtx, telemetry.TransportStdio, telemetry.OperationStatus)
@@ -132,6 +135,9 @@ func TestOperationTelemetryStageMatrix(t *testing.T) {
 		}
 		if err := decoder.Decode(&event); err != nil {
 			t.Fatal(err)
+		}
+		if event.Stage == telemetry.StageShutdown {
+			continue
 		}
 		if correlation == "" {
 			correlation = event.CorrelationID

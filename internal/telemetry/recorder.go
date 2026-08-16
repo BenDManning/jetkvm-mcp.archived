@@ -6,11 +6,12 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"io"
+	"sync"
 	"sync/atomic"
 	"time"
 )
 
-const schemaVersion = "jetkvm.operation.v1"
+const schemaVersion = "jetkvm.operation.v2"
 
 const (
 	TransportStdio = "stdio"
@@ -54,10 +55,16 @@ const (
 type correlationKey struct{}
 
 type Recorder struct {
-	writer   io.Writer
-	events   chan queuedEvent
-	terminal chan queuedEvent
-	closed   atomic.Bool
+	writer            io.Writer
+	serverVersion     string
+	processInstanceID string
+	events            chan queuedEvent
+	terminal          chan queuedEvent
+	closed            atomic.Bool
+	transportOnce     sync.Once
+	transport         string
+	droppedEvents     atomic.Uint64
+	writerFailed      atomic.Bool
 }
 
 type queuedEvent struct {
@@ -80,21 +87,39 @@ type StageSpan struct {
 }
 
 type event struct {
-	Schema        string `json:"schema"`
-	CorrelationID string `json:"correlation_id"`
-	Transport     string `json:"transport"`
-	Operation     string `json:"operation"`
-	Stage         string `json:"stage"`
-	DurationMS    int64  `json:"duration_ms"`
-	Code          string `json:"code"`
-	Outcome       string `json:"outcome"`
+	Schema            string `json:"schema"`
+	Time              string `json:"time"`
+	ProcessInstanceID string `json:"process_instance_id"`
+	ServerVersion     string `json:"server_version"`
+	CorrelationID     string `json:"correlation_id"`
+	Transport         string `json:"transport"`
+	Operation         string `json:"operation"`
+	Stage             string `json:"stage"`
+	DurationMS        int64  `json:"duration_ms"`
+	Code              string `json:"code"`
+	Outcome           string `json:"outcome"`
+}
+
+type shutdownEvent struct {
+	event
+	DroppedEvents uint64 `json:"dropped_events"`
+	WriterFailed  bool   `json:"writer_failed"`
 }
 
 var fallbackCorrelation atomic.Uint64
+var processIdentityOnce sync.Once
+var processInstanceID string
 
-func New(writer io.Writer) *Recorder {
+func New(writer io.Writer, serverVersion string) *Recorder {
+	processIdentityOnce.Do(func() {
+		processInstanceID, _ = newRandomID("proc_")
+	})
+	if processInstanceID == "" {
+		writer = nil
+	}
 	recorder := &Recorder{
-		writer: writer, events: make(chan queuedEvent, 256), terminal: make(chan queuedEvent, 256),
+		writer: writer, serverVersion: serverVersion, processInstanceID: processInstanceID,
+		events: make(chan queuedEvent, 256), terminal: make(chan queuedEvent, 256),
 	}
 	if writer != nil {
 		go recorder.writeEvents()
@@ -103,6 +128,9 @@ func New(writer io.Writer) *Recorder {
 }
 
 func (recorder *Recorder) Start(ctx context.Context, transport, operation string) (context.Context, *Span) {
+	if validTransport(transport) {
+		recorder.transportOnce.Do(func() { recorder.transport = transport })
+	}
 	correlationID := newCorrelationID()
 	span := &Span{recorder: recorder, correlationID: correlationID, transport: transport, operation: operation, started: time.Now()}
 	return context.WithValue(ctx, correlationKey{}, span), span
@@ -150,7 +178,9 @@ func (span *Span) record(stage, code, outcome string, elapsed time.Duration) {
 		duration = 60_000
 	}
 	value := event{
-		Schema: schemaVersion, CorrelationID: span.correlationID, Transport: span.transport,
+		Schema: schemaVersion, Time: time.Now().UTC().Format(time.RFC3339Nano),
+		ProcessInstanceID: span.recorder.processInstanceID, ServerVersion: span.recorder.serverVersion,
+		CorrelationID: span.correlationID, Transport: span.transport,
 		Operation: span.operation, Stage: stage, DurationMS: duration, Code: code, Outcome: outcome,
 	}
 	line, err := json.Marshal(value)
@@ -168,12 +198,14 @@ func (span *Span) record(stage, code, outcome string, elapsed time.Duration) {
 		select {
 		case span.recorder.terminal <- queued:
 		default:
+			span.recorder.droppedEvents.Add(1)
 		}
 		return
 	}
 	select {
 	case span.recorder.events <- queued:
 	default:
+		span.recorder.droppedEvents.Add(1)
 	}
 }
 
@@ -201,7 +233,7 @@ func validStage(value string) bool {
 
 func validCode(value string) bool {
 	switch value {
-	case CodeSuccess, "operation_failed", "canceled", "timeout", "invalid_input", "busy", "authentication_failed", "device_unavailable", "video_unavailable", "no_signal", "protocol_error":
+	case CodeSuccess, "operation_failed", "canceled", "timeout", "invalid_input", "busy", "authentication_failed", "device_unavailable", "video_unavailable", "no_signal", "protocol_error", "telemetry_summary", "telemetry_writer_failure":
 		return true
 	default:
 		return false
@@ -239,26 +271,31 @@ func (recorder *Recorder) writeEvents() {
 	for {
 		select {
 		case queued := <-recorder.events:
-			if queued.flush != nil {
-				recorder.drain()
-				close(queued.flush)
+			if recorder.handleQueued(queued) {
 				return
 			}
-			recorder.writeQueued(queued)
 		default:
 			select {
 			case queued := <-recorder.events:
-				if queued.flush != nil {
-					recorder.drain()
-					close(queued.flush)
+				if recorder.handleQueued(queued) {
 					return
 				}
-				recorder.writeQueued(queued)
 			case queued := <-recorder.terminal:
 				recorder.writeQueued(queued)
 			}
 		}
 	}
+}
+
+func (recorder *Recorder) handleQueued(queued queuedEvent) bool {
+	if queued.flush == nil {
+		recorder.writeQueued(queued)
+		return false
+	}
+	recorder.drain()
+	recorder.writeShutdownSummary()
+	close(queued.flush)
+	return true
 }
 
 func (recorder *Recorder) drain() {
@@ -280,15 +317,73 @@ func (recorder *Recorder) drain() {
 
 func (recorder *Recorder) writeQueued(queued queuedEvent) {
 	if queued.flush == nil {
-		_, _ = recorder.writer.Write(queued.line)
+		if written, err := recorder.writer.Write(queued.line); err != nil || written != len(queued.line) {
+			recorder.writerFailed.Store(true)
+		}
+	}
+}
+
+func (recorder *Recorder) writeShutdownSummary() {
+	if !validTransport(recorder.transport) {
+		return
+	}
+	correlationID := newCorrelationID()
+	line := recorder.shutdownSummaryLine(correlationID)
+	if written, err := recorder.writer.Write(line); err == nil && written == len(line) {
+		return
+	}
+
+	// A sink can accept the summary bytes and still report an error. Make one
+	// bounded attempt to record that later failure as a distinct event so the
+	// already-retained summary is not contradicted.
+	recorder.writerFailed.Store(true)
+	line = recorder.writerFailureLine(correlationID)
+	_, _ = recorder.writer.Write(line)
+}
+
+func (recorder *Recorder) shutdownSummaryLine(correlationID string) []byte {
+	outcome := OutcomeSucceeded
+	if recorder.droppedEvents.Load() > 0 || recorder.writerFailed.Load() {
+		outcome = OutcomeFailed
+	}
+	value := shutdownEvent{
+		event:         recorder.shutdownEvent(correlationID, "telemetry_summary", outcome),
+		DroppedEvents: recorder.droppedEvents.Load(),
+		WriterFailed:  recorder.writerFailed.Load(),
+	}
+	line, err := json.Marshal(value)
+	if err != nil {
+		return nil
+	}
+	return append(line, '\n')
+}
+
+func (recorder *Recorder) writerFailureLine(correlationID string) []byte {
+	line, err := json.Marshal(recorder.shutdownEvent(correlationID, "telemetry_writer_failure", OutcomeFailed))
+	if err != nil {
+		return nil
+	}
+	return append(line, '\n')
+}
+
+func (recorder *Recorder) shutdownEvent(correlationID, code, outcome string) event {
+	return event{
+		Schema: schemaVersion, Time: time.Now().UTC().Format(time.RFC3339Nano),
+		ProcessInstanceID: recorder.processInstanceID, ServerVersion: recorder.serverVersion,
+		CorrelationID: correlationID, Transport: recorder.transport,
+		Operation: OperationLifecycle, Stage: StageShutdown,
+		Code: code, Outcome: outcome,
 	}
 }
 
 func newCorrelationID() string {
-	var raw [12]byte
-	if _, err := rand.Read(raw[:]); err == nil {
-		return "op_" + hex.EncodeToString(raw[:])
+	if id, ok := newRandomID("op_"); ok {
+		return id
 	}
+
+	// Correlation remains unique within the process if the platform random source
+	// is temporarily unavailable. Process identity has no such fallback because
+	// its contract is explicitly random.
 	sequence := fallbackCorrelation.Add(1)
 	var fallback [12]byte
 	for index := range fallback {
@@ -296,4 +391,12 @@ func newCorrelationID() string {
 		sequence >>= 8
 	}
 	return "op_" + hex.EncodeToString(fallback[:])
+}
+
+func newRandomID(prefix string) (string, bool) {
+	var raw [12]byte
+	if _, err := rand.Read(raw[:]); err == nil {
+		return prefix + hex.EncodeToString(raw[:]), true
+	}
+	return "", false
 }

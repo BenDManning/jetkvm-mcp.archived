@@ -5,13 +5,11 @@ stream. MCP protocol responses remain on stdout for stdio deployments. The
 telemetry path is diagnostic only: a full queue, writer failure, or flush timeout
 never changes an operation result or retry classification.
 
-## Accepted public v1 target
-
-V1 moves to a versioned telemetry schema that adds a UTC event time, a random
-per-process instance identifier, and the public server version. Bounded shutdown
-evidence reports the aggregate dropped-event count and whether a writer failure
-was observed when the sink remains writable. Missing telemetry never proves
-that an operation did not execute.
+Every event includes a UTC event time, a random per-process instance identifier,
+and the public server version. Bounded shutdown evidence reports the aggregate
+dropped-event count and whether a writer failure was observed when the sink
+remains writable. Missing telemetry never proves that an operation did not
+execute.
 
 Telemetry remains local to stderr, bounded, non-blocking, and payload-free. The
 server does not add a network telemetry backend, durable audit database, or
@@ -21,16 +19,17 @@ window when investigating an incident. Deployment needs may require a different
 retention period; the server does not enforce one. Sanitized CI evidence has a
 separate 30-day retention contract.
 
-The schema below describes the current tree until implementation brings it into
-agreement with this accepted target.
-
 ## Schema
 
-Every retained line uses `jetkvm.operation.v1` and exactly these fields:
+Every retained line uses `jetkvm.operation.v2`. Operation and stage events have
+exactly these fields:
 
 | Field | Values |
 | --- | --- |
-| `schema` | `jetkvm.operation.v1` |
+| `schema` | `jetkvm.operation.v2` |
+| `time` | UTC RFC 3339 timestamp |
+| `process_instance_id` | random process-local opaque `proc_` identifier |
+| `server_version` | public version reported by `jetkvm-mcp --version` |
 | `correlation_id` | process-generated opaque `op_` identifier |
 | `transport` | `stdio`, `http` |
 | `operation` | `inventory`, `status`, `power`, `hid`, `capture`, `media`, `debug_rpc`, `lifecycle` |
@@ -38,6 +37,18 @@ Every retained line uses `jetkvm.operation.v1` and exactly these fields:
 | `duration_ms` | non-negative integer capped at 60000 |
 | `code` | fixed public result code such as `success`, `invalid_input`, `busy`, `canceled`, or `timeout` |
 | `outcome` | `succeeded`, `failed`, `not_sent`, or `unknown` |
+
+On close, the recorder reserves one `lifecycle` / `shutdown` /
+`telemetry_summary` event. It has the fields above plus `dropped_events`, the
+aggregate number of events rejected by full queues, and `writer_failed`, which
+states whether any completed sink write returned an error. Its outcome is
+`failed` when either value indicates loss and `succeeded` otherwise. A blocked
+or permanently failed sink can also prevent the summary itself from being
+retained; the one-second application close deadline still bounds shutdown. If
+writing the summary itself reports a failure, the recorder makes one attempt to
+append a distinct `telemetry_writer_failure` event with the same correlation ID.
+This attempt is also bounded and may be absent when the sink remains
+unavailable; it never rewrites or contradicts an already retained summary.
 
 All stages of one operation share its correlation ID. Stage timing measures the
 existing boundary without moving or changing that boundary:
@@ -66,13 +77,15 @@ and other stages, plus one writer goroutine. Stage pressure therefore cannot
 evict a tool terminal event, and concurrent producers cannot interleave JSON
 lines. A full queue still drops its new event rather than blocking the operation;
 a persistently blocked or failed sink cannot be lossless while the recorder
-remains both bounded and nonblocking. Shutdown drains both queues with a bounded
-flush; writer errors are intentionally ignored.
+remains both bounded and nonblocking. Shutdown drains both queues before its
+reserved summary, subject to the bounded close deadline. Writer errors are
+recorded for the summary but never returned through an MCP or device operation.
 
 ## Verification scope
 
-The repository tests cover stdio and loopback HTTP telemetry, success and stable
-failure classes, cancellation, timeout, busy outcomes, internal stage
+The repository tests cover pipe-backed stdio and loopback HTTP telemetry,
+success and stable failure classes, cancellation, timeout, busy outcomes,
+internal stage
 correlation (including cancellation-detached cleanup), final output-schema and
 capture-serialization outcomes, sensitive sentinel exclusion, concurrent line
 integrity, stage-pressure terminal reservation, slow and failing writers, and

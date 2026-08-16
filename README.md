@@ -137,7 +137,11 @@ JetKVM firmware exposes partial-upload resumption by byte count but provides no 
 jetkvm-mcp --config config.yaml
 ```
 
-Logs go to stderr; stdout is reserved for MCP messages.
+Logs and bounded structured telemetry go to stderr; stdout is reserved for MCP
+messages. Missing telemetry never proves that an operation did not execute.
+Keep routine telemetry for no more than 14 days in access-controlled stderr
+rotation, preserving only the relevant sanitized window for an incident. See
+[`docs/telemetry.md`](docs/telemetry.md) for the schema and privacy boundary.
 
 ## Run over Streamable HTTP
 

@@ -16,7 +16,7 @@ import (
 
 func TestRecorderEmitsBoundedSchemaAndCorrelation(t *testing.T) {
 	var output bytes.Buffer
-	recorder := New(&output)
+	recorder := New(&output, "1.2.3")
 	ctx, span := recorder.Start(context.Background(), TransportStdio, OperationStatus)
 	time.Sleep(time.Millisecond)
 	span.Record(StageRPC, CodeSuccess, OutcomeSucceeded)
@@ -29,8 +29,17 @@ func TestRecorderEmitsBoundedSchemaAndCorrelation(t *testing.T) {
 	if err := decoder.Decode(&event); err != nil {
 		t.Fatalf("decode event: %v", err)
 	}
-	if len(event) != 8 || event["schema"] != "jetkvm.operation.v1" || event["transport"] != "stdio" || event["operation"] != "status" || event["stage"] != "rpc" || event["code"] != "success" || event["outcome"] != "succeeded" {
+	if len(event) != 11 || event["schema"] != "jetkvm.operation.v2" || event["server_version"] != "1.2.3" || event["transport"] != "stdio" || event["operation"] != "status" || event["stage"] != "rpc" || event["code"] != "success" || event["outcome"] != "succeeded" {
 		t.Fatalf("event = %#v", event)
+	}
+	eventTime, ok := event["time"].(string)
+	parsedTime, err := time.Parse(time.RFC3339Nano, eventTime)
+	if !ok || err != nil || eventTime[len(eventTime)-1:] != "Z" || time.Since(parsedTime) > time.Minute {
+		t.Fatalf("time = %q, parse error = %v", eventTime, err)
+	}
+	processID, ok := event["process_instance_id"].(string)
+	if !ok || !regexp.MustCompile(`^proc_[0-9a-f]{24}$`).MatchString(processID) {
+		t.Fatalf("process_instance_id = %#v", event["process_instance_id"])
 	}
 	correlation, ok := event["correlation_id"].(string)
 	if !ok || !regexp.MustCompile(`^op_[0-9a-f]{24}$`).MatchString(correlation) || CorrelationID(ctx) != correlation {
@@ -40,14 +49,18 @@ func TestRecorderEmitsBoundedSchemaAndCorrelation(t *testing.T) {
 	if !ok || duration < 0 || duration > 60_000 {
 		t.Fatalf("duration_ms = %#v", event["duration_ms"])
 	}
+	var summary shutdownEvent
+	if err := decoder.Decode(&summary); err != nil || summary.Operation != OperationLifecycle || summary.Stage != StageShutdown || summary.Code != "telemetry_summary" || summary.DroppedEvents != 0 || summary.WriterFailed {
+		t.Fatalf("shutdown summary = %#v, error = %v", summary, err)
+	}
 	if err := decoder.Decode(new(any)); !errors.Is(err, io.EOF) {
-		t.Fatalf("recorder emitted trailing data: %v", err)
+		t.Fatalf("recorder emitted data after shutdown summary: %v", err)
 	}
 }
 
 func TestStageSpanUsesOperationCorrelationAndOwnDuration(t *testing.T) {
 	var output bytes.Buffer
-	recorder := New(&output)
+	recorder := New(&output, "test")
 	ctx, operation := recorder.Start(context.Background(), TransportStdio, OperationStatus)
 	stage := BeginStage(ctx, StageRPC)
 	stage.Record(CodeSuccess, OutcomeSucceeded)
@@ -68,6 +81,27 @@ func TestStageSpanUsesOperationCorrelationAndOwnDuration(t *testing.T) {
 	}
 }
 
+func TestRecordersShareRandomProcessIdentity(t *testing.T) {
+	processIDs := make([]string, 2)
+	for index := range processIDs {
+		var output bytes.Buffer
+		recorder := New(&output, "test")
+		_, span := recorder.Start(context.Background(), TransportStdio, OperationStatus)
+		span.Record(StageTool, CodeSuccess, OutcomeSucceeded)
+		if err := recorder.Close(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		var got event
+		if err := json.NewDecoder(&output).Decode(&got); err != nil {
+			t.Fatal(err)
+		}
+		processIDs[index] = got.ProcessInstanceID
+	}
+	if !regexp.MustCompile(`^proc_[0-9a-f]{24}$`).MatchString(processIDs[0]) || processIDs[0] != processIDs[1] {
+		t.Fatalf("process instance IDs = %q, want one random process identity", processIDs)
+	}
+}
+
 type blockingWriter struct {
 	started chan struct{}
 	release chan struct{}
@@ -83,7 +117,7 @@ func (writer *blockingWriter) Write(data []byte) (int, error) {
 
 func TestRecorderSlowWriterDoesNotDelayOperation(t *testing.T) {
 	writer := &blockingWriter{started: make(chan struct{}), release: make(chan struct{})}
-	recorder := New(writer)
+	recorder := New(writer, "test")
 	_, span := recorder.Start(context.Background(), TransportHTTP, OperationCapture)
 	recorded := make(chan struct{})
 	go func() {
@@ -108,9 +142,28 @@ func TestRecorderSlowWriterDoesNotDelayOperation(t *testing.T) {
 	}
 }
 
+func TestRecorderCloseIsBoundedByContext(t *testing.T) {
+	writer := &blockingWriter{started: make(chan struct{}), release: make(chan struct{})}
+	recorder := New(writer, "test")
+	_, span := recorder.Start(context.Background(), TransportStdio, OperationStatus)
+	span.Record(StageTool, CodeSuccess, OutcomeSucceeded)
+	<-writer.started
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+	defer cancel()
+	started := time.Now()
+	err := recorder.Close(ctx)
+	close(writer.release)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("Close error = %v, want deadline exceeded", err)
+	}
+	if elapsed := time.Since(started); elapsed > 250*time.Millisecond {
+		t.Fatalf("Close took %v after its deadline", elapsed)
+	}
+}
+
 func TestRecorderStagePressureRetainsTerminalToolEvent(t *testing.T) {
 	writer := &blockingWriter{started: make(chan struct{}), release: make(chan struct{})}
-	recorder := New(writer)
+	recorder := New(writer, "test")
 	_, span := recorder.Start(context.Background(), TransportStdio, OperationStatus)
 	span.Record(StageRPC, CodeSuccess, OutcomeSucceeded)
 	<-writer.started
@@ -144,7 +197,7 @@ func TestRecorderStagePressureRetainsTerminalToolEvent(t *testing.T) {
 func TestRecorderDropsUnsafeOrInvalidFields(t *testing.T) {
 	const sentinel = "PRIVATE\nINJECTED-device-url-token-path-firmware-rpc-child"
 	var output bytes.Buffer
-	recorder := New(&output)
+	recorder := New(&output, "test")
 	for _, test := range []struct {
 		transport string
 		operation string
@@ -164,14 +217,15 @@ func TestRecorderDropsUnsafeOrInvalidFields(t *testing.T) {
 	if err := recorder.Close(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if output.Len() != 0 || strings.Contains(output.String(), sentinel) {
+	var summary shutdownEvent
+	if err := json.NewDecoder(&output).Decode(&summary); err != nil || summary.Code != "telemetry_summary" || summary.DroppedEvents != 0 || summary.WriterFailed || strings.Contains(output.String(), sentinel) {
 		t.Fatalf("invalid telemetry was emitted: %q", output.String())
 	}
 }
 
 func TestRecorderConcurrentLinesAreAtomic(t *testing.T) {
 	var output bytes.Buffer
-	recorder := New(&output)
+	recorder := New(&output, "test")
 	_, span := recorder.Start(context.Background(), TransportHTTP, OperationMedia)
 	var workers sync.WaitGroup
 	for index := 0; index < 100; index++ {
@@ -191,9 +245,13 @@ func TestRecorderConcurrentLinesAreAtomic(t *testing.T) {
 		if err := decoder.Decode(&event); err != nil {
 			t.Fatalf("decode line %d: %v", index, err)
 		}
-		if len(event) != 8 {
+		if len(event) != 11 {
 			t.Fatalf("line %d has fields %#v", index, event)
 		}
+	}
+	var summary shutdownEvent
+	if err := decoder.Decode(&summary); err != nil || summary.Code != "telemetry_summary" {
+		t.Fatalf("shutdown summary = %#v, error = %v", summary, err)
 	}
 	if err := decoder.Decode(new(any)); !errors.Is(err, io.EOF) {
 		t.Fatalf("trailing telemetry: %v", err)
@@ -205,7 +263,7 @@ func TestRecorderSyntheticLoadHasBoundedGoroutinesAndMemory(t *testing.T) {
 	beforeGoroutines := runtime.NumGoroutine()
 	var beforeMemory runtime.MemStats
 	runtime.ReadMemStats(&beforeMemory)
-	recorder := New(io.Discard)
+	recorder := New(io.Discard, "test")
 	ctx, _ := recorder.Start(context.Background(), TransportStdio, OperationStatus)
 	var workers sync.WaitGroup
 	for index := 0; index < 1_000; index++ {
@@ -236,10 +294,116 @@ type failingWriter struct{}
 func (failingWriter) Write([]byte) (int, error) { return 0, errors.New("private writer failure") }
 
 func TestRecorderWriterFailureDoesNotChangeOperation(t *testing.T) {
-	recorder := New(failingWriter{})
+	recorder := New(failingWriter{}, "test")
 	_, span := recorder.Start(context.Background(), TransportStdio, OperationStatus)
 	span.Record(StageTool, CodeSuccess, OutcomeSucceeded)
 	if err := recorder.Close(context.Background()); err != nil {
 		t.Fatalf("Close propagated writer failure: %v", err)
 	}
+}
+
+type recoveringWriter struct {
+	started chan struct{}
+	release chan struct{}
+	once    sync.Once
+	mu      sync.Mutex
+	output  bytes.Buffer
+}
+
+func (writer *recoveringWriter) Write(data []byte) (int, error) {
+	failed := false
+	writer.once.Do(func() {
+		close(writer.started)
+		<-writer.release
+		failed = true
+	})
+	if failed {
+		return 0, errors.New("private transient writer failure")
+	}
+	writer.mu.Lock()
+	defer writer.mu.Unlock()
+	return writer.output.Write(data)
+}
+
+type summaryFailingWriter struct {
+	writes int
+	output bytes.Buffer
+}
+
+func (writer *summaryFailingWriter) Write(data []byte) (int, error) {
+	writer.writes++
+	written, _ := writer.output.Write(data)
+	if writer.writes == 2 {
+		return written, errors.New("private summary write failure")
+	}
+	return written, nil
+}
+
+func TestRecorderCorrectsFailureReportedBySummaryWrite(t *testing.T) {
+	writer := new(summaryFailingWriter)
+	recorder := New(writer, "test")
+	_, span := recorder.Start(context.Background(), TransportStdio, OperationStatus)
+	span.Record(StageTool, CodeSuccess, OutcomeSucceeded)
+	if err := recorder.Close(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	decoder := json.NewDecoder(bytes.NewReader(writer.output.Bytes()))
+	var summary shutdownEvent
+	var failure event
+	for {
+		var got event
+		if err := decoder.Decode(&got); errors.Is(err, io.EOF) {
+			break
+		} else if err != nil {
+			t.Fatal(err)
+		}
+		if got.Code == "telemetry_summary" {
+			summary.event = got
+		} else if got.Code == "telemetry_writer_failure" {
+			failure = got
+		}
+	}
+	if writer.writes != 3 || summary.Outcome != OutcomeSucceeded || summary.WriterFailed || failure.Outcome != OutcomeFailed || failure.CorrelationID == "" || failure.CorrelationID != summary.CorrelationID {
+		t.Fatalf("writes=%d summary=%#v failure=%#v", writer.writes, summary, failure)
+	}
+}
+
+func TestRecorderCloseReportsDroppedEventsAndWriterFailure(t *testing.T) {
+	writer := &recoveringWriter{started: make(chan struct{}), release: make(chan struct{})}
+	recorder := New(writer, "test")
+	_, span := recorder.Start(context.Background(), TransportStdio, OperationStatus)
+	span.Record(StageRPC, CodeSuccess, OutcomeSucceeded)
+	<-writer.started
+	for index := 0; index < cap(recorder.events)+cap(recorder.terminal)+2; index++ {
+		span.Record(StageTool, CodeSuccess, OutcomeSucceeded)
+	}
+	close(writer.release)
+	if err := recorder.Close(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	decoder := json.NewDecoder(bytes.NewReader(writer.output.Bytes()))
+	for {
+		var got struct {
+			Operation     string `json:"operation"`
+			Stage         string `json:"stage"`
+			Code          string `json:"code"`
+			Outcome       string `json:"outcome"`
+			DroppedEvents uint64 `json:"dropped_events"`
+			WriterFailed  bool   `json:"writer_failed"`
+		}
+		if err := decoder.Decode(&got); errors.Is(err, io.EOF) {
+			break
+		} else if err != nil {
+			t.Fatal(err)
+		}
+		if got.Operation == OperationLifecycle && got.Stage == StageShutdown && got.Code == "telemetry_summary" {
+			if got.Outcome != OutcomeFailed || got.DroppedEvents == 0 || !got.WriterFailed {
+				t.Fatalf("shutdown summary = %#v", got)
+			}
+			return
+		}
+	}
+	t.Fatalf("shutdown summary missing: %s", writer.output.String())
 }
