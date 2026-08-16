@@ -79,7 +79,7 @@ func TestServerPublishesConsequenceCorrectVirtualMediaTools(t *testing.T) {
 	assertVirtualMediaTool(t, tools, GetVirtualMediaStatusToolName, true, false, true, false, []string{"device"})
 	assertVirtualMediaTool(t, tools, MountVirtualMediaURLToolName, false, true, false, true, []string{"device", "url"})
 	assertVirtualMediaTool(t, tools, MountVirtualMediaFileToolName, false, true, false, false, []string{"device", "path"})
-	assertVirtualMediaTool(t, tools, UnmountVirtualMediaToolName, false, true, true, false, []string{"device"})
+	assertVirtualMediaTool(t, tools, UnmountVirtualMediaToolName, false, true, false, false, []string{"device"})
 	assertVirtualMediaTool(t, tools, UploadVirtualMediaFileToolName, false, true, false, false, []string{"device", "path"})
 	assertInputProperties(t, tools[GetVirtualMediaStatusToolName], []string{"device"})
 	assertInputProperties(t, tools[MountVirtualMediaURLToolName], []string{"device", "mode", "url"})
@@ -95,11 +95,9 @@ func TestServerPublishesConsequenceCorrectVirtualMediaTools(t *testing.T) {
 		t.Fatalf("%s description does not state its configured origin and fetching actor: %q", MountVirtualMediaURLToolName, description)
 	}
 
-	legacy := tools[VirtualMediaToolName]
-	if legacy == nil || !strings.Contains(strings.ToLower(legacy.Description), "deprecated") {
-		t.Fatalf("legacy %s must remain discoverable with a deprecation notice", VirtualMediaToolName)
+	if tools["jetkvm_virtual_media"] != nil {
+		t.Fatal("removed combined virtual-media tool is still discoverable")
 	}
-	assertStringEnum(t, legacy, "operation", []string{"status", "mount_url", "mount_file", "unmount", "upload"})
 }
 
 type virtualMediaCall struct {

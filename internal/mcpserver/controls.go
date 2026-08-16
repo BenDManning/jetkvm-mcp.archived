@@ -21,7 +21,6 @@ const (
 	CaptureScreenToolName          = "jetkvm_capture_screen"
 	KeyboardToolName               = "jetkvm_keyboard"
 	MouseToolName                  = "jetkvm_mouse"
-	VirtualMediaToolName           = "jetkvm_virtual_media"
 	GetVirtualMediaStatusToolName  = "jetkvm_get_virtual_media_status"
 	MountVirtualMediaURLToolName   = "jetkvm_mount_virtual_media_url"
 	MountVirtualMediaFileToolName  = "jetkvm_mount_virtual_media_file"
@@ -165,13 +164,6 @@ type mouseInput struct {
 	WheelY    int            `json:"wheel_y,omitempty" jsonschema:"vertical wheel movement for scroll"`
 }
 
-type virtualMediaInput struct {
-	Device    string                `json:"device" jsonschema:"configured JetKVM device name"`
-	Operation VirtualMediaOperation `json:"operation" jsonschema:"deprecated compatibility operation: status, mount_url, mount_file, unmount, or upload"`
-	Source    string                `json:"source,omitempty" jsonschema:"private URL or configured-media-directory relative path required by the selected operation; never returned in media state"`
-	Mode      string                `json:"mode,omitempty" jsonschema:"read_only or read_write mount mode; defaults to read_only"`
-}
-
 type virtualMediaStatusInput struct {
 	Device string `json:"device" jsonschema:"configured JetKVM device name"`
 }
@@ -230,7 +222,7 @@ func addControlTools(server *mcp.Server, device Device) {
 		Title:       "Send keyboard input",
 		Description: "Send private bounded US-ASCII text or one named key through USB HID to a configured attached host; it can enter credentials, execute commands, or alter host data. Input is transient and not logged. If a mutation reports outcome unknown, do not blindly retry; inspect host state first.",
 		InputSchema: keyboardSchema(),
-		Annotations: annotations(false, false, false),
+		Annotations: annotations(false, true, false),
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, input keyboardInput) (*mcp.CallToolResult, KeyboardResult, error) {
 		request := KeyboardRequest{Operation: input.Operation, Text: input.Text, Key: input.Key, Modifiers: input.Modifiers}
 		if err := validateKeyboardInput(input.Device, request); err != nil {
@@ -245,7 +237,7 @@ func addControlTools(server *mcp.Server, device Device) {
 		Title:       "Send mouse input",
 		Description: "Move, click, or scroll a configured attached host's pointer through USB HID; clicks can activate destructive host UI actions. If a mutation reports outcome unknown, do not blindly retry; inspect host state first.",
 		InputSchema: mouseSchema(),
-		Annotations: annotations(false, false, false),
+		Annotations: annotations(false, true, false),
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, input mouseInput) (*mcp.CallToolResult, MouseResult, error) {
 		request := MouseRequest{
 			Operation: input.Operation, X: input.X, Y: input.Y, DX: input.DX, DY: input.DY,
@@ -307,9 +299,9 @@ func addControlTools(server *mcp.Server, device Device) {
 	addMutationTool(server, &mcp.Tool{
 		Name:         UnmountVirtualMediaToolName,
 		Title:        "Unmount virtual media",
-		Description:  "Unmount a configured JetKVM's current virtual media. The request is valid even when no media is mounted and is intended to converge. If a mutation reports outcome unknown, do not blindly retry; inspect status first.",
+		Description:  "Unmount a configured JetKVM's current virtual media. The request is valid even when no media is mounted. If the mutation's outcome is unknown, do not blindly retry; inspect status first.",
 		OutputSchema: virtualMediaResultSchema(),
-		Annotations:  annotations(false, true, true),
+		Annotations:  annotations(false, true, false),
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, input virtualMediaStatusInput) (*mcp.CallToolResult, VirtualMediaResult, error) {
 		if err := validDevice(input.Device); err != nil {
 			return nil, VirtualMediaResult{}, invalidInput(err)
@@ -334,23 +326,6 @@ func addControlTools(server *mcp.Server, device Device) {
 		return nil, result, err
 	})
 
-	addSanitizedConditionalMutationTool(server, &mcp.Tool{
-		Name:         VirtualMediaToolName,
-		Title:        "Virtual media (deprecated)",
-		Description:  "Deprecated compatibility tool for configured virtual-media status, mount, unmount, and upload operations; use the one-purpose jetkvm_*_virtual_media* tools instead. Status is read-only, while mount and upload can alter appliance storage or network state. If a mutation reports outcome unknown, do not blindly retry; inspect status first.",
-		InputSchema:  operationSchema[virtualMediaInput]([]string{string(VirtualMediaStatus), string(VirtualMediaMountURL), string(VirtualMediaMountFile), string(VirtualMediaUnmount), string(VirtualMediaUpload)}),
-		OutputSchema: virtualMediaResultSchema(),
-		Annotations:  annotations(false, true, false),
-	}, func(input virtualMediaInput) bool {
-		return input.Operation != VirtualMediaStatus
-	}, func(ctx context.Context, _ *mcp.CallToolRequest, input virtualMediaInput) (*mcp.CallToolResult, VirtualMediaResult, error) {
-		request := VirtualMediaRequest{Operation: input.Operation, Source: input.Source, Mode: input.Mode}
-		if err := validateVirtualMediaInput(input.Device, request); err != nil {
-			return nil, VirtualMediaResult{}, invalidInput(err)
-		}
-		result, err := device.VirtualMedia(ctx, input.Device, request)
-		return nil, result, err
-	})
 }
 
 type captureDeadlineResult struct {

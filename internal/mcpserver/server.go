@@ -108,25 +108,26 @@ type wakeLANInput struct {
 }
 
 // New builds a JetKVM MCP server using only the official Go SDK.
-func New(device Device, version string) *mcp.Server {
+func New(device Device, version string) *Server {
 	return newServerWithTelemetry(device, version, CaptureScreenTimeout, nil, "")
 }
 
-func newServer(device Device, version string, captureTimeout time.Duration) *mcp.Server {
+func newServer(device Device, version string, captureTimeout time.Duration) *Server {
 	return newServerWithTelemetry(device, version, captureTimeout, nil, "")
 }
 
 // NewWithTelemetry builds a server whose operation events are written by recorder.
 // Transport and operation values are selected from closed, privacy-safe enums.
-func NewWithTelemetry(device Device, version string, recorder *telemetry.Recorder, transport string) *mcp.Server {
+func NewWithTelemetry(device Device, version string, recorder *telemetry.Recorder, transport string) *Server {
 	return newServerWithTelemetry(device, version, CaptureScreenTimeout, recorder, transport)
 }
 
-func newServerWithTelemetry(device Device, version string, captureTimeout time.Duration, recorder *telemetry.Recorder, transport string) *mcp.Server {
+func newServerWithTelemetry(device Device, version string, captureTimeout time.Duration, recorder *telemetry.Recorder, transport string) *Server {
 	// The manifest is static, so do not advertise tool-list change notifications.
 	server := mcp.NewServer(&mcp.Implementation{Name: "jetkvm-mcp", Version: version}, &mcp.ServerOptions{
 		Capabilities: &mcp.ServerCapabilities{Tools: &mcp.ToolCapabilities{}},
 	})
+	server.AddReceivingMiddleware(protocolVersionDiscoveryMiddleware)
 	server.AddReceivingMiddleware(captureDeadlineMiddleware(captureTimeout))
 	if recorder != nil {
 		server.AddReceivingMiddleware(toolTelemetryMiddleware(recorder, transport))
@@ -164,17 +165,17 @@ func newServerWithTelemetry(device Device, version string, captureTimeout time.D
 	registerPowerTool(server, device, PressHostResetButtonToolName,
 		"Press host reset button", "Briefly press the physical reset button of a configured attached host; this can interrupt work or corrupt data. If a mutation reports outcome unknown, do not blindly retry; inspect status first.", PowerActionPressHostResetButton, true, false)
 	registerPowerTool(server, device, TurnHostDCPowerOnToolName,
-		"Turn host DC power on", "Enable the physical JetKVM-controlled DC output for a configured attached host, which may boot equipment. The request is intended to converge, but if its outcome is unknown do not blindly retry; inspect status first.", PowerActionTurnHostDCPowerOn, false, true)
+		"Turn host DC power on", "Enable the physical JetKVM-controlled DC output for a configured attached host, which may boot equipment. If the mutation's outcome is unknown, do not blindly retry; inspect status first.", PowerActionTurnHostDCPowerOn, false, false)
 	registerPowerTool(server, device, TurnHostDCPowerOffToolName,
-		"Turn host DC power off", "Disable the physical JetKVM-controlled DC output for a configured attached host, which can interrupt work and cause data loss. The request is intended to converge, but if its outcome is unknown do not blindly retry; inspect status first.", PowerActionTurnHostDCPowerOff, true, true)
+		"Turn host DC power off", "Disable the physical JetKVM-controlled DC output for a configured attached host, which can interrupt work and cause data loss. If the mutation's outcome is unknown, do not blindly retry; inspect status first.", PowerActionTurnHostDCPowerOff, true, false)
 	registerPowerTool(server, device, WakeHostUSBToolName,
-		"Wake host over USB", "Send a USB HID wake action to a configured attached host, which may resume or boot it. The request is intended to converge, but if its outcome is unknown do not blindly retry; inspect status first.", PowerActionWakeHostUSB, false, true)
+		"Wake host over USB", "Send a USB HID wake action to a configured attached host, which may resume or boot it. If the mutation's outcome is unknown, do not blindly retry; inspect status first.", PowerActionWakeHostUSB, false, false)
 
 	addMutationTool(server, &mcp.Tool{
 		Name:        WakeHostLANToolName,
 		Title:       "Wake host over LAN",
-		Description: "Make the configured JetKVM send a Wake-on-LAN network magic packet to a named configured target; callers cannot supply an arbitrary MAC address. The request is intended to converge, but if its outcome is unknown do not blindly retry; inspect status first.",
-		Annotations: annotations(false, false, true),
+		Description: "Make the configured JetKVM send a Wake-on-LAN network magic packet to a named configured target; callers cannot supply an arbitrary MAC address. If the mutation's outcome is unknown, do not blindly retry; inspect status first.",
+		Annotations: annotations(false, false, false),
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, input wakeLANInput) (*mcp.CallToolResult, PowerResult, error) {
 		if err := validDevice(input.Device); err != nil {
 			return nil, PowerResult{}, invalidInput(err)
@@ -188,7 +189,7 @@ func newServerWithTelemetry(device Device, version string, captureTimeout time.D
 
 	addControlTools(server, device)
 
-	return server
+	return &Server{sdk: server}
 }
 
 func toolTelemetryMiddleware(recorder *telemetry.Recorder, transport string) mcp.Middleware {
@@ -264,8 +265,8 @@ func telemetryToolClass(name string) (operation string, mutation, ok bool) {
 		return telemetry.OperationHID, true, true
 	case CaptureScreenToolName:
 		return telemetry.OperationCapture, false, true
-	case VirtualMediaToolName, MountVirtualMediaURLToolName, MountVirtualMediaFileToolName,
-		UnmountVirtualMediaToolName, UploadVirtualMediaFileToolName:
+	case MountVirtualMediaURLToolName, MountVirtualMediaFileToolName, UnmountVirtualMediaToolName,
+		UploadVirtualMediaFileToolName:
 		return telemetry.OperationMedia, true, true
 	default:
 		return "", false, false
@@ -323,10 +324,6 @@ func addMutationTool[In, Out any](server *mcp.Server, tool *mcp.Tool, handler mc
 // which is unsafe for media URLs and local paths that may contain private data.
 func addSanitizedInputMutationTool[In, Out any](server *mcp.Server, tool *mcp.Tool, handler mcp.ToolHandlerFor[In, Out]) {
 	addInputTool(server, tool, true, func(In) bool { return true }, handler)
-}
-
-func addSanitizedConditionalMutationTool[In, Out any](server *mcp.Server, tool *mcp.Tool, mutation func(In) bool, handler mcp.ToolHandlerFor[In, Out]) {
-	addInputTool(server, tool, true, mutation, handler)
 }
 
 func addInputTool[In, Out any](server *mcp.Server, tool *mcp.Tool, sanitizeInput bool, mutation func(In) bool, handler mcp.ToolHandlerFor[In, Out]) {

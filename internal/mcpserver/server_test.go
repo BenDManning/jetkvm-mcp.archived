@@ -76,25 +76,25 @@ func TestServerPublishesExplicitPowerTools(t *testing.T) {
 			t.Fatalf("local-only RPC leaked into tools/list as %q", forbidden)
 		}
 	}
+	if tools["jetkvm_virtual_media"] != nil {
+		t.Fatal("removed combined jetkvm_virtual_media tool must not be published")
+	}
 
 	assertTool(t, tools, ListDevicesToolName, true, false, true, nil)
 	assertTool(t, tools, "jetkvm_get_status", true, false, true, []string{"device"})
 	assertTool(t, tools, "jetkvm_press_host_power_button", false, true, false, []string{"device"})
 	assertTool(t, tools, "jetkvm_force_host_power_off", false, true, false, []string{"device"})
 	assertTool(t, tools, "jetkvm_press_host_reset_button", false, true, false, []string{"device"})
-	assertTool(t, tools, "jetkvm_turn_host_dc_power_on", false, false, true, []string{"device"})
-	assertTool(t, tools, "jetkvm_turn_host_dc_power_off", false, true, true, []string{"device"})
-	assertTool(t, tools, "jetkvm_wake_host_usb", false, false, true, []string{"device"})
-	assertTool(t, tools, "jetkvm_wake_host_lan", false, false, true, []string{"device", "target"})
+	assertTool(t, tools, "jetkvm_turn_host_dc_power_on", false, false, false, []string{"device"})
+	assertTool(t, tools, "jetkvm_turn_host_dc_power_off", false, true, false, []string{"device"})
+	assertTool(t, tools, "jetkvm_wake_host_usb", false, false, false, []string{"device"})
+	assertTool(t, tools, "jetkvm_wake_host_lan", false, false, false, []string{"device", "target"})
 	assertTool(t, tools, "jetkvm_capture_screen", true, false, true, []string{"device"})
-	assertTool(t, tools, "jetkvm_keyboard", false, false, false, []string{"device", "operation"})
-	assertTool(t, tools, "jetkvm_mouse", false, false, false, []string{"device", "operation"})
-	assertTool(t, tools, "jetkvm_virtual_media", false, true, false, []string{"device", "operation"})
+	assertTool(t, tools, "jetkvm_keyboard", false, true, false, []string{"device", "operation"})
+	assertTool(t, tools, "jetkvm_mouse", false, true, false, []string{"device", "operation"})
 
 	assertStringEnum(t, tools["jetkvm_keyboard"], "operation", []string{"type_text", "press_key"})
 	assertStringEnum(t, tools["jetkvm_mouse"], "operation", []string{"move_absolute", "move_relative", "click", "scroll"})
-	assertStringEnum(t, tools["jetkvm_virtual_media"], "operation", []string{"status", "mount_url", "mount_file", "unmount", "upload"})
-
 	for name, tool := range tools {
 		var schema struct {
 			Properties map[string]json.RawMessage `json:"properties"`

@@ -73,7 +73,7 @@ func TestToolTelemetryCorrelatesSuccessFailureTimeoutCancelAndBusy(t *testing.T)
 		{name: "canceled", tool: GetStatusToolName, arguments: map[string]any{"device": privateSentinel}, failure: context.Canceled, operation: telemetry.OperationStatus, code: "canceled", outcome: telemetry.OutcomeFailed},
 		{name: "busy", tool: GetStatusToolName, arguments: map[string]any{"device": privateSentinel}, failure: telemetryClassifiedError{error: errors.New(privateSentinel), code: "busy", outcome: "not_sent"}, operation: telemetry.OperationStatus, code: "busy", outcome: telemetry.OutcomeNotSent},
 		{name: "mutation unknown", tool: PressHostPowerButtonToolName, arguments: map[string]any{"device": privateSentinel}, failure: telemetryClassifiedError{error: errors.New(privateSentinel), code: "protocol_error", outcome: telemetry.OutcomeUnknown}, operation: telemetry.OperationPower, code: "protocol_error", outcome: telemetry.OutcomeUnknown},
-		{name: "conditional read failure", tool: VirtualMediaToolName, arguments: map[string]any{"device": privateSentinel, "operation": "status"}, failure: errors.New(privateSentinel), operation: telemetry.OperationMedia, code: "operation_failed", outcome: telemetry.OutcomeFailed},
+		{name: "media read failure", tool: GetVirtualMediaStatusToolName, arguments: map[string]any{"device": privateSentinel}, failure: errors.New(privateSentinel), operation: telemetry.OperationStatus, code: "operation_failed", outcome: telemetry.OutcomeFailed},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -82,7 +82,7 @@ func TestToolTelemetryCorrelatesSuccessFailureTimeoutCancelAndBusy(t *testing.T)
 			device := &telemetryDevice{}
 			if test.tool == PressHostPowerButtonToolName {
 				device.powerErr = test.failure
-			} else if test.tool == VirtualMediaToolName {
+			} else if test.tool == GetVirtualMediaStatusToolName {
 				device.virtualMediaErr = test.failure
 			} else {
 				device.statusErr = test.failure

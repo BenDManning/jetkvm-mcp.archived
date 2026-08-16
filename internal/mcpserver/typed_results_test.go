@@ -53,9 +53,6 @@ func TestTypedMediaSchemaErrorsDoNotEchoPrivateSources(t *testing.T) {
 		{name: "mount URL", tool: MountVirtualMediaURLToolName, arguments: map[string]any{"device": "lab", "url": overlongURL}},
 		{name: "mount file", tool: MountVirtualMediaFileToolName, arguments: map[string]any{"device": "lab", "path": overlongPath}},
 		{name: "upload file", tool: UploadVirtualMediaFileToolName, arguments: map[string]any{"device": "lab", "path": overlongPath}},
-		{name: "legacy malformed source", tool: VirtualMediaToolName, arguments: map[string]any{
-			"device": "lab", "operation": "mount_url", "source": map[string]any{"private": query},
-		}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			device := &typedResultDevice{}
@@ -141,8 +138,7 @@ func TestTypedMediaOutputSchemasExcludeRawSources(t *testing.T) {
 	for _, tool := range listed.Tools {
 		if tool.Name != GetStatusToolName && tool.Name != GetVirtualMediaStatusToolName &&
 			tool.Name != MountVirtualMediaURLToolName && tool.Name != MountVirtualMediaFileToolName &&
-			tool.Name != UnmountVirtualMediaToolName && tool.Name != UploadVirtualMediaFileToolName &&
-			tool.Name != VirtualMediaToolName {
+			tool.Name != UnmountVirtualMediaToolName && tool.Name != UploadVirtualMediaFileToolName {
 			continue
 		}
 		encoded, err := json.Marshal(tool.OutputSchema)

@@ -24,11 +24,7 @@
     "instructions": "",
     "resultType": "complete",
     "supportedVersions": [
-      "2026-07-28",
-      "2025-11-25",
-      "2025-06-18",
-      "2025-03-26",
-      "2024-11-05"
+      "2026-07-28"
     ],
     "ttlMs": 0
   },
@@ -517,7 +513,7 @@
         "type": "object"
       },
       "annotations": {
-        "destructiveHint": false,
+        "destructiveHint": true,
         "idempotentHint": false,
         "openWorldHint": false,
         "readOnlyHint": false
@@ -1088,7 +1084,7 @@
         "type": "object"
       },
       "annotations": {
-        "destructiveHint": false,
+        "destructiveHint": true,
         "idempotentHint": false,
         "openWorldHint": false,
         "readOnlyHint": false
@@ -1204,7 +1200,7 @@
       "meta": null,
       "name": "jetkvm_turn_host_dc_power_off",
       "title": "Turn host DC power off",
-      "description": "Disable the physical JetKVM-controlled DC output for a configured attached host, which can interrupt work and cause data loss. The request is intended to converge, but if its outcome is unknown do not blindly retry; inspect status first.",
+      "description": "Disable the physical JetKVM-controlled DC output for a configured attached host, which can interrupt work and cause data loss. If the mutation's outcome is unknown, do not blindly retry; inspect status first.",
       "icons": null,
       "inputSchema": {
         "additionalProperties": false,
@@ -1248,7 +1244,7 @@
       },
       "annotations": {
         "destructiveHint": true,
-        "idempotentHint": true,
+        "idempotentHint": false,
         "openWorldHint": false,
         "readOnlyHint": false
       }
@@ -1257,7 +1253,7 @@
       "meta": null,
       "name": "jetkvm_turn_host_dc_power_on",
       "title": "Turn host DC power on",
-      "description": "Enable the physical JetKVM-controlled DC output for a configured attached host, which may boot equipment. The request is intended to converge, but if its outcome is unknown do not blindly retry; inspect status first.",
+      "description": "Enable the physical JetKVM-controlled DC output for a configured attached host, which may boot equipment. If the mutation's outcome is unknown, do not blindly retry; inspect status first.",
       "icons": null,
       "inputSchema": {
         "additionalProperties": false,
@@ -1301,7 +1297,7 @@
       },
       "annotations": {
         "destructiveHint": false,
-        "idempotentHint": true,
+        "idempotentHint": false,
         "openWorldHint": false,
         "readOnlyHint": false
       }
@@ -1310,7 +1306,7 @@
       "meta": null,
       "name": "jetkvm_unmount_virtual_media",
       "title": "Unmount virtual media",
-      "description": "Unmount a configured JetKVM's current virtual media. The request is valid even when no media is mounted and is intended to converge. If a mutation reports outcome unknown, do not blindly retry; inspect status first.",
+      "description": "Unmount a configured JetKVM's current virtual media. The request is valid even when no media is mounted. If the mutation's outcome is unknown, do not blindly retry; inspect status first.",
       "icons": null,
       "inputSchema": {
         "additionalProperties": false,
@@ -1382,7 +1378,7 @@
       },
       "annotations": {
         "destructiveHint": true,
-        "idempotentHint": true,
+        "idempotentHint": false,
         "openWorldHint": false,
         "readOnlyHint": false
       }
@@ -1477,110 +1473,9 @@
     },
     {
       "meta": null,
-      "name": "jetkvm_virtual_media",
-      "title": "Virtual media (deprecated)",
-      "description": "Deprecated compatibility tool for configured virtual-media status, mount, unmount, and upload operations; use the one-purpose jetkvm_*_virtual_media* tools instead. Status is read-only, while mount and upload can alter appliance storage or network state. If a mutation reports outcome unknown, do not blindly retry; inspect status first.",
-      "icons": null,
-      "inputSchema": {
-        "additionalProperties": false,
-        "properties": {
-          "device": {
-            "description": "configured JetKVM device name",
-            "type": "string"
-          },
-          "mode": {
-            "description": "read_only or read_write mount mode; defaults to read_only",
-            "type": "string"
-          },
-          "operation": {
-            "description": "deprecated compatibility operation: status, mount_url, mount_file, unmount, or upload",
-            "enum": [
-              "status",
-              "mount_url",
-              "mount_file",
-              "unmount",
-              "upload"
-            ],
-            "type": "string"
-          },
-          "source": {
-            "description": "private URL or configured-media-directory relative path required by the selected operation; never returned in media state",
-            "type": "string"
-          }
-        },
-        "required": [
-          "device",
-          "operation"
-        ],
-        "type": "object"
-      },
-      "outputSchema": {
-        "additionalProperties": false,
-        "properties": {
-          "device": {
-            "description": "configured device identifier",
-            "type": "string"
-          },
-          "mode": {
-            "description": "reported read_only or read_write mode when available",
-            "enum": [
-              "read_only",
-              "read_write"
-            ],
-            "type": "string"
-          },
-          "mounted": {
-            "description": "reported mount state",
-            "type": "boolean"
-          },
-          "operation": {
-            "description": "submitted or observed virtual-media operation",
-            "enum": [
-              "status",
-              "mount_url",
-              "mount_file",
-              "unmount",
-              "upload"
-            ],
-            "type": "string"
-          },
-          "sourceType": {
-            "description": "redacted media source class; never a URL, path, or filename",
-            "enum": [
-              "http",
-              "storage"
-            ],
-            "type": "string"
-          },
-          "status": {
-            "description": "observed for status, completed for an acknowledged mutation; neither independently proves final device state",
-            "enum": [
-              "observed",
-              "completed"
-            ],
-            "type": "string"
-          }
-        },
-        "required": [
-          "device",
-          "operation",
-          "mounted",
-          "status"
-        ],
-        "type": "object"
-      },
-      "annotations": {
-        "destructiveHint": true,
-        "idempotentHint": false,
-        "openWorldHint": false,
-        "readOnlyHint": false
-      }
-    },
-    {
-      "meta": null,
       "name": "jetkvm_wake_host_lan",
       "title": "Wake host over LAN",
-      "description": "Make the configured JetKVM send a Wake-on-LAN network magic packet to a named configured target; callers cannot supply an arbitrary MAC address. The request is intended to converge, but if its outcome is unknown do not blindly retry; inspect status first.",
+      "description": "Make the configured JetKVM send a Wake-on-LAN network magic packet to a named configured target; callers cannot supply an arbitrary MAC address. If the mutation's outcome is unknown, do not blindly retry; inspect status first.",
       "icons": null,
       "inputSchema": {
         "additionalProperties": false,
@@ -1629,7 +1524,7 @@
       },
       "annotations": {
         "destructiveHint": false,
-        "idempotentHint": true,
+        "idempotentHint": false,
         "openWorldHint": false,
         "readOnlyHint": false
       }
@@ -1638,7 +1533,7 @@
       "meta": null,
       "name": "jetkvm_wake_host_usb",
       "title": "Wake host over USB",
-      "description": "Send a USB HID wake action to a configured attached host, which may resume or boot it. The request is intended to converge, but if its outcome is unknown do not blindly retry; inspect status first.",
+      "description": "Send a USB HID wake action to a configured attached host, which may resume or boot it. If the mutation's outcome is unknown, do not blindly retry; inspect status first.",
       "icons": null,
       "inputSchema": {
         "additionalProperties": false,
@@ -1682,7 +1577,7 @@
       },
       "annotations": {
         "destructiveHint": false,
-        "idempotentHint": true,
+        "idempotentHint": false,
         "openWorldHint": false,
         "readOnlyHint": false
       }
@@ -2183,37 +2078,6 @@
         "mounted": false,
         "operation": "upload",
         "sourceType": "storage",
-        "status": "completed"
-      }
-    },
-    "jetkvm_virtual_media": {
-      "content": [
-        {
-          "annotations": null,
-          "json": {
-            "device": "fixture-device",
-            "mounted": false,
-            "operation": "status",
-            "status": "completed"
-          },
-          "meta": null,
-          "type": "text"
-        }
-      ],
-      "inputRequests": null,
-      "isError": false,
-      "meta": {
-        "io.modelcontextprotocol/serverInfo": {
-          "name": "jetkvm-mcp",
-          "version": "contract-test"
-        }
-      },
-      "needsInput": false,
-      "requestState": "",
-      "structuredContent": {
-        "device": "fixture-device",
-        "mounted": false,
-        "operation": "status",
         "status": "completed"
       }
     },

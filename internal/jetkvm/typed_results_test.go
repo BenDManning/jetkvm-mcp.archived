@@ -256,7 +256,6 @@ func TestMCPVirtualMediaURLDefaultDenyIsAnUnsentToolError(t *testing.T) {
 
 	for _, call := range []mcp.CallToolParams{
 		{Name: mcpserver.MountVirtualMediaURLToolName, Arguments: map[string]any{"device": "lab", "url": source}},
-		{Name: mcpserver.VirtualMediaToolName, Arguments: map[string]any{"device": "lab", "operation": "mount_url", "source": source}},
 	} {
 		result, err := clientSession.CallTool(context.Background(), &call)
 		if err != nil {

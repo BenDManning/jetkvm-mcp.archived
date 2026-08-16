@@ -266,7 +266,7 @@ func parseArgs(args []string) (commandOptions, error) {
 	return commandOptions{kind: commandServe, configPath: *configPath, httpAddress: *httpAddress}, nil
 }
 
-func serveHTTP(ctx context.Context, mcpServer *mcp.Server, address, bearerToken string, allowedOrigins []string, stderr io.Writer) error {
+func serveHTTP(ctx context.Context, mcpServer *mcpserver.Server, address, bearerToken string, allowedOrigins []string, stderr io.Writer) error {
 	host, _, err := net.SplitHostPort(address)
 	if err != nil {
 		return errors.New("invalid HTTP listen address")

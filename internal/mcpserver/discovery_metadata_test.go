@@ -84,7 +84,7 @@ func TestREADMEExplainsEveryPublicToolAndSafeRetryRules(t *testing.T) {
 	}
 	for name := range map[string]expectedToolMetadata{
 		ListDevicesToolName: {}, GetStatusToolName: {}, CaptureScreenToolName: {}, KeyboardToolName: {}, MouseToolName: {},
-		GetVirtualMediaStatusToolName: {}, MountVirtualMediaURLToolName: {}, MountVirtualMediaFileToolName: {}, UnmountVirtualMediaToolName: {}, UploadVirtualMediaFileToolName: {}, VirtualMediaToolName: {},
+		GetVirtualMediaStatusToolName: {}, MountVirtualMediaURLToolName: {}, MountVirtualMediaFileToolName: {}, UnmountVirtualMediaToolName: {}, UploadVirtualMediaFileToolName: {},
 		PressHostPowerButtonToolName: {}, ForceHostPowerOffToolName: {}, PressHostResetButtonToolName: {}, TurnHostDCPowerOnToolName: {}, TurnHostDCPowerOffToolName: {}, WakeHostUSBToolName: {}, WakeHostLANToolName: {},
 	} {
 		if !strings.Contains(document, "`"+name+"`") {
@@ -106,21 +106,20 @@ func TestEveryToolPublishesConsequenceCompleteMetadata(t *testing.T) {
 		ListDevicesToolName:            {"List configured JetKVM devices", true, false, true, false, []string{"without contacting", "configured", "retry"}},
 		GetStatusToolName:              {"Get JetKVM status", true, false, true, false, []string{"configured", "private", "retry"}},
 		CaptureScreenToolName:          {"Capture host screen", true, false, true, false, []string{"configured", "private", "png", "retry"}},
-		KeyboardToolName:               {"Send keyboard input", false, false, false, false, []string{"configured", "private", "hid", "unknown", "retry"}},
-		MouseToolName:                  {"Send mouse input", false, false, false, false, []string{"configured", "hid", "unknown", "retry"}},
+		KeyboardToolName:               {"Send keyboard input", false, true, false, false, []string{"configured", "private", "hid", "unknown", "retry"}},
+		MouseToolName:                  {"Send mouse input", false, true, false, false, []string{"configured", "hid", "unknown", "retry"}},
 		GetVirtualMediaStatusToolName:  {"Get virtual-media status", true, false, true, false, []string{"configured", "redacted", "retry"}},
 		MountVirtualMediaURLToolName:   {"Mount virtual media from URL", false, true, false, true, []string{"configured exact origin", "appliance", "unknown", "retry"}},
 		MountVirtualMediaFileToolName:  {"Mount virtual media from file", false, true, false, false, []string{"configured media directory", "local", "unknown", "retry"}},
-		UnmountVirtualMediaToolName:    {"Unmount virtual media", false, true, true, false, []string{"configured", "unknown", "retry"}},
+		UnmountVirtualMediaToolName:    {"Unmount virtual media", false, true, false, false, []string{"configured", "unknown", "retry"}},
 		UploadVirtualMediaFileToolName: {"Upload virtual-media file", false, true, false, false, []string{"configured media directory", "storage", "unknown", "retry"}},
-		VirtualMediaToolName:           {"Virtual media (deprecated)", false, true, false, false, []string{"deprecated", "configured", "unknown", "retry"}},
 		PressHostPowerButtonToolName:   {"Press host power button", false, true, false, false, []string{"configured", "physical", "unknown", "retry"}},
 		ForceHostPowerOffToolName:      {"Force host power off", false, true, false, false, []string{"configured", "data loss", "unknown", "retry"}},
 		PressHostResetButtonToolName:   {"Press host reset button", false, true, false, false, []string{"configured", "data", "unknown", "retry"}},
-		TurnHostDCPowerOnToolName:      {"Turn host DC power on", false, false, true, false, []string{"configured", "physical", "unknown", "retry"}},
-		TurnHostDCPowerOffToolName:     {"Turn host DC power off", false, true, true, false, []string{"configured", "data loss", "unknown", "retry"}},
-		WakeHostUSBToolName:            {"Wake host over USB", false, false, true, false, []string{"configured", "usb", "unknown", "retry"}},
-		WakeHostLANToolName:            {"Wake host over LAN", false, false, true, false, []string{"configured", "network", "unknown", "retry"}},
+		TurnHostDCPowerOnToolName:      {"Turn host DC power on", false, false, false, false, []string{"configured", "physical", "unknown", "retry"}},
+		TurnHostDCPowerOffToolName:     {"Turn host DC power off", false, true, false, false, []string{"configured", "data loss", "unknown", "retry"}},
+		WakeHostUSBToolName:            {"Wake host over USB", false, false, false, false, []string{"configured", "usb", "unknown", "retry"}},
+		WakeHostLANToolName:            {"Wake host over LAN", false, false, false, false, []string{"configured", "network", "unknown", "retry"}},
 	}
 	if len(tools) != len(want) {
 		t.Fatalf("published tools = %d, want %d", len(tools), len(want))

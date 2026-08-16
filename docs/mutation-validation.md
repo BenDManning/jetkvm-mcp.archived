@@ -12,7 +12,7 @@ go run ./cmd/jetkvm-mcp-mutation-checklist --plan testdata/mutation-validation-p
 
 A passing report always contains `"execution_authorized":false`. The command has no MCP client, device transport, URL fetch, media reader, or mutation implementation. A live run requires a separate approval naming an expendable target and time window. Never infer that approval from this plan, a passing dry run, repository access, or earlier read-only evidence.
 
-The deprecated combined `jetkvm_virtual_media` tool is deliberately excluded. Future validation uses only the one-purpose tools below so each consequence is explicit.
+The removed combined `jetkvm_virtual_media` tool is deliberately excluded. Future validation uses only the one-purpose tools below so each consequence is explicit.
 
 ## Designated expendable target
 

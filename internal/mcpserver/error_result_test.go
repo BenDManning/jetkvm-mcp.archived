@@ -263,7 +263,7 @@ func TestVirtualMediaStatusPreservesReadOnlyRetryability(t *testing.T) {
 	}
 	defer clientSession.Close()
 	result, err := clientSession.CallTool(context.Background(), &mcp.CallToolParams{
-		Name: VirtualMediaToolName, Arguments: map[string]any{"device": "lab", "operation": "status"},
+		Name: GetVirtualMediaStatusToolName, Arguments: map[string]any{"device": "lab"},
 	})
 	if err != nil {
 		t.Fatal(err)

@@ -163,14 +163,26 @@ host: **Do not blindly retry** it; inspect status or host state first.
 | `jetkvm_mount_virtual_media_file` | `device`, confined relative `path`, optional `mode`. Reads local media below the configured media root, uploads it, and replaces the mount. | Mutation; do not retry `outcome: unknown`. |
 | `jetkvm_unmount_virtual_media` | `device`. Requests removal of the current mount; valid even when no media is mounted. | Mutation; do not retry `outcome: unknown`. |
 | `jetkvm_upload_virtual_media_file` | `device`, confined relative `path`. Reads local media and uploads it to appliance storage without mounting it. | Mutation; do not retry `outcome: unknown`. |
-| `jetkvm_virtual_media` | Deprecated compatibility surface: `device`, `operation`, optional `source`/`mode`. It combines status and all media mutations; migrate to the one-purpose tools. | Status is read-only; do not retry an unknown mutation. |
 | `jetkvm_press_host_power_button` | `device`. Briefly presses physical ATX power; host response depends on firmware/OS state. | Mutation; do not retry `outcome: unknown`. |
 | `jetkvm_force_host_power_off` | `device`. Holds physical ATX power and can interrupt work or cause data loss. | Mutation; do not retry `outcome: unknown`. |
 | `jetkvm_press_host_reset_button` | `device`. Presses physical reset and can interrupt work or corrupt data. | Mutation; do not retry `outcome: unknown`. |
-| `jetkvm_turn_host_dc_power_on` | `device`. Enables configured DC output and may boot equipment. | Intended to converge; do not retry `outcome: unknown`. |
-| `jetkvm_turn_host_dc_power_off` | `device`. Disables configured DC output and can interrupt work or cause data loss. | Intended to converge; do not retry `outcome: unknown`. |
-| `jetkvm_wake_host_usb` | `device`. Sends a USB HID wake action that may resume or boot the host. | Intended to converge; do not retry `outcome: unknown`. |
-| `jetkvm_wake_host_lan` | `device`, configured `target`. Makes the appliance send a WOL network packet to that named configured target; callers cannot provide arbitrary destinations. | Intended to converge; do not retry `outcome: unknown`. |
+| `jetkvm_turn_host_dc_power_on` | `device`. Enables configured DC output and may boot equipment. | Mutation; do not retry `outcome: unknown`. |
+| `jetkvm_turn_host_dc_power_off` | `device`. Disables configured DC output and can interrupt work or cause data loss. | Mutation; do not retry `outcome: unknown`. |
+| `jetkvm_wake_host_usb` | `device`. Sends a USB HID wake action that may resume or boot the host. | Mutation; do not retry `outcome: unknown`. |
+| `jetkvm_wake_host_lan` | `device`, configured `target`. Makes the appliance send a WOL network packet to that named configured target; callers cannot provide arbitrary destinations. | Mutation; do not retry `outcome: unknown`. |
+
+### Migrate from the removed virtual-media tool
+
+V1 removes the combined `jetkvm_virtual_media` tool. Replace its `operation`
+and generic `source` arguments with the corresponding one-purpose call:
+
+| Removed operation | V1 replacement | Argument change |
+| --- | --- | --- |
+| `status` | `jetkvm_get_virtual_media_status` | Keep `device`; omit `operation`, `source`, and `mode`. |
+| `mount_url` | `jetkvm_mount_virtual_media_url` | Keep `device` and optional `mode`; rename `source` to `url`. |
+| `mount_file` | `jetkvm_mount_virtual_media_file` | Keep `device` and optional `mode`; rename `source` to `path`. |
+| `unmount` | `jetkvm_unmount_virtual_media` | Keep `device`; omit `operation`, `source`, and `mode`. |
+| `upload` | `jetkvm_upload_virtual_media_file` | Keep `device`; rename `source` to `path` and omit `operation` and `mode`. |
 
 For `jetkvm_keyboard` `type_text`, `text` is limited to 4096 bytes of
 US-ASCII. Treat typed text, key intent, local paths, media URLs, screenshots,

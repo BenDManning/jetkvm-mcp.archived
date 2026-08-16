@@ -19,9 +19,9 @@ const (
 
 // NewHTTPHandler exposes the server over stateless MCP Streamable HTTP. An
 // empty bearer token deliberately means no application-level authentication.
-func NewHTTPHandler(server *mcp.Server, bearerToken string, allowedOrigins ...string) http.Handler {
+func NewHTTPHandler(server *Server, bearerToken string, allowedOrigins ...string) http.Handler {
 	streamable := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server {
-		return server
+		return server.sdk
 	}, &mcp.StreamableHTTPOptions{
 		Stateless:                    true,
 		JSONResponse:                 true,
@@ -29,7 +29,7 @@ func NewHTTPHandler(server *mcp.Server, bearerToken string, allowedOrigins ...st
 		DisableLocalhostProtection:   true, // trustedHostAndOrigin permits only loopback or explicitly configured public Hosts.
 	})
 
-	mcpHandler := postOnly(streamable)
+	mcpHandler := postOnly(requireSupportedHTTPProtocol(streamable))
 	if bearerToken != "" {
 		mcpHandler = requireBearer(mcpHandler, bearerToken)
 	}

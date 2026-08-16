@@ -27,7 +27,7 @@ import (
 
 const (
 	updateToolManifestEnvironment = "JETKVM_UPDATE_TOOL_MANIFEST"
-	toolManifestCount             = 18
+	toolManifestCount             = 17
 )
 
 var toolManifestFixturePath = filepath.Join("testdata", "tool-manifest.json")
@@ -215,8 +215,14 @@ func TestManifestClientAdvertisesNoDeprecatedCapabilities(t *testing.T) {
 	if got := observed.ClientCapabilities; len(got) != 0 {
 		t.Fatalf("client discovery capabilities = %#v, want empty object", got)
 	}
-	if observed.Result.CacheScope != "public" || observed.Result.TTLMs != 0 || len(observed.Result.SupportedVersions) == 0 {
+	if observed.Result.CacheScope != "public" || observed.Result.TTLMs != 0 ||
+		len(observed.Result.SupportedVersions) != 1 || observed.Result.SupportedVersions[0] != SupportedProtocolVersion {
 		t.Fatalf("discovery contract = %#v", observed.Result)
+	}
+	serverCapabilities := clientSession.InitializeResult().Capabilities
+	toolsOnly := map[string]any{"tools": map[string]any{}}
+	if !jsonEqual(serverCapabilities, toolsOnly) || !jsonEqual(observed.Result.Capabilities, toolsOnly) {
+		t.Fatalf("server capability leakage: initialized=%#v discovery=%#v", serverCapabilities, observed.Result.Capabilities)
 	}
 	fixture := readToolManifestFixture(t)
 	var snapshot manifestSnapshot
@@ -358,7 +364,7 @@ func connectManifestMutatedInMemory(t *testing.T) (*mcp.ClientSession, *observed
 	observed := new(observedDiscovery)
 	device := &contractDevice{}
 	server := New(device, "contract-test")
-	mcp.AddTool(server, &mcp.Tool{
+	mcp.AddTool(server.sdk, &mcp.Tool{
 		Name:        GetStatusToolName,
 		Description: "Temporary unreviewed status description used to prove the manifest gate fails.",
 		Annotations: annotations(true, false, true),
@@ -557,7 +563,6 @@ func representativeCalls() map[string]map[string]any {
 		CaptureScreenToolName:          {"device": "fixture", "max_width": 640, "max_height": 480},
 		KeyboardToolName:               {"device": "fixture", "operation": string(KeyboardPressKey), "key": "enter"},
 		MouseToolName:                  {"device": "fixture", "operation": string(MouseClick), "button": "left"},
-		VirtualMediaToolName:           {"device": "fixture", "operation": string(VirtualMediaStatus)},
 		GetVirtualMediaStatusToolName:  {"device": "fixture"},
 		MountVirtualMediaURLToolName:   {"device": "fixture", "url": "https://example.invalid/media.iso"},
 		MountVirtualMediaFileToolName:  {"device": "fixture", "path": "fixture.iso"},

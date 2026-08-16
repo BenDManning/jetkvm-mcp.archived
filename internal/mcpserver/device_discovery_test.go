@@ -115,8 +115,8 @@ func TestSafeConfiguredDeviceDiscoveryIsDocumented(t *testing.T) {
 			}
 		}
 	}
-	if !strings.Contains(productContract, "18 current tools") {
-		t.Error("product contract does not classify the additive 18-tool surface")
+	if !strings.Contains(productContract, "17 one-purpose tools") {
+		t.Error("product contract does not classify the v1 17-tool surface")
 	}
 	for _, private := range []string{"URLs", "credentials", "allowed origins", "media directories", "Wake-on-LAN targets"} {
 		if !strings.Contains(threatModel, private) {
