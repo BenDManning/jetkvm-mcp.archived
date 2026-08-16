@@ -20,7 +20,7 @@ A conventional, single-process Go [Model Context Protocol](https://modelcontextp
 
 ### Option A: Using Go (Recommended)
 
-Requires Go 1.25 or newer and `ffmpeg` on `PATH`:
+Requires Go 1.25.13 or newer and `ffmpeg` on `PATH`:
 
 ```sh
 go install github.com/BenDManning/jetkvm-mcp/cmd/jetkvm-mcp@latest

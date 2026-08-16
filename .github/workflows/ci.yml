@@ -14,17 +14,26 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: '1.26.6'
           cache: true
+          cache-dependency-path: |
+            go.sum
+            tools/go.sum
       - name: Verify gofmt
         run: make format
       - name: Verify go mod tidy
         run: make tidy
+      - name: Verify tool module tidy
+        run: make tools-tidy
       - name: Verify module checksums
         run: make module-verify
+      - name: Verify tool checksums
+        run: make tools-module-verify
       - name: Test with race detector
         run: make race
       - name: Vet
@@ -39,7 +48,7 @@ jobs:
         run: make coverage COVERAGE_DIR="${RUNNER_TEMP}/coverage"
       - name: Upload coverage evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: go-coverage
           path: ${{ runner.temp }}/coverage
@@ -53,10 +62,12 @@ jobs:
     env:
       GOTOOLCHAIN: local
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          go-version: '1.25.0'
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.25.13'
           cache: true
       - run: go version
       - run: make ci-minimum
@@ -65,12 +76,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: '1.26.6'
           cache: true
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '22.22.0'
       - name: Build server
@@ -82,7 +95,7 @@ jobs:
           MCP_GATE_DIR="${RUNNER_TEMP}/mcp-gate-artifacts"
       - name: Upload MCP gate evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: mcp-protocol-gates
           path: ${{ runner.temp }}/mcp-gate-artifacts
@@ -91,9 +104,29 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v7
-      - uses: docker/setup-qemu-action@v4
-      - uses: docker/setup-buildx-action@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4.2.0
+        with:
+          image: docker.io/tonistiigi/binfmt:qemu-v10.2.3-68@sha256:400a4873b838d1b89194d982c45e5fb3cda4593fbfd7e08a02e76b03b21166f0
+          platforms: arm64
+      - name: Install checksum-pinned Buildx
+        env:
+          BUILDX_VERSION: v0.36.1
+          BUILDX_SHA256: 48af8a397ebd60178778bf63611dbcebe5f5e7a9be90eb9147b24b9587455778
+        run: |
+          set -euo pipefail
+          buildx_path="${RUNNER_TEMP}/docker-buildx"
+          curl --fail --location --proto '=https' --tlsv1.2 \
+            --output "${buildx_path}" \
+            "https://github.com/docker/buildx/releases/download/${BUILDX_VERSION}/buildx-${BUILDX_VERSION}.linux-amd64"
+          printf '%s  %s\n' "${BUILDX_SHA256}" "${buildx_path}" | sha256sum --check --strict
+          install -D -m 0755 "${buildx_path}" "${HOME}/.docker/cli-plugins/docker-buildx"
+          docker buildx version
+      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+        with:
+          driver-opts: image=moby/buildkit:v0.32.2@sha256:28a898719c18a33f4e8000685287fa36fd0dd9560c6440227d3a732d79bb41d8
       - name: Verify container binary architectures
         run: >-
           make container-verify

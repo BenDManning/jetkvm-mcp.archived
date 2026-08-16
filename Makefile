@@ -1,14 +1,13 @@
 SHELL := /bin/sh
 BINARY := bin/jetkvm-mcp
-STATICCHECK_VERSION := v0.7.0
-GOVULNCHECK_VERSION := v1.7.0
+RELEASE_GO_VERSION := 1.26.6
 COVERAGE_DIR ?= /tmp/jetkvm-mcp-coverage
 MCP_GATE_DIR ?= /tmp/jetkvm-mcp-gates
 MCP_GATE_SERVER ?= /tmp/jetkvm-mcp-gates-server
 CONTAINER_AMD64_DIR ?= /tmp/jetkvm-mcp-container-amd64
 CONTAINER_ARM64_DIR ?= /tmp/jetkvm-mcp-container-arm64
 
-.PHONY: build format tidy module-verify test race vet staticcheck govulncheck coverage verify protocol-gates fuzz-smoke fuzz ci-minimum ci-quality update-tool-manifest container container-verify
+.PHONY: build format tidy tools-tidy module-verify tools-module-verify test race vet staticcheck govulncheck release-tool-versions release-snapshot coverage verify protocol-gates fuzz-smoke fuzz ci-minimum ci-quality update-tool-manifest container container-verify
 
 build:
 	go build -trimpath -o $(BINARY) ./cmd/jetkvm-mcp
@@ -19,8 +18,14 @@ format:
 tidy:
 	GOWORK=off go mod tidy -diff
 
+tools-tidy:
+	GOWORK=off GOTOOLCHAIN=go$(RELEASE_GO_VERSION) go -C tools mod tidy -diff
+
 module-verify:
 	go mod verify
+
+tools-module-verify:
+	GOTOOLCHAIN=go$(RELEASE_GO_VERSION) go -C tools mod verify
 
 test:
 	go test ./...
@@ -32,10 +37,18 @@ vet:
 	go vet ./...
 
 staticcheck:
-	go run honnef.co/go/tools/cmd/staticcheck@$(STATICCHECK_VERSION) ./...
+	go tool staticcheck ./...
 
 govulncheck:
-	go run golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION) ./...
+	go tool govulncheck ./...
+
+release-tool-versions:
+	GOTOOLCHAIN=go$(RELEASE_GO_VERSION) go -C tools tool goreleaser --version
+	GOTOOLCHAIN=go$(RELEASE_GO_VERSION) go -C tools tool cosign version
+	GOTOOLCHAIN=go$(RELEASE_GO_VERSION) go -C tools tool syft --version
+
+release-snapshot:
+	GOTOOLCHAIN=go$(RELEASE_GO_VERSION) "$$(GOTOOLCHAIN=go$(RELEASE_GO_VERSION) go -C tools tool -n goreleaser)" release --snapshot --clean --skip=publish
 
 coverage:
 	mkdir -p $(COVERAGE_DIR)
@@ -62,7 +75,7 @@ fuzz:
 
 ci-minimum: format tidy module-verify test vet fuzz-smoke
 
-ci-quality: format tidy module-verify race vet staticcheck govulncheck fuzz-smoke coverage verify
+ci-quality: format tidy tools-tidy module-verify tools-module-verify race vet staticcheck govulncheck fuzz-smoke coverage verify
 
 update-tool-manifest:
 	JETKVM_UPDATE_TOOL_MANIFEST=1 go test ./internal/mcpserver -run '^TestToolManifestFixtureUpdate$$' -count=1
