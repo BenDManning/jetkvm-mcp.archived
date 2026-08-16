@@ -289,6 +289,14 @@ tests, and unattributed historical runs do not qualify a firmware version.
 
 The checked-in Dockerfile builds the Linux amd64/arm64 image. `.goreleaser.yaml` builds the four supported binary targets.
 
+## Project policies
+
+- [`CONTRIBUTING.md`](CONTRIBUTING.md) defines contribution scope, validation,
+  provenance, privacy, and untrusted-input expectations.
+- [`SUPPORT.md`](SUPPORT.md) defines the project's best-effort support boundary.
+- [`SECURITY.md`](SECURITY.md) provides the private vulnerability-reporting
+  route and supported-version policy.
+
 ## License
 
 MIT — see [`LICENSE`](LICENSE).

@@ -25,18 +25,3 @@ JetKVM firmware, MCP clients, models, attached hosts, proxies, and deployment
 infrastructure have separate security boundaries. See
 [`docs/threat-model.md`](docs/threat-model.md) for the server's owned controls
 and residual responsibilities.
-
-## Publicity gate
-
-Before public-readiness is announced, the owner privately verifies two
-phishing-resistant GitHub authentication methods and offline recovery codes;
-reviews sessions, PATs, SSH and deploy keys, OAuth and GitHub App grants, and
-release credentials; and tests private vulnerability-report notifications. The
-public repository must have secret scanning and push protection where
-available, Dependabot alerts and security updates, immutable releases, the
-reviewed Actions allowlist and full-SHA policy, and verified main and tag
-rulesets. Only completion or a blocker is recorded publicly; recovery details
-and credentials never enter the repository.
-
-Additional scanners require evidence of a gap not answered by vet, Staticcheck,
-`govulncheck`, secret scanning, and the existing protocol and privacy gates.

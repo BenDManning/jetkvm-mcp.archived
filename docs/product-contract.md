@@ -329,10 +329,11 @@ still a major change. Security, safety, or factual-correctness fixes may shorten
 that period, but must still be described in release notes and use the SemVer
 classification dictated by their compatibility impact.
 
-No designated public security-reporting route currently exists. Repository
-issue and release records are the available support and change records; secrets,
-credentials, device data, and unsanitized qualification output must not be put
-in them.
+Sensitive reports use the private route in the repository
+[`SECURITY.md`](../SECURITY.md). Ordinary best-effort support uses GitHub Issues
+as defined in [`SUPPORT.md`](../SUPPORT.md). Secrets, credentials, device data,
+and unsanitized qualification output must not be put in public issue or release
+records.
 
 ## Compatibility matrix
 
