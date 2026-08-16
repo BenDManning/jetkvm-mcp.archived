@@ -15,6 +15,7 @@ const (
 	DefaultHTTPAddress = "127.0.0.1:8080"
 	MCPPath            = "/mcp"
 	HealthPath         = "/healthz"
+	maxHTTPBodyBytes   = 1 << 20
 )
 
 // NewHTTPHandler exposes the server over stateless MCP Streamable HTTP. An
@@ -25,6 +26,7 @@ func NewHTTPHandler(server *Server, bearerToken string, allowedOrigins ...string
 	}, &mcp.StreamableHTTPOptions{
 		Stateless:                    true,
 		JSONResponse:                 true,
+		MaxRequestBodyBytes:          maxHTTPBodyBytes,
 		PropagateRequestCancellation: true,
 		DisableLocalhostProtection:   true, // trustedHostAndOrigin permits only loopback or explicitly configured public Hosts.
 	})
@@ -147,17 +149,55 @@ func loopbackHTTPHost(hostPort string) bool {
 func requireBearer(next http.Handler, token string) http.Handler {
 	want := sha256.Sum256([]byte(token))
 	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
-		authorization := request.Header.Get("Authorization")
-		provided := ""
-		if scheme, value, found := strings.Cut(authorization, " "); found && scheme == "Bearer" {
-			provided = value
-		}
+		provided, valid := parseBearerCredential(request.Header.Values("Authorization"))
 		got := sha256.Sum256([]byte(provided))
-		if subtle.ConstantTimeCompare(got[:], want[:]) != 1 {
+		matches := subtle.ConstantTimeCompare(got[:], want[:]) == 1
+		if !valid || !matches {
 			response.Header().Set("WWW-Authenticate", "Bearer")
 			http.Error(response, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
 			return
 		}
 		next.ServeHTTP(response, request)
 	})
+}
+
+func parseBearerCredential(values []string) (string, bool) {
+	if len(values) != 1 {
+		return "", false
+	}
+	authorization := values[0]
+	separator := strings.IndexByte(authorization, ' ')
+	if separator <= 0 || !strings.EqualFold(authorization[:separator], "Bearer") {
+		return "", false
+	}
+	credentialStart := separator
+	for credentialStart < len(authorization) && authorization[credentialStart] == ' ' {
+		credentialStart++
+	}
+	credential := authorization[credentialStart:]
+	if credential == "" {
+		return "", false
+	}
+	data, padding := false, false
+	for _, character := range credential {
+		if character == '=' {
+			if !data {
+				return "", false
+			}
+			padding = true
+			continue
+		}
+		if padding || !bearerToken68Character(character) {
+			return "", false
+		}
+		data = true
+	}
+	return credential, true
+}
+
+func bearerToken68Character(character rune) bool {
+	return character >= 'a' && character <= 'z' ||
+		character >= 'A' && character <= 'Z' ||
+		character >= '0' && character <= '9' ||
+		strings.ContainsRune("-._~+/", character)
 }

@@ -384,6 +384,52 @@ func TestHTTPHandlerAllowsSameOriginReverseProxyHost(t *testing.T) {
 	}
 }
 
+func TestHTTPHandlerIgnoresForwardedHeaders(t *testing.T) {
+	handler := NewHTTPHandler(New(&recordingDevice{}, "test"), "", "https://mcp.example.invalid")
+	discover := `{"jsonrpc":"2.0","id":1,"method":"server/discover","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{}}}}`
+	for _, test := range []struct {
+		name           string
+		host           string
+		origin         string
+		forwardedHost  string
+		forwardedFor   string
+		forwardedProto string
+		wantStatus     int
+	}{
+		{
+			name: "forwarded admission cannot replace Host", host: "backend.invalid",
+			forwardedHost: "mcp.example.invalid", forwardedProto: "https", forwardedFor: "127.0.0.1",
+			wantStatus: http.StatusForbidden,
+		},
+		{
+			name: "forwarded rejection cannot override Host and Origin", host: "mcp.example.invalid", origin: "https://mcp.example.invalid",
+			forwardedHost: "foreign.example.invalid", forwardedProto: "http", forwardedFor: "203.0.113.10",
+			wantStatus: http.StatusOK,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodPost, "http://backend.invalid"+MCPPath, strings.NewReader(discover))
+			request.Host = test.host
+			request.Header.Set("Content-Type", "application/json")
+			request.Header.Set("Accept", "application/json, text/event-stream")
+			request.Header.Set("Mcp-Protocol-Version", "2026-07-28")
+			request.Header.Set("Mcp-Method", "server/discover")
+			request.Header.Set("Origin", test.origin)
+			request.Header.Set("Forwarded", "for="+test.forwardedFor+";host="+test.forwardedHost+";proto="+test.forwardedProto)
+			request.Header.Set("X-Forwarded-For", test.forwardedFor)
+			request.Header.Set("X-Forwarded-Host", test.forwardedHost)
+			request.Header.Set("X-Forwarded-Proto", test.forwardedProto)
+			response := httptest.NewRecorder()
+
+			handler.ServeHTTP(response, request)
+
+			if response.Code != test.wantStatus {
+				t.Fatalf("status = %d, want %d; body=%q", response.Code, test.wantStatus, response.Body.String())
+			}
+		})
+	}
+}
+
 func TestHTTPHandlerRejectsUnconfiguredMatchingPublicHostAndOrigin(t *testing.T) {
 	httpServer := httptest.NewServer(NewHTTPHandler(New(&recordingDevice{}, "test"), ""))
 	defer httpServer.Close()

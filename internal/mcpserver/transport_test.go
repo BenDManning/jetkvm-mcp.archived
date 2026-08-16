@@ -106,6 +106,85 @@ func TestHTTPHandlerOptionalBearerToken(t *testing.T) {
 	}
 }
 
+func TestHTTPHandlerRequiresOneSyntacticallyValidBearerCredential(t *testing.T) {
+	discover := `{"jsonrpc":"2.0","id":1,"method":"server/discover","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{}}}}`
+	for _, test := range []struct {
+		name          string
+		token         string
+		authorization []string
+		wantStatus    int
+	}{
+		{name: "canonical", token: "test-only-token", authorization: []string{"Bearer test-only-token"}, wantStatus: http.StatusOK},
+		{name: "case insensitive scheme", token: "test-only-token", authorization: []string{"bearer test-only-token"}, wantStatus: http.StatusOK},
+		{name: "multiple scheme separators", token: "test-only-token", authorization: []string{"Bearer   test-only-token"}, wantStatus: http.StatusOK},
+		{name: "token68 characters", token: "abc-._~+/==", authorization: []string{"Bearer abc-._~+/=="}, wantStatus: http.StatusOK},
+		{name: "missing", token: "test-only-token", wantStatus: http.StatusUnauthorized},
+		{name: "wrong scheme", token: "test-only-token", authorization: []string{"Basic test-only-token"}, wantStatus: http.StatusUnauthorized},
+		{name: "missing credential", token: "test-only-token", authorization: []string{"Bearer"}, wantStatus: http.StatusUnauthorized},
+		{name: "embedded whitespace", token: "test only token", authorization: []string{"Bearer test only token"}, wantStatus: http.StatusUnauthorized},
+		{name: "padding without data", token: "=", authorization: []string{"Bearer ="}, wantStatus: http.StatusUnauthorized},
+		{name: "padding before data", token: "test=token", authorization: []string{"Bearer test=token"}, wantStatus: http.StatusUnauthorized},
+		{name: "comma joined credentials", token: "test-only-token", authorization: []string{"Bearer test-only-token, Bearer test-only-token"}, wantStatus: http.StatusUnauthorized},
+		{name: "duplicate headers", token: "test-only-token", authorization: []string{"Bearer test-only-token", "Bearer test-only-token"}, wantStatus: http.StatusUnauthorized},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			handler := NewHTTPHandler(New(&recordingDevice{}, "test"), test.token)
+			request := httptest.NewRequest(http.MethodPost, "http://127.0.0.1"+MCPPath, strings.NewReader(discover))
+			request.Header.Set("Content-Type", "application/json")
+			request.Header.Set("Accept", "application/json, text/event-stream")
+			request.Header.Set("Mcp-Protocol-Version", "2026-07-28")
+			request.Header.Set("Mcp-Method", "server/discover")
+			for _, value := range test.authorization {
+				request.Header.Add("Authorization", value)
+			}
+			response := httptest.NewRecorder()
+
+			handler.ServeHTTP(response, request)
+
+			if response.Code != test.wantStatus {
+				t.Fatalf("status = %d, want %d; body=%q", response.Code, test.wantStatus, response.Body.String())
+			}
+			if response.Code == http.StatusUnauthorized && response.Header().Get("WWW-Authenticate") != "Bearer" {
+				t.Fatalf("challenge = %q, want Bearer", response.Header().Get("WWW-Authenticate"))
+			}
+		})
+	}
+}
+
+func TestHTTPHandlerCapsRequestBodiesAtOneMiB(t *testing.T) {
+	discover := `{"jsonrpc":"2.0","id":1,"method":"server/discover","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{}}}}`
+	for _, test := range []struct {
+		name          string
+		size          int
+		contentLength bool
+		wantStatus    int
+	}{
+		{name: "one MiB with content length", size: 1 << 20, contentLength: true, wantStatus: http.StatusOK},
+		{name: "over one MiB with content length", size: 1<<20 + 1, contentLength: true, wantStatus: http.StatusRequestEntityTooLarge},
+		{name: "one MiB chunked", size: 1 << 20, wantStatus: http.StatusOK},
+		{name: "over one MiB chunked", size: 1<<20 + 1, wantStatus: http.StatusRequestEntityTooLarge},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			body := discover + strings.Repeat(" ", test.size-len(discover))
+			request := httptest.NewRequest(http.MethodPost, "http://127.0.0.1"+MCPPath, strings.NewReader(body))
+			request.Header.Set("Content-Type", "application/json")
+			request.Header.Set("Accept", "application/json, text/event-stream")
+			request.Header.Set("Mcp-Protocol-Version", "2026-07-28")
+			request.Header.Set("Mcp-Method", "server/discover")
+			if !test.contentLength {
+				request.ContentLength = -1
+			}
+			response := httptest.NewRecorder()
+
+			NewHTTPHandler(New(&recordingDevice{}, "test"), "").ServeHTTP(response, request)
+
+			if response.Code != test.wantStatus {
+				t.Fatalf("status = %d, want %d; body=%q", response.Code, test.wantStatus, response.Body.String())
+			}
+		})
+	}
+}
+
 type bearerRoundTripper struct {
 	token string
 	base  http.RoundTripper

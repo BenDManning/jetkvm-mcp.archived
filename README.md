@@ -53,7 +53,14 @@ The image contains the Go server and FFmpeg in one image and runs one Go server 
 docker build -t jetkvm-mcp:local .
 
 docker run --rm -i \
-  --network host \
+  --read-only \
+  --tmpfs /tmp:rw,noexec,nosuid,size=64m \
+  --cap-drop ALL \
+  --security-opt no-new-privileges \
+  --pids-limit 128 \
+  --memory 512m \
+  --cpus 2 \
+  --stop-timeout 7 \
   -v "$PWD/config.yaml:/config.yaml:ro" \
   -v "/srv/jetkvm-media:/media:ro" \
   -e JETKVM_LAB_PASSWORD \
@@ -61,7 +68,13 @@ docker run --rm -i \
   --config /config.yaml
 ```
 
-Container targets are Linux amd64 and Linux arm64.
+Container targets are Linux amd64 and Linux arm64. The limits above are
+conservative starting points, not universal sizing guarantees. Adjust them for
+the configured concurrency and capture workload while retaining explicit CPU,
+memory, and process limits. The image runs as UID/GID 10001, supports a
+read-only root filesystem when writable temporary storage is supplied, and
+contains no configuration or credentials. Inject secret environment values at
+process start; do not bake them into an image, command line, or log.
 
 ## Configuration
 
@@ -134,7 +147,14 @@ The recommended direct default is loopback without authentication:
 jetkvm-mcp --config config.yaml --http 127.0.0.1:8080
 ```
 
-The MCP endpoint is `/mcp`; liveness is `/healthz`. The server is stateless and exposes no legacy SSE session endpoint. Binding to a non-loopback address requires `http.bearer_token_env` to resolve to a non-empty bearer token.
+The MCP endpoint is `/mcp`; liveness is the unauthenticated `/healthz`. A
+successful health response is exactly `ok` followed by a newline and means only
+that configuration and FFmpeg validation succeeded and this HTTP process is
+accepting requests. Device reachability remains available through MCP reads.
+There is no `/readyz`, background device probe, or aggregate readiness state.
+The server is stateless and exposes no legacy SSE session endpoint. Binding to
+a non-loopback address requires `http.bearer_token_env` to resolve to a
+non-empty bearer token.
 
 For remote access, keep the server on loopback and place it behind a TLS reverse proxy, or configure a bearer token and explicitly bind a protected interface. The server does not implement MCP OAuth.
 
@@ -143,6 +163,51 @@ Streamable HTTP supports native MCP clients and same-origin browser deployments.
 Every admitted public endpoint origin must be listed exactly under `http.allowed_origins`, including its scheme and any non-default port. The setting is Host/origin admission for supported deployments, not a CORS grant, and wildcard entries are rejected. Public Hosts that are not configured are rejected even when `Host` and `Origin` match. A present browser `Origin` must exactly match the request's admitted external scheme and authority. Invalid, foreign, duplicate, empty, and opaque `null` origins are rejected before bearer authentication or MCP handling.
 
 The server does not emit CORS response headers. An admitted same-origin `OPTIONS` request remains subject to any configured bearer and then receives the endpoint's normal `405 Method Not Allowed`; an invalid or foreign preflight receives `403 Forbidden` before bearer authentication. Loopback and `localhost` Hosts remain trusted without an allowlist, but a present Origin must still use the same loopback scheme and authority.
+
+Each `/mcp` request body is limited to 1 MiB. HTTP permits five seconds to read
+headers, then 15 seconds to read the body, and 60 seconds for an idle
+connection. Tool-specific operation deadlines own response duration;
+there is no global write timeout. SIGINT and SIGTERM cancel stdio and active
+HTTP requests through the same process context. HTTP then drains for at most
+five seconds before force-closing remaining connections. An interrupted
+possibly dispatched mutation still has `outcome: unknown` and is not retryable.
+
+## Deployment guidance
+
+### Native service
+
+Run the binary as a dedicated unprivileged identity. Protect the configuration
+and environment from other users, supply passwords and the HTTP bearer through
+the service manager's secret or environment facility, disable core dumps where
+practical, and mount local media read-only when it is only an upload source.
+Apply explicit CPU, memory, process, file, and network limits outside the
+program. Keep direct HTTP on loopback unless a protected non-loopback bind is
+deliberate. Configure the supervisor to send SIGTERM and allow at least five
+seconds plus normal process-manager overhead before SIGKILL.
+
+### Container
+
+Keep configuration and media on read-only mounts, provide only the writable
+temporary storage the runtime needs, drop capabilities, retain the fixed
+non-root identity, and set CPU, memory, and PID limits. Pass secrets at container
+start rather than storing them in the image or mounted YAML. Give the runtime a
+stop grace period longer than the server's five-second drain. Container
+orchestration does not add device readiness semantics: use the content-minimal
+`/healthz` only for process liveness.
+
+### TLS reverse proxy
+
+The proxy owns public TLS, connection and request-rate limits, edge timeouts,
+and access-log protection. Preserve the external `Host` header, forward the
+single `Authorization` header without logging it, and configure that exact
+public origin under `http.allowed_origins`. The server deliberately ignores
+`Forwarded` and `X-Forwarded-*`; those headers cannot grant admission or replace
+the public `Host`/`Origin` checks. Keep the backend on loopback or a protected
+network, cap proxy request bodies at no more than 1 MiB, and do not add CORS or
+device probes at the proxy. During shutdown, stop routing new requests to the
+backend, allow existing proxy requests to drain, send SIGTERM to the server,
+and keep established backend connections available for longer than its
+five-second drain before either layer force-closes them.
 
 ## MCP tools
 
