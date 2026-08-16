@@ -32,9 +32,9 @@ A source-only run on 2026-08-14 compared reviewed pin `b3c29a44d9e2862b8ff753083
 |---|---|
 | A declared upstream path changes | Review the focused source diff before moving the pin; record the exact target and affected surfaces. |
 | Authentication, signaling, RPC names/parameters, typed status/media fields, RTP/video behavior, or HID/media semantics change | Update the corresponding synthetic fixtures and focused tests, then perform source review. |
-| A model, firmware version, relevant runtime, or FFmpeg identity changes for a proposed positive claim | Run the separately approved read-only validator and retain only sanitized JSON tied to exact identities required by the product contract. |
+| A model, firmware version, relevant runtime, FFmpeg identity, MCP transport/client, or attached-host fixture changes for a proposed positive claim | Run the separately owner-authorized [physical qualification runbook](../physical-qualification.md) and retain only its sanitized record tied to the exact identities required by the product contract. |
 | The read-only validator's discovery, status, capture, or media-status behavior changes | Refresh validator tests; a new physical run requires a designated non-production target and separate approval. |
-| A mutation path or consequence may have changed | Stop. Use the separately approval-gated mutation checklist; source or read-only evidence is insufficient. |
+| A mutation path or consequence may have changed | Stop. Repeat the separately owner-authorized physical qualification runbook; source or read-only evidence is insufficient. |
 | Evidence is missing, stale, unattributed, or no longer covers a declared behavior | Keep or add an explicit compatibility warning. Do not infer support, auto-upgrade, or treat fake-device success as authority. |
 
 Moving the pin, adding a positive model/firmware claim, running hardware, or executing a mutation is not part of the drift command and requires its own reviewed evidence and authority.

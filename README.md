@@ -354,20 +354,13 @@ paths, device names, server logs, status values, error details, and image data.
 The capture call has a dedicated 30-second deadline, and its PNG buffer is
 cleared after full in-memory decoding.
 
-### Mutation-validation dry run
+### Physical qualification
 
-Before any separately approved live mutation window, validate the checked
-offline plan and follow the [mutation validation
-checklist](docs/mutation-validation.md):
-
-```sh
-go run ./cmd/jetkvm-mcp-mutation-checklist \
-  --plan testdata/mutation-validation-plan.json
-```
-
-This source-run command only validates a closed dry-run plan. It has no device
-or MCP execution path, and even a passing report explicitly states that
-execution is not authorized.
+The [physical qualification runbook](docs/physical-qualification.md) defines
+the separately owner-authorized procedure and sanitized evidence required to
+qualify one exact release candidate, JetKVM model/firmware, runtime, and
+disposable attached-host fixture. The runbook is not execution authority. CI,
+fakes, builds, source review, and unattributed runs do not qualify hardware.
 
 The compact compatibility ledger, focused offline upstream-drift command, and
 evidence-refresh triggers are documented in

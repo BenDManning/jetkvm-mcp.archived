@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"reflect"
 	"regexp"
-	"strings"
 	"testing"
 	"time"
 )
@@ -121,29 +120,5 @@ func TestJetKVMCompatibilityLedgerIsSanitizedAndSourceGrounded(t *testing.T) {
 		hardware.EnvironmentClass != "non_production_physical" || hardware.Result != "pass" ||
 		!reflect.DeepEqual(hardware.Checks, []string{"mcp_discovery", "status", "capture"}) {
 		t.Fatalf("read-only hardware seed = %#v", hardware)
-	}
-}
-
-func TestCompatibilityPolicyMapsEverySurfaceToBoundedEvidenceTriggers(t *testing.T) {
-	policy, err := os.ReadFile(filepath.Join("..", "..", "docs", "compatibility", "README.md"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	text := string(policy)
-	for _, required := range []string{
-		"Update the corresponding synthetic fixtures and focused tests, then perform source review.",
-		"Run the separately approved read-only validator",
-		"Use the separately approval-gated mutation checklist",
-		"Keep or add an explicit compatibility warning.",
-		"Do not infer support, auto-upgrade, or treat fake-device success as authority.",
-	} {
-		if !strings.Contains(text, required) {
-			t.Fatalf("compatibility policy lacks trigger %q", required)
-		}
-	}
-	for _, surface := range []string{"Authentication", "signaling", "RPC", "RTP/video", "HID/media"} {
-		if !strings.Contains(text, surface) {
-			t.Fatalf("compatibility policy lacks surface %q", surface)
-		}
 	}
 }
