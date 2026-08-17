@@ -99,6 +99,88 @@ do not claim that a release has been published.
 
 The image contains the Go server and FFmpeg in one image and runs one Go server process. Until a GitHub Container Registry package is published under the release policy, build it from the canonical checkout:
 
+The `Container release rehearsal` workflow assembles the supported platforms
+into a local OCI archive and retains its exact index and platform manifests,
+platform digests, per-platform SPDX JSON SBOMs, keyless signature bundle, and
+hosted provenance/SBOM bundles. Its `publication-plan.json` records the exact
+version tag as immutable, defers `latest` until complete stable publication,
+and records that the rehearsal published nothing.
+The `linux-amd64.spdx.json` and `linux-arm64.spdx.json` documents are bound to
+`image-manifest-linux-amd64.json` and `image-manifest-linux-arm64.json`,
+respectively.
+It does not publish an image, move a tag, or expose package credentials. After
+downloading and extracting a rehearsal artifact, set its recorded identity and
+verify every subject with:
+
+```sh
+repo=BenDManning/jetkvm-mcp
+workflow=BenDManning/jetkvm-mcp/.github/workflows/container-release.yml
+release_ref=refs/heads/main
+release_commit=REPLACE_WITH_THE_REHEARSAL_COMMIT
+release_trigger=workflow_dispatch
+
+expected_manifest=$(jq -er '.manifest_digest | select(test("^sha256:[0-9a-f]{64}$"))' manifest-digests.json)
+actual_manifest=sha256:$(sha256sum image-manifest.json | awk '{print $1}')
+test "$actual_manifest" = "$expected_manifest"
+
+jq -e --slurpfile record manifest-digests.json '
+  ([.manifests[].platform | (.os + "/" + .architecture)] | sort == ["linux/amd64", "linux/arm64"]) and
+  ([.manifests[] | {key: (.platform.os + "/" + .platform.architecture), value: .digest}] | from_entries) ==
+    $record[0].platform_digests
+' image-manifest.json
+
+jq -e '
+  .version_tag_immutable == true and
+  .latest_after == "complete_stable_publication" and
+  .published == false
+' publication-plan.json
+
+cosign verify-blob \
+  --bundle image-manifest.sigstore.json \
+  --certificate-identity "https://github.com/${workflow}@${release_ref}" \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  --certificate-github-workflow-repository "$repo" \
+  --certificate-github-workflow-ref "$release_ref" \
+  --certificate-github-workflow-sha "$release_commit" \
+  --certificate-github-workflow-trigger "$release_trigger" \
+  image-manifest.json
+
+for architecture in amd64 arm64; do
+  jq -e '
+    (.spdxVersion | startswith("SPDX-2.")) and
+    any(.packages[]; .name == "ca-certificates") and
+    any(.packages[]; .name == "ffmpeg")
+  ' "linux-${architecture}.spdx.json"
+done
+
+gh attestation verify image-manifest.json \
+  --repo "$repo" \
+  --bundle provenance.sigstore.json \
+  --cert-identity "https://github.com/${workflow}@${release_ref}" \
+  --signer-workflow "$workflow" \
+  --source-ref "$release_ref" \
+  --source-digest "$release_commit" \
+  --deny-self-hosted-runners
+
+for architecture in amd64 arm64; do
+  gh attestation verify "image-manifest-linux-${architecture}.json" \
+    --repo "$repo" \
+    --bundle "sbom-linux-${architecture}.sigstore.json" \
+    --predicate-type https://spdx.dev/Document/v2.3 \
+    --cert-identity "https://github.com/${workflow}@${release_ref}" \
+    --signer-workflow "$workflow" \
+    --source-ref "$release_ref" \
+    --source-digest "$release_commit" \
+    --deny-self-hosted-runners
+done
+```
+
+For a protected-tag rehearsal, use that `refs/tags/vX.Y.Z` identity and `push`
+trigger instead. This evidence proves the recorded subjects and workflow
+identity; it does not claim reproducibility or a SLSA level. The eventual
+immutable release record remains responsible for the published GHCR digest and
+its registry-oriented verification commands.
+
 ```sh
 docker build -t jetkvm-mcp:local .
 

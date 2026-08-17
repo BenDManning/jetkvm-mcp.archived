@@ -1,0 +1,143 @@
+name: Container release rehearsal
+
+on:
+  workflow_call:
+    inputs:
+      release_ref:
+        description: Exact protected version tag ref supplied by the integrated release workflow
+        required: true
+        type: string
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  container-rehearsal:
+    name: Container release rehearsal
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_IDENTITY_REF: ${{ inputs.release_ref || github.ref }}
+      RELEASE_IDENTITY_TRIGGER: ${{ inputs.release_ref && 'push' || 'workflow_dispatch' }}
+      REUSABLE_RELEASE_REF: ${{ inputs.release_ref }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26.6'
+          cache: false
+      - uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4.2.0
+        with:
+          image: docker.io/tonistiigi/binfmt:qemu-v10.2.3-68@sha256:400a4873b838d1b89194d982c45e5fb3cda4593fbfd7e08a02e76b03b21166f0
+          platforms: arm64
+      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+      - name: Enforce rehearsal and protected-tag invocation boundaries
+        run: |
+          set -euo pipefail
+          if [[ -n ${REUSABLE_RELEASE_REF} ]]; then
+            [[ ${REUSABLE_RELEASE_REF} =~ ^refs/tags/v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
+          else
+            [[ ${GITHUB_REF} == refs/heads/main ]]
+          fi
+          [[ ${GITHUB_REF} == ${RELEASE_IDENTITY_REF} ]]
+      - name: Build and verify the container subject without publishing
+        run: |
+          set -euo pipefail
+          if [[ -n ${REUSABLE_RELEASE_REF} ]]; then
+            container_version=${RELEASE_IDENTITY_REF#refs/tags/}
+          else
+            container_version=v0.0.0-rehearsal.${GITHUB_SHA:0:12}
+          fi
+          container_created=$(git show -s --format=%cI ${GITHUB_SHA})
+          make container-release-snapshot \
+            CONTAINER_VERSION=${container_version} \
+            CONTAINER_REVISION=${GITHUB_SHA} \
+            CONTAINER_CREATED=${container_created}
+      - name: Keylessly sign and verify the immutable image manifest
+        run: |
+          set -euo pipefail
+          cosign_path=$(GOTOOLCHAIN=go1.26.6 go -C tools tool -n cosign)
+          PATH="$(dirname "$cosign_path"):${PATH}"
+          cosign sign-blob --yes \
+            --bundle dist/container/image-manifest.sigstore.json \
+            dist/container/image-manifest.json
+          cosign verify-blob \
+            --bundle dist/container/image-manifest.sigstore.json \
+            --certificate-identity https://github.com/${GITHUB_REPOSITORY}/.github/workflows/container-release.yml@${RELEASE_IDENTITY_REF} \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            --certificate-github-workflow-repository ${GITHUB_REPOSITORY} \
+            --certificate-github-workflow-ref ${RELEASE_IDENTITY_REF} \
+            --certificate-github-workflow-sha ${GITHUB_SHA} \
+            --certificate-github-workflow-trigger ${RELEASE_IDENTITY_TRIGGER} \
+            dist/container/image-manifest.json
+      - name: Generate hosted provenance for the immutable image manifest
+        id: provenance
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: dist/container/image-manifest.json
+      - name: Bind the amd64 SPDX SBOM to its immutable platform manifest
+        id: sbom_amd64
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: dist/container/image-manifest-linux-amd64.json
+          sbom-path: dist/container/linux-amd64.spdx.json
+      - name: Bind the arm64 SPDX SBOM to its immutable platform manifest
+        id: sbom_arm64
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: dist/container/image-manifest-linux-arm64.json
+          sbom-path: dist/container/linux-arm64.spdx.json
+      - name: Verify hosted provenance and SBOM subject identity
+        run: |
+          set -euo pipefail
+          cp "${{ steps.provenance.outputs.bundle-path }}" dist/container/provenance.sigstore.json
+          cp "${{ steps.sbom_amd64.outputs.bundle-path }}" dist/container/sbom-linux-amd64.sigstore.json
+          cp "${{ steps.sbom_arm64.outputs.bundle-path }}" dist/container/sbom-linux-arm64.sigstore.json
+          identity=https://github.com/${GITHUB_REPOSITORY}/.github/workflows/container-release.yml@${RELEASE_IDENTITY_REF}
+          workflow=${GITHUB_REPOSITORY}/.github/workflows/container-release.yml
+          gh attestation verify dist/container/image-manifest.json \
+            --repo ${GITHUB_REPOSITORY} \
+            --bundle dist/container/provenance.sigstore.json \
+            --cert-identity ${identity} \
+            --signer-workflow ${workflow} \
+            --source-ref ${RELEASE_IDENTITY_REF} \
+            --source-digest ${GITHUB_SHA} \
+            --deny-self-hosted-runners
+          for architecture in amd64 arm64; do
+            gh attestation verify dist/container/image-manifest-linux-${architecture}.json \
+              --repo ${GITHUB_REPOSITORY} \
+              --bundle dist/container/sbom-linux-${architecture}.sigstore.json \
+              --predicate-type https://spdx.dev/Document/v2.3 \
+              --cert-identity ${identity} \
+              --signer-workflow ${workflow} \
+              --source-ref ${RELEASE_IDENTITY_REF} \
+              --source-digest ${GITHUB_SHA} \
+              --deny-self-hosted-runners
+          done
+      - name: Retain consumer-verifiable rehearsal evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: container-release-rehearsal-${{ github.sha }}
+          path: |
+            dist/container/jetkvm-mcp.oci.tar
+            dist/container/linux-amd64.spdx.json
+            dist/container/linux-arm64.spdx.json
+            dist/container/image-manifest.json
+            dist/container/image-manifest-linux-amd64.json
+            dist/container/image-manifest-linux-arm64.json
+            dist/container/manifest-digests.json
+            dist/container/publication-plan.json
+            dist/container/image-manifest.sigstore.json
+            dist/container/provenance.sigstore.json
+            dist/container/sbom-linux-amd64.sigstore.json
+            dist/container/sbom-linux-arm64.sigstore.json
+          if-no-files-found: error
+          retention-days: 30

@@ -87,6 +87,11 @@ same compiler before running `make ci-minimum`.
   run the tracked GoReleaser and Syft with Go 1.26.6 in non-publishing snapshot
   mode, then verify the two Linux archives, embedded versions/commits, notices,
   checksums, and artifact-bound SPDX JSON SBOMs.
+- `make container-release-snapshot`: build one cacheless amd64/arm64 OCI index
+  without pushing it, generate a runtime-package SPDX JSON SBOM for each final
+  platform, verify every OCI descriptor and accepted image label, and record
+  the exact index and platform-manifest digests plus the immutable version-tag
+  and deferred-`latest` publication plan.
 - `make fuzz-smoke`: exact bounded fuzz inventory and one-second target runs.
 - `make coverage`: atomic coverage profile and `go tool cover -func` summary in
   `COVERAGE_DIR` (default `/tmp/jetkvm-mcp-coverage`).
@@ -106,15 +111,19 @@ same compiler before running `make ci-minimum`.
   configuration validation, read-only-root health startup, and actual
   H.264-to-PNG decoding.
 
-The `Native release rehearsal` is a release job, so it is the only current job
-with OIDC and attestation-write permissions. Direct dispatch is restricted to
-the exact default-branch ref; its reusable entry point accepts only an exact
-`refs/tags/vX.Y.Z` ref for the later integrated protected-tag workflow. It adds
-no release or package publication path. The job creates and immediately
+The `Native release rehearsal` and `Container release rehearsal` are release
+jobs with OIDC and attestation-write permissions. Direct dispatch is restricted
+to the exact default-branch ref; each reusable entry point accepts only an exact
+`refs/tags/vX.Y.Z` ref for the later integrated protected-tag workflow. Neither
+job has package or release publication permission or handles a long-lived
+signing secret; the container rehearsal disables the Go cache, and neither job
+consumes untrusted pull-request caches. The native job creates and immediately
 verifies a keyless Cosign bundle for `checksums.txt` and hosted provenance for
-every checksummed archive and SBOM. Verification constrains the repository,
-workflow, source ref, and source commit; the retained workflow artifact is
-rehearsal evidence, not a GitHub Release.
+every checksummed archive and SBOM. The container job signs and attests the exact
+two-platform index manifest and binds each platform's SPDX document to that
+platform's immutable manifest. Verification constrains the repository,
+workflow, source ref, and source commit; retained workflow artifacts are
+rehearsal evidence, not a GitHub Release or container package.
 
 ## Coverage and evidence
 

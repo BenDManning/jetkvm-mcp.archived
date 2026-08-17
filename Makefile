@@ -12,8 +12,12 @@ CONTAINER_CREATED := $(CONTAINER_CREATED)
 CONTAINER_SBOM_DIR ?= /tmp/jetkvm-mcp-container-sbom
 CONTAINER_AMD64_IMAGE ?= jetkvm-mcp:ci-amd64
 CONTAINER_ARM64_IMAGE ?= jetkvm-mcp:ci-arm64
+CONTAINER_RELEASE_DIR ?= dist/container
+CONTAINER_RELEASE_ARCHIVE ?= $(CONTAINER_RELEASE_DIR)/jetkvm-mcp.oci.tar
+CONTAINER_RELEASE_AMD64_SBOM ?= $(CONTAINER_RELEASE_DIR)/linux-amd64.spdx.json
+CONTAINER_RELEASE_ARM64_SBOM ?= $(CONTAINER_RELEASE_DIR)/linux-arm64.spdx.json
 
-.PHONY: build format tidy tools-tidy module-verify tools-module-verify test race race-coverage vet staticcheck govulncheck release-tool-versions release-snapshot coverage cross-build-linux verify protocol-gates fuzz-smoke fuzz ci-minimum ci-quality update-tool-manifest container container-verify
+.PHONY: build format tidy tools-tidy module-verify tools-module-verify test race race-coverage vet staticcheck govulncheck release-tool-versions release-snapshot container-release-snapshot coverage cross-build-linux verify protocol-gates fuzz-smoke fuzz ci-minimum ci-quality update-tool-manifest container container-verify
 
 build:
 	go build -trimpath -o $(BINARY) ./cmd/jetkvm-mcp
@@ -65,6 +69,13 @@ release-snapshot:
 		GOROOT="$$release_goroot" GOTOOLCHAIN=local PATH="$$release_goroot/bin:$$(dirname "$$syft_path"):$$PATH" \
 		"$$(GOTOOLCHAIN=go$(RELEASE_GO_VERSION) go -C tools tool -n goreleaser)" release --snapshot --clean --skip=publish
 	scripts/verify-native-release.sh dist
+
+container-release-snapshot:
+	mkdir -p $(CONTAINER_RELEASE_DIR)
+	docker buildx build --platform linux/amd64,linux/arm64 --build-arg VERSION=$(CONTAINER_VERSION) --build-arg SOURCE=$(CONTAINER_SOURCE) --build-arg REVISION=$(CONTAINER_REVISION) --build-arg CREATED=$(CONTAINER_CREATED) --provenance=false --output type=oci,dest=$(CONTAINER_RELEASE_ARCHIVE) .
+	GOTOOLCHAIN=go$(RELEASE_GO_VERSION) go -C tools tool syft oci-archive:$(abspath $(CONTAINER_RELEASE_ARCHIVE)) --platform linux/amd64 --output spdx-json=$(abspath $(CONTAINER_RELEASE_AMD64_SBOM))
+	GOTOOLCHAIN=go$(RELEASE_GO_VERSION) go -C tools tool syft oci-archive:$(abspath $(CONTAINER_RELEASE_ARCHIVE)) --platform linux/arm64 --output spdx-json=$(abspath $(CONTAINER_RELEASE_ARM64_SBOM))
+	CONTAINER_EXPECTED_VERSION=$(CONTAINER_VERSION) CONTAINER_EXPECTED_SOURCE=$(CONTAINER_SOURCE) CONTAINER_EXPECTED_REVISION=$(CONTAINER_REVISION) CONTAINER_EXPECTED_CREATED=$(CONTAINER_CREATED) scripts/verify-container-release.sh $(CONTAINER_RELEASE_ARCHIVE) $(CONTAINER_RELEASE_DIR)
 
 coverage:
 	mkdir -p $(COVERAGE_DIR)
