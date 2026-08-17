@@ -83,16 +83,21 @@ same compiler before running `make ci-minimum`.
 - `make govulncheck`: the govulncheck version tracked by the root Go module.
 - `make release-tool-versions`: build and report the GoReleaser, Cosign, and
   Syft versions tracked by the isolated `tools` Go module.
-- `make release-snapshot`: run the tracked GoReleaser with Go 1.26.6 in
-  non-publishing snapshot mode.
+- `make release-snapshot`: check the compiled package-closure notice inventory,
+  run the tracked GoReleaser and Syft with Go 1.26.6 in non-publishing snapshot
+  mode, then verify the two Linux archives, embedded versions/commits, notices,
+  checksums, and artifact-bound SPDX JSON SBOMs.
 - `make fuzz-smoke`: exact bounded fuzz inventory and one-second target runs.
 - `make coverage`: atomic coverage profile and `go tool cover -func` summary in
   `COVERAGE_DIR` (default `/tmp/jetkvm-mcp-coverage`).
 - `make cross-build-linux`: native Linux amd64 and arm64 server cross-builds.
 - `make ci-minimum`: one ordinary full suite and server build, with the caller
   responsible for selecting Go 1.25.13 and `GOTOOLCHAIN=local` in CI.
-- `make ci-quality`: the complete non-overlapping current-Go quality lane.
-- `make verify`: tests, vet, and supported release cross-builds.
+- `make ci-quality`: the complete non-overlapping current-Go quality lane,
+  including the native release snapshot instead of duplicate raw Linux
+  cross-builds.
+- `make verify`: tests, vet, and the Linux plus engineering-only Darwin
+  cross-builds used by complete local validation.
 - `make protocol-gates`: build and run the pinned MCP conformance/Inspector
   harness. `MCP_GATE_SERVER` and `MCP_GATE_DIR` may redirect temporary outputs.
 - `make container-verify`: build each final platform image once and verify its
@@ -100,6 +105,16 @@ same compiler before running `make ci-minimum`.
   FFmpeg identities matched against a generated SPDX SBOM, network-isolated
   configuration validation, read-only-root health startup, and actual
   H.264-to-PNG decoding.
+
+The `Native release rehearsal` is a release job, so it is the only current job
+with OIDC and attestation-write permissions. Direct dispatch is restricted to
+the exact default-branch ref; its reusable entry point accepts only an exact
+`refs/tags/vX.Y.Z` ref for the later integrated protected-tag workflow. It adds
+no release or package publication path. The job creates and immediately
+verifies a keyless Cosign bundle for `checksums.txt` and hosted provenance for
+every checksummed archive and SBOM. Verification constrains the repository,
+workflow, source ref, and source commit; the retained workflow artifact is
+rehearsal evidence, not a GitHub Release.
 
 ## Coverage and evidence
 

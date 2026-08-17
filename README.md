@@ -34,7 +34,7 @@ keep their explicitly injected version.
 
 ### Option B: Download Binary
 
-Download the archive for your platform from [GitHub Releases](https://github.com/BenDManning/jetkvm-mcp/releases), verify it against `checksums.txt`, extract `jetkvm-mcp`, and place it on `PATH`. FFmpeg must also be installed on the host.
+Download the archive for your platform from [GitHub Releases](https://github.com/BenDManning/jetkvm-mcp/releases), verify it against `checksums.txt`, extract `jetkvm-mcp`, and place it on `PATH`. Each archive also contains the project license and the compiled dependency license/notice inventory. FFmpeg must be installed on the host.
 
 Release binaries are built for:
 
@@ -42,6 +42,58 @@ Release binaries are built for:
 - Linux arm64
 
 macOS and Windows are unsupported and receive no release artifacts.
+
+For a release whose record identifies `release_ref` (normally
+`refs/tags/vX.Y.Z`) and `release_commit`, download both Linux archives, their
+`.spdx.json` files, `checksums.txt`, and the two Sigstore bundles. These commands
+verify the downloaded subjects and constrain both signing systems to this
+repository, workflow, ref, and commit:
+
+```sh
+repo=BenDManning/jetkvm-mcp
+workflow=BenDManning/jetkvm-mcp/.github/workflows/native-release.yml
+release_ref=refs/tags/vX.Y.Z
+release_commit=REPLACE_WITH_THE_RELEASE_COMMIT
+
+sha256sum --check --strict checksums.txt
+
+cosign verify-blob \
+  --bundle checksums.txt.sigstore.json \
+  --certificate-identity "https://github.com/${workflow}@${release_ref}" \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  --certificate-github-workflow-repository "$repo" \
+  --certificate-github-workflow-ref "$release_ref" \
+  --certificate-github-workflow-sha "$release_commit" \
+  checksums.txt
+
+while read -r _ subject; do
+  gh attestation verify "$subject" \
+    --repo "$repo" \
+    --bundle provenance.sigstore.json \
+    --cert-identity "https://github.com/${workflow}@${release_ref}" \
+    --signer-workflow "$workflow" \
+    --source-ref "$release_ref" \
+    --source-digest "$release_commit" \
+    --deny-self-hosted-runners
+done < checksums.txt
+
+for archive in jetkvm-mcp_*_linux_amd64.tar.gz jetkvm-mcp_*_linux_arm64.tar.gz; do
+  digest=$(sha256sum "$archive" | awk '{print $1}')
+  jq -e --arg name "$archive" --arg digest "$digest" '
+    [.relationships[] | select(.spdxElementId == "SPDXRef-DOCUMENT" and .relationshipType == "DESCRIBES") | .relatedSpdxElement] as $described |
+    .spdxVersion == "SPDX-2.3" and .name == $name and
+    ($described | length) == 1 and
+    any(.packages[]; .SPDXID == $described[0] and .name == $name and
+      any(.checksums[]; .algorithm == "SHA256" and .checksumValue == $digest))
+  ' "${archive}.spdx.json"
+  tar -tzf "$archive"
+done
+```
+
+The expected archive members are `jetkvm-mcp`, `LICENSE`, and
+`THIRD_PARTY_NOTICES.md`. The release record remains authoritative for the
+exact ref, commit, workflow, asset names, and identities; packaging definitions
+do not claim that a release has been published.
 
 ### Option C: Container image
 
@@ -365,7 +417,7 @@ evidence-refresh triggers are documented in
 [`docs/compatibility/`](docs/compatibility/README.md). Source review, fake-device
 tests, and unattributed historical runs do not qualify a firmware version.
 
-The checked-in Dockerfile builds the Linux amd64/arm64 image. `.goreleaser.yaml` builds the four supported binary targets.
+The checked-in Dockerfile builds the Linux amd64/arm64 image. `.goreleaser.yaml` builds only the Linux amd64/arm64 native release archives.
 
 ## Project policies
 

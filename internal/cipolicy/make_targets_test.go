@@ -20,8 +20,8 @@ func TestCITargetsProduceNonOverlappingEvidence(t *testing.T) {
 		"go tool staticcheck ./...",
 		"go tool govulncheck ./...",
 		"--fuzztime 1s",
-		"GOOS=linux GOARCH=amd64 go build",
-		"GOOS=linux GOARCH=arm64 go build",
+		"release --snapshot --clean --skip=publish",
+		"scripts/verify-native-release.sh dist",
 	} {
 		if !strings.Contains(quality, required) {
 			t.Errorf("ci-quality output does not contain %q\n%s", required, quality)
@@ -30,6 +30,8 @@ func TestCITargetsProduceNonOverlappingEvidence(t *testing.T) {
 	for _, duplicate := range []string{
 		"go test ./...",
 		"GOOS=darwin",
+		"GOOS=linux GOARCH=amd64 go build",
+		"GOOS=linux GOARCH=arm64 go build",
 	} {
 		if strings.Contains(quality, duplicate) {
 			t.Errorf("ci-quality output unexpectedly contains %q\n%s", duplicate, quality)

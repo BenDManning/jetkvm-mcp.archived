@@ -69,7 +69,7 @@ security impact blocks the update until resolved.
 |---|---|
 | Application Go module or root Go tool | `make tidy module-verify race vet staticcheck govulncheck verify` |
 | Release tool | `make tools-tidy tools-module-verify release-tool-versions release-snapshot` |
-| GitHub Action or downloaded workflow build helper | Inspect the full-SHA or checksum diff and require every affected workflow job to pass from the pull request without write or release credentials. |
+| GitHub Action or downloaded workflow build helper | Inspect the full-SHA or checksum diff. Require all unprivileged build/verification logic to pass from the pull request without write or release credentials. An accepted OIDC-only release identity stage is exercised by a non-publishing default-branch rehearsal after merge and before its ticket closes. |
 | Docker frontend, builder, runtime, or distro package resolution | `make container-verify`; inspect both platform results and record resolved image/package identities. |
 | MCP npm protocol input | `make protocol-gates` plus deliberate review of the upstream commit, integrity, MCP revision, and scenario inventory. |
 

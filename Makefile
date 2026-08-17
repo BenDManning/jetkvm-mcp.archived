@@ -59,7 +59,12 @@ release-tool-versions:
 	GOTOOLCHAIN=go$(RELEASE_GO_VERSION) go -C tools tool syft --version
 
 release-snapshot:
-	GOTOOLCHAIN=go$(RELEASE_GO_VERSION) "$$(GOTOOLCHAIN=go$(RELEASE_GO_VERSION) go -C tools tool -n goreleaser)" release --snapshot --clean --skip=publish
+	go run ./scripts/generate-third-party-notices.go -check THIRD_PARTY_NOTICES.md ./cmd/jetkvm-mcp
+	release_goroot="$$(GOTOOLCHAIN=go$(RELEASE_GO_VERSION) go env GOROOT)"; \
+		syft_path="$$(GOTOOLCHAIN=go$(RELEASE_GO_VERSION) go -C tools tool -n syft)"; \
+		GOROOT="$$release_goroot" GOTOOLCHAIN=local PATH="$$release_goroot/bin:$$(dirname "$$syft_path"):$$PATH" \
+		"$$(GOTOOLCHAIN=go$(RELEASE_GO_VERSION) go -C tools tool -n goreleaser)" release --snapshot --clean --skip=publish
+	scripts/verify-native-release.sh dist
 
 coverage:
 	mkdir -p $(COVERAGE_DIR)
@@ -90,7 +95,7 @@ fuzz:
 
 ci-minimum: test build
 
-ci-quality: format tidy tools-tidy module-verify tools-module-verify race-coverage vet staticcheck govulncheck fuzz-smoke cross-build-linux
+ci-quality: format tidy tools-tidy module-verify tools-module-verify race-coverage vet staticcheck govulncheck fuzz-smoke release-snapshot
 
 update-tool-manifest:
 	JETKVM_UPDATE_TOOL_MANIFEST=1 go test ./internal/mcpserver -run '^TestToolManifestFixtureUpdate$$' -count=1
