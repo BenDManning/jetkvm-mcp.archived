@@ -36,9 +36,6 @@ do not enforce ADR counts, document headings, index wording, threat-model prose,
 or other administrative document shape; those documents receive ordinary
 review.
 
-The workflow and command tables below describe the current tree until
-implementation brings them into agreement with this accepted target.
-
 Public conversion is an owner-controlled sequence. After visibility changes
 and before further changes are accepted, the repository must enable and read
 back a `main` ruleset requiring pull requests, the four stable checks above,
@@ -62,10 +59,10 @@ pull requests.
 
 | Lane | Toolchain | Command | Purpose |
 |---|---:|---|---|
-| Minimum | Go 1.25.13 with `GOTOOLCHAIN=local` | `GOTOOLCHAIN=go1.25.13 make ci-minimum` | Formatting, tidy, module checksums, tests, vet, and bounded fuzz smoke against the module's declared minimum |
-| Release | Go 1.26.6 | `GOTOOLCHAIN=go1.26.6 make ci-quality` | Race, vet, pinned analyzers, vulnerability analysis, fuzz smoke, coverage evidence, and release targets |
-| MCP protocol | Go 1.26.6 / Node 22.22.0 | `GOTOOLCHAIN=go1.26.6 make protocol-gates` | Pinned conformance and Inspector scenarios from `testdata/mcp-gates/pins.json` |
-| Container | Docker Buildx | `make container-verify` | amd64/arm64 binary architecture and multi-platform image build |
+| Minimum Go | Go 1.25.13 with `GOTOOLCHAIN=local` | `GOTOOLCHAIN=go1.25.13 make ci-minimum` | One ordinary full test and server build against the module's declared minimum |
+| Go quality | Go 1.26.6 | `GOTOOLCHAIN=go1.26.6 make ci-quality` | Format, tidy, module integrity, one race/coverage suite, vet, pinned analyzers, reachable vulnerabilities, fuzz smoke, and Linux native cross-builds |
+| MCP protocol | Go 1.26.6 / Node 22.22.0 | `GOTOOLCHAIN=go1.26.6 make protocol-gates` | One server build followed by pinned conformance and Inspector scenarios from `testdata/mcp-gates/pins.json` |
+| Container | Docker Buildx | `make container-verify` | One final amd64 image and one final arm64 image, each with runtime smokes |
 
 `GOTOOLCHAIN=local` in CI prevents the minimum lane from silently downloading a
 newer compiler. A local machine may use `GOTOOLCHAIN=go1.25.13` to select the
@@ -78,6 +75,10 @@ same compiler before running `make ci-minimum`.
 - `make tidy`: non-mutating `go mod tidy -diff` with workspace mode disabled.
 - `make module-verify`: module checksum verification.
 - `make test`, `make race`, `make vet`: repository tests, race detector, and vet.
+  The race target owns the opt-in real FFmpeg encode/decode integration; the
+  ordinary test target skips it so minimum-Go does not repeat that evidence.
+- `make race-coverage`: the single race-enabled full suite plus diagnostic
+  coverage in `COVERAGE_DIR`.
 - `make staticcheck`: the Staticcheck version tracked by the root Go module.
 - `make govulncheck`: the govulncheck version tracked by the root Go module.
 - `make release-tool-versions`: build and report the GoReleaser, Cosign, and
@@ -87,18 +88,24 @@ same compiler before running `make ci-minimum`.
 - `make fuzz-smoke`: exact bounded fuzz inventory and one-second target runs.
 - `make coverage`: atomic coverage profile and `go tool cover -func` summary in
   `COVERAGE_DIR` (default `/tmp/jetkvm-mcp-coverage`).
+- `make cross-build-linux`: native Linux amd64 and arm64 server cross-builds.
+- `make ci-minimum`: one ordinary full suite and server build, with the caller
+  responsible for selecting Go 1.25.13 and `GOTOOLCHAIN=local` in CI.
+- `make ci-quality`: the complete non-overlapping current-Go quality lane.
 - `make verify`: tests, vet, and supported release cross-builds.
 - `make protocol-gates`: build and run the pinned MCP conformance/Inspector
   harness. `MCP_GATE_SERVER` and `MCP_GATE_DIR` may redirect temporary outputs.
-- `make container-verify`: run the same Buildx amd64/arm64 binary architecture
-  checks and multi-platform image build as the container CI lane.
+- `make container-verify`: build each final platform image once and smoke its
+  injected version, FFmpeg executable, UID/GID, and offline configuration
+  validation.
 
 ## Coverage and evidence
 
-CI uploads `coverage.out` and `coverage.txt` as the `go-coverage` artifact.
-Coverage is review evidence, not an arbitrary pass percentage. A future
-threshold requires repository history and a separately reviewed policy change.
-MCP gate artifacts remain a separate sanitized artifact.
+CI uploads the race suite's `coverage.out` and `coverage.txt` as the
+`go-coverage` artifact. Coverage is review evidence, not an arbitrary pass
+percentage. A future threshold requires repository history and a separately
+reviewed policy change. MCP gate artifacts remain a separate sanitized
+artifact. Both artifacts retain for 30 days.
 
 ## Security boundary
 

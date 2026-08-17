@@ -38,7 +38,7 @@ func Parse(value string) (Origin, error) {
 			return Origin{}, ErrInvalid
 		}
 	}
-	host := strings.ToLower(parsed.Host)
+	host := escapeZone(strings.ToLower(parsed.Host))
 	return Origin{Value: scheme + "://" + host, Scheme: scheme, Host: host}, nil
 }
 
@@ -58,9 +58,7 @@ func ParseEffective(value string) (Origin, error) {
 	port := parsed.Port()
 	if port == "" {
 		host := canonicalEffectiveHostname(parsed.Hostname())
-		if strings.Contains(host, ":") {
-			host = "[" + host + "]"
-		}
+		host = serializeHostname(host)
 		return Origin{Value: origin.Scheme + "://" + host, Scheme: origin.Scheme, Host: host}, nil
 	}
 	portNumber, err := strconv.Atoi(port)
@@ -70,17 +68,13 @@ func ParseEffective(value string) (Origin, error) {
 	if origin.Scheme != "http" || portNumber != 80 {
 		if origin.Scheme != "https" || portNumber != 443 {
 			host := canonicalEffectiveHostname(parsed.Hostname())
-			if strings.Contains(host, ":") {
-				host = "[" + host + "]"
-			}
+			host = serializeHostname(host)
 			host = host + ":" + strconv.Itoa(portNumber)
 			return Origin{Value: origin.Scheme + "://" + host, Scheme: origin.Scheme, Host: host}, nil
 		}
 	}
 	host := canonicalEffectiveHostname(parsed.Hostname())
-	if strings.Contains(host, ":") {
-		host = "[" + host + "]"
-	}
+	host = serializeHostname(host)
 	return Origin{Value: origin.Scheme + "://" + host, Scheme: origin.Scheme, Host: host}, nil
 }
 
@@ -90,6 +84,17 @@ func canonicalEffectiveHostname(host string) string {
 		return host
 	}
 	return address.String()
+}
+
+func serializeHostname(host string) string {
+	if strings.Contains(host, ":") {
+		return "[" + escapeZone(host) + "]"
+	}
+	return host
+}
+
+func escapeZone(value string) string {
+	return strings.ReplaceAll(value, "%", "%25")
 }
 
 // ParseAuthority validates and canonicalizes an HTTP Host authority without

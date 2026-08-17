@@ -13,6 +13,7 @@ func TestParseAcceptsCanonicalHTTPOrigins(t *testing.T) {
 		{input: "http://localhost:8080", want: Origin{Value: "http://localhost:8080", Scheme: "http", Host: "localhost:8080"}},
 		{input: "https://MCP.EXAMPLE.INVALID", want: Origin{Value: "https://mcp.example.invalid", Scheme: "https", Host: "mcp.example.invalid"}},
 		{input: "https://[::1]:8443", want: Origin{Value: "https://[::1]:8443", Scheme: "https", Host: "[::1]:8443"}},
+		{input: "https://[fe80::1%25ZONE]", want: Origin{Value: "https://[fe80::1%25zone]", Scheme: "https", Host: "[fe80::1%25zone]"}},
 		{input: "https://mcp.example.invalid:1", want: Origin{Value: "https://mcp.example.invalid:1", Scheme: "https", Host: "mcp.example.invalid:1"}},
 		{input: "https://mcp.example.invalid:65535", want: Origin{Value: "https://mcp.example.invalid:65535", Scheme: "https", Host: "mcp.example.invalid:65535"}},
 	} {
@@ -69,6 +70,7 @@ func TestParseEffectiveNormalizesOnlyDefaultPorts(t *testing.T) {
 	}{
 		{input: "http://media.example.invalid", want: Origin{Value: "http://media.example.invalid", Scheme: "http", Host: "media.example.invalid"}},
 		{input: "https://[2001:0db8:0:0:0:0:0:1]", want: Origin{Value: "https://[2001:db8::1]", Scheme: "https", Host: "[2001:db8::1]"}},
+		{input: "https://[fe80:0::1%25ZONE]:443", want: Origin{Value: "https://[fe80::1%25zone]", Scheme: "https", Host: "[fe80::1%25zone]"}},
 		{input: "https://[0:0:0:0:0:ffff:c000:0280]", want: Origin{Value: "https://[::ffff:192.0.2.128]", Scheme: "https", Host: "[::ffff:192.0.2.128]"}},
 		{input: "http://media.example.invalid:80", want: Origin{Value: "http://media.example.invalid", Scheme: "http", Host: "media.example.invalid"}},
 		{input: "https://media.example.invalid:0443", want: Origin{Value: "https://media.example.invalid", Scheme: "https", Host: "media.example.invalid"}},
@@ -92,12 +94,13 @@ func TestParseEffectiveNormalizesOnlyDefaultPorts(t *testing.T) {
 
 func TestParseAuthority(t *testing.T) {
 	for input, want := range map[string]string{
-		"localhost":       "localhost",
-		"LOCALHOST:8080":  "localhost:8080",
-		"127.0.0.1":       "127.0.0.1",
-		"127.0.0.1:65535": "127.0.0.1:65535",
-		"[::1]":           "[::1]",
-		"[::1]:1":         "[::1]:1",
+		"localhost":        "localhost",
+		"LOCALHOST:8080":   "localhost:8080",
+		"127.0.0.1":        "127.0.0.1",
+		"127.0.0.1:65535":  "127.0.0.1:65535",
+		"[::1]":            "[::1]",
+		"[::1]:1":          "[::1]:1",
+		"[fe80::1%25ZONE]": "[fe80::1%25zone]",
 	} {
 		t.Run("accept_"+input, func(t *testing.T) {
 			got, err := ParseAuthority(input)

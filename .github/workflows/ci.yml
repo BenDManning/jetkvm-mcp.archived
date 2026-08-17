@@ -9,8 +9,13 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
-  test:
+  quality:
+    name: Go quality
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -24,28 +29,8 @@ jobs:
           cache-dependency-path: |
             go.sum
             tools/go.sum
-      - name: Verify gofmt
-        run: make format
-      - name: Verify go mod tidy
-        run: make tidy
-      - name: Verify tool module tidy
-        run: make tools-tidy
-      - name: Verify module checksums
-        run: make module-verify
-      - name: Verify tool checksums
-        run: make tools-module-verify
-      - name: Test with race detector
-        run: make race
-      - name: Vet
-        run: make vet
-      - name: Staticcheck
-        run: make staticcheck
-      - name: Vulnerability analysis
-        run: make govulncheck
-      - name: Bounded fuzz smoke
-        run: make fuzz-smoke
-      - name: Produce coverage evidence
-        run: make coverage COVERAGE_DIR="${RUNNER_TEMP}/coverage"
+      - name: Run current-Go quality evidence
+        run: make ci-quality COVERAGE_DIR="${RUNNER_TEMP}/coverage"
       - name: Upload coverage evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -53,10 +38,9 @@ jobs:
           name: go-coverage
           path: ${{ runner.temp }}/coverage
           if-no-files-found: warn
-      - name: Verify release targets
-        run: make verify
+          retention-days: 30
   minimum-go:
-    name: Minimum Go 1.25
+    name: Minimum Go
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
@@ -71,8 +55,8 @@ jobs:
           cache: true
       - run: go version
       - run: make ci-minimum
-  protocol-gates:
-    name: MCP protocol gates
+  mcp-protocol:
+    name: MCP protocol
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -86,9 +70,7 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '22.22.0'
-      - name: Build server
-        run: go build -trimpath -o "${RUNNER_TEMP}/jetkvm-mcp" ./cmd/jetkvm-mcp
-      - name: Run pinned conformance and Inspector gates
+      - name: Build once and run pinned conformance and Inspector gates
         run: >-
           make protocol-gates
           MCP_GATE_SERVER="${RUNNER_TEMP}/jetkvm-mcp"
@@ -100,7 +82,9 @@ jobs:
           name: mcp-protocol-gates
           path: ${{ runner.temp }}/mcp-gate-artifacts
           if-no-files-found: warn
+          retention-days: 30
   container:
+    name: Container
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -127,8 +111,5 @@ jobs:
       - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
         with:
           driver-opts: image=moby/buildkit:v0.32.2@sha256:28a898719c18a33f4e8000685287fa36fd0dd9560c6440227d3a732d79bb41d8
-      - name: Verify container binary architectures
-        run: >-
-          make container-verify
-          CONTAINER_AMD64_DIR="${RUNNER_TEMP}/container-amd64"
-          CONTAINER_ARM64_DIR="${RUNNER_TEMP}/container-arm64"
+      - name: Build and smoke final platform images
+        run: make container-verify

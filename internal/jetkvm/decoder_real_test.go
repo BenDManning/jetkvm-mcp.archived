@@ -3,12 +3,16 @@ package jetkvm
 import (
 	"bytes"
 	"context"
+	"os"
 	"os/exec"
 	"testing"
 	"time"
 )
 
 func TestRealFFmpegH264ToPNG(t *testing.T) {
+	if os.Getenv("JETKVM_TEST_REAL_FFMPEG") != "1" {
+		t.Skip("real FFmpeg integration is owned by the race-enabled test lane")
+	}
 	ffmpeg, err := exec.LookPath("ffmpeg")
 	if err != nil {
 		t.Skip("ffmpeg is not installed")
