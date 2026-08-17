@@ -7,6 +7,17 @@ JetKVM MCP is one bounded context: a Go MCP server that operates configured JetK
 - **Configured JetKVM** — a JetKVM appliance admitted through a named configuration entry.
 - **Attached host** — the computer controlled or observed through a configured JetKVM.
 - **Device alias** — the configuration name exposed to MCP callers instead of private connection details.
+- **Device owner** — the per-device module that owns managed-session lifecycle, scheduling, observations, and firmware adaptation behind the Manager.
+- **Managed device session** — the server-owned authoritative WebRTC operator connection for one configured JetKVM.
+- **Managed-session generation** — one uninterrupted managed-session lifetime and the fence against stale work within the process.
+- **Owner snapshot** — the immutable private ownership, transition, health, observation, and capability view published to the Manager.
+- **Capability profile** — the versioned firmware-specific scheduling and compatibility rules selected for a configured JetKVM.
+- **External authenticated session** — another authenticated JetKVM operator session whose actor type is not identified by the protocol.
+- **Idle lease** — the bounded unused period before automatic managed-session release.
+- **Released device** — a configured JetKVM explicitly yielded from ordinary server operation for the current process lifetime.
+- **Server takeover** — explicit acquisition of authoritative operator ownership, which may displace an external authenticated session.
+- **Recognized session takeover** — the sticky ownership state after JetKVM reports that another authenticated session became authoritative.
+- **Ownership uncertainty** — the sticky ownership state after an unexplained managed-session loss.
 - **MCP tool** — a supported MCP operation; raw JetKVM RPC is a separate local diagnostic surface.
 - **Read-only operation** — an operation intended to observe state without changing the appliance or attached host.
 - **Mutation** — an operation that may change appliance, storage, HID, power, network, or attached-host state.

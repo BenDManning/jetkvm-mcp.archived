@@ -113,7 +113,4 @@ func TestSafeConfiguredDeviceDiscoveryIsDocumented(t *testing.T) {
 			}
 		}
 	}
-	if !strings.Contains(productContract, "17 one-purpose tools") {
-		t.Error("product contract does not classify the v1 17-tool surface")
-	}
 }

@@ -94,3 +94,72 @@ forced shutdown flush.
 These fixture-only tests validate instrumentation and privacy behavior. They do
 not measure real JetKVM latency, qualify hardware compatibility, or authorize
 production load or soak testing.
+
+## Proposed managed-session telemetry
+
+This section specifies the telemetry target for proposed
+[ADR 0008](adr/0008-managed-per-device-webrtc-ownership.md). It is not emitted
+by the current implementation.
+
+Operation telemetry advances to `jetkvm.operation.v3`. It retains the v2 fields
+and meanings and conditionally adds:
+
+| Field | Values |
+|---|---|
+| `device_ref` | random process-local opaque `dev_` identifier; present after a configured device is resolved |
+| `session_ref` | random per-generation opaque `ses_` identifier; present only after a successful generation exists and work is associated with it |
+
+The same configured device receives one `device_ref` for the process lifetime.
+Each successful generation receives a new `session_ref`; failed attempts do not.
+Neither value is derived from an alias, URL, address, serial number, credential,
+or stable machine identifier.
+
+Connection lifecycle uses a separate closed `jetkvm.session.v1` schema with the
+following field set; `session_ref` is the only conditionally omitted field:
+
+| Field | Values |
+|---|---|
+| `schema` | `jetkvm.session.v1` |
+| `time` | UTC RFC 3339 timestamp |
+| `process_instance_id` | random process-local opaque `proc_` identifier |
+| `server_version` | public server version |
+| `device_ref` | process-local opaque `dev_` identifier |
+| `session_ref` | per-generation opaque `ses_` identifier; omitted from a failed `connection_attempt_completed` event because no generation exists |
+| `event` | one closed lifecycle value listed below |
+| `duration_ms` | non-negative integer capped at 60000 |
+| `code` | fixed result code |
+| `outcome` | `succeeded`, `failed`, `not_sent`, or `unknown` |
+
+Lifecycle events are emitted only after the named state transition or cleanup
+point is conclusive:
+
+| Event | Completion point |
+|---|---|
+| `connection_attempt_completed` | authentication/signaling either produced a ping-validated generation or failed setup finished bounded cleanup |
+| `generation_active` | the owner atomically published `active` for the ping-validated generation |
+| `generation_reused` | admitted work received a lease on the already active generation |
+| `idle_released` | idle cleanup closed and joined every local generation resource |
+| `explicitly_released` | explicit release closed and joined every local generation resource |
+| `session_taken_over` | recognized external takeover was latched and new dispatch fenced |
+| `ownership_uncertain` | unexplained terminal loss or cleanup failure was latched |
+| `cleanup_timeout` | a detached cleanup deadline expired before all local resources joined |
+| `shutdown_closed` | shutdown closed and joined the generation inside the shared shutdown budget |
+
+An already released idempotent release has no generation and therefore emits
+only its operation event. Missing, dropped, or out-of-order telemetry never
+proves ownership, release, cleanup, or non-execution. State snapshots and tool
+results remain authoritative inside their respective boundaries.
+
+The existing payload and identity prohibitions continue to apply. In
+particular, session telemetry contains no configured alias, durable device
+identity, peer address/state dump, lease timestamp, browser information,
+firmware payload, or operator identity. Generation identifiers are lifecycle
+fences and are never reused as telemetry identity. A restart-spanning,
+deployment-scoped pseudonym remains a separate future privacy and operations
+decision; this proposal does not select or derive one.
+
+Verification must add fixture coverage for identifier scope and uniqueness,
+session-event completion points, reuse correlation, takeover versus uncertain
+loss, cleanup timeout, bounded queue loss, shutdown close, and the existing
+sensitive-sentinel exclusions. Telemetry may corroborate physical reuse but
+never substitutes for browser observation or retained qualification evidence.

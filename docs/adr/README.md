@@ -34,6 +34,7 @@ corrections do not change status.
 | [0005](0005-local-only-raw-rpc.md) | Keep raw RPC local and outside MCP | accepted |
 | [0006](0006-virtual-media-url-origin-boundary.md) | Deny virtual-media URL mounts outside configured origins | accepted |
 | [0007](0007-same-origin-browser-http.md) | Keep browser Streamable HTTP same-origin | accepted |
+| [0008](0008-managed-per-device-webrtc-ownership.md) | Managed per-device WebRTC ownership | proposed |
 
 ## Adding or replacing a decision
 

@@ -159,11 +159,75 @@ The official Go SDK remains an implementation dependency and does not expand
 the product contract. Sessions, legacy HTTP+SSE, tasks, prompts, resources,
 sampling, and other unadvertised SDK capabilities remain unsupported.
 
-The v1 tool surface contains the 17 one-purpose tools and removes the deprecated
-multiplexed `jetkvm_virtual_media` compatibility tool. Release documentation
+The v1 tool surface uses one-purpose tools and removes the deprecated multiplexed
+`jetkvm_virtual_media` compatibility tool. Release documentation
 must map each removed operation to its dedicated status, URL mount, file mount,
 file upload, or unmount replacement. No evidence of external reliance justifies
 carrying the duplicate private-era surface into the first public release.
+
+### Proposed managed-session compatibility change
+
+[Specification #107](https://github.com/BenDManning/jetkvm-mcp/issues/107) and
+[ADR 0008](adr/0008-managed-per-device-webrtc-ownership.md) propose replacing
+operation-scoped WebRTC sessions with one managed authoritative generation per
+configured device. This subsection is a reviewed target, not current executable
+behavior. Until the ADR is accepted and implemented, the currently discovered
+tool surface and `max_sessions` grammar remain authoritative.
+
+The proposal makes connection acquisition consequential and distinct from
+authority to dispatch or reconcile work. An ordinary operation may lazily
+acquire only from `idle`. The sticky `taken_over`, `uncertain`, and `released`
+states reject ordinary demand until an explicit lifecycle operation succeeds.
+No lifecycle operation permits replay of a possibly sent mutation.
+
+The target adds two one-purpose lifecycle tools:
+
+- `jetkvm_release_session`, accepting only `device`, returning only `device`
+  and `status: released`, closed-world, non-destructive to appliance/host state,
+  and `idempotentHint=true`; and
+- `jetkvm_take_over_session`, accepting only `device`, returning only `device`
+  and `status: authoritative`, closed-world, non-destructive to appliance/host
+  state, and `idempotentHint=false` because it can immediately displace an
+  external authenticated operator.
+
+The resulting tool count is descriptive, not a product limit. New one-purpose
+tools remain governed by their own accepted scope, consequence contract,
+schemas, compatibility classification, and evidence; this amendment does not
+create a fixed maximum.
+
+Release is fail-fast in v1. It succeeds idempotently from `released`, but
+otherwise requires no device-bound admitted or waiting work and complete local
+resource closure within five seconds. From `idle`, release latches `released`
+without connecting; from `taken_over` or `uncertain`, it must finish bounded
+local cleanup first. Ordinary work while released returns `session_released`,
+`not_sent`, and nonretryable. Takeover validates a healthy generation
+or performs one bounded connection attempt from `idle`, `taken_over`,
+`uncertain`, or `released`. A prior local generation must close and join before
+replacement setup; cleanup failure returns `ownership_uncertain` without
+connecting. Incompatible lifecycle transitions return `busy` / `not_sent`;
+lifecycle calls do not queue behind each other.
+
+If active-generation validation loses the connection, that takeover call
+returns `ownership_uncertain` without opening a replacement. A later explicit
+takeover is a new acquisition authority.
+
+A recognized `otherSessionConnected` event fences the generation, sends no
+post-takeover cleanup RPC, and reports `session_taken_over`, `not_sent`, and
+nonretryable for undispatched work. An inconclusive already-dispatched read uses
+that code with `failed`; a dispatched mutation without a conclusive result
+remains `unknown`. Unexplained terminal loss similarly reports
+`ownership_uncertain` with `failed` for an in-flight read, `not_sent` for later
+ordinary demand rejected by the sticky state, and `unknown` for a possibly
+dispatched mutation. ICE `Disconnected`, `Failed`, or `Closed`, data-channel
+closure, and terminal signaling loss end the generation; the proposal has no
+recovery grace, automatic reconnect from sticky states, or mutation replay.
+
+The proposal intentionally breaks accepted configuration by rejecting
+`max_sessions` rather than ignoring or aliasing it. The replacement
+`max_connection_attempts` bounds only authentication/signaling attempts; every
+configured device may remain resident. This requires an accepted issue,
+before-and-after migration documentation, and the Semantic Versioning treatment
+for an incompatible YAML change before implementation ships.
 
 V1 consequence annotations are deliberately conservative. Every mutation has
 `idempotentHint=false`; an annotation must never suggest blind retry after an
@@ -298,7 +362,7 @@ or point-in-time protocol observations.
 | YAML configuration | Declared: the current strict, unversioned grammar; no schema-version field or migration engine | Loader tests cover the grammar. The exact example is [`config.example.yaml`](../config.example.yaml); unknown fields, empty or over-1 MiB input, multiple YAML documents, unsafe admission limits, and device-URL user information/query/fragment components are rejected. Device URL path prefixes remain supported. |
 | Server CLI | Declared: help, `--config`, optional `--http`, `--version`, offline `config validate`, and `debug rpc` with its documented flags, streams, and JSON result | Parser and integration tests exercise these entry points. `debug rpc` permits only `ping`, `getLocalVersion`, and `getActiveExtension` by default; every other method requires per-invocation `--unsafe-acknowledge-risk`. Free-form diagnostic wording is not stable unless documented as structured output. |
 | Validator CLI | Declared source-run interface: required `--binary`, `--config`, and `--device`; sanitized JSON and exit status | Unit tests exercise argument and report shape. Physical qualification is absent until retained evidence satisfies the policy below. No validator binary is distributed. |
-| MCP tools, results, errors, and annotations | Declared: the 17 one-purpose tools, their schemas, structured results/content, tool-result error semantics, and annotations | [`server.go`](../internal/mcpserver/server.go), [`controls.go`](../internal/mcpserver/controls.go), and their tests are the executable source of truth. Execution failures use tool results with `IsError`, not protocol errors. `jetkvm_list_devices` returns sorted configured aliases and configuration-derived availability flags; it does not open a device session or qualify firmware capabilities. The v1 surface removes `jetkvm_virtual_media`; the README maps each former operation to its one-purpose replacement. |
+| MCP tools, results, errors, and annotations | Declared: the one-purpose tools in the reviewed manifest, their schemas, structured results/content, tool-result error semantics, and annotations; the manifest count is descriptive rather than a product limit | [`server.go`](../internal/mcpserver/server.go), [`controls.go`](../internal/mcpserver/controls.go), and their tests are the executable source of truth. Execution failures use tool results with `IsError`, not protocol errors. `jetkvm_list_devices` returns sorted configured aliases and configuration-derived availability flags; it does not open a device session or qualify firmware capabilities. The v1 surface removes `jetkvm_virtual_media`; the README maps each former operation to its one-purpose replacement. |
 | Binary artifacts | Intended: one `jetkvm-mcp` binary, `LICENSE`, and `THIRD_PARTY_NOTICES.md` in `jetkvm-mcp_<version>_<os>_<arch>.tar.gz` for each declared Linux release target, plus SHA-256 `checksums.txt`, one SPDX JSON SBOM per archive, a keyless checksum-manifest bundle, and hosted provenance | [GoReleaser configuration](../.goreleaser.yaml), the CI snapshot, and the non-publishing hosted rehearsal establish subject, notice, checksum, SBOM, signature, provenance, and constrained-identity evidence. They do not establish publication or runtime qualification. |
 | Container artifacts | Intended v1: one `ghcr.io/bendmanning/jetkvm-mcp:vX.Y.Z` Linux amd64/arm64 image, one `jetkvm-mcp` entry point, bundled FFmpeg, UID/GID 10001 | The [Dockerfile](../Dockerfile) and CI establish build intent, not completed publication. The canonical GitHub Release records the published image digest; indefinite availability and unrecorded per-platform runtime qualification are not promised. |
 
@@ -398,6 +462,50 @@ non-retryable `busy`/`not_sent` tool error without device/provider dispatch and
 does not queue work. Mutating HID, power, and virtual-media operations serialize
 per device; waiting for that one bounded mutation slot observes cancellation.
 
+Under the proposed managed-session contract, configuration admits at most 64
+devices and the `limits` mapping instead contains:
+
+| Field | Default | Validation and meaning |
+|---|---:|---|
+| `max_operations` | 16 | Integer 1–1024; all admitted ordinary and lifecycle work globally. |
+| `max_operations_per_device` | 4 | Integer 1–1024 and no greater than `max_operations`; ordinary work waiting or running for one device. |
+| `max_connection_attempts` | 8 | Integer 1–64 and no greater than `max_operations`; active authentication/signaling attempts only. |
+| `max_captures` | 2 | Integer 1–1024 and no greater than `max_operations`; admitted capture operations globally. |
+| `max_decoders` | 2 | Integer 1–1024; active FFmpeg decodes. |
+| `session_idle_timeout` | 60s | Duration from 10 seconds through one hour; begins only when no work holds or waits for the device generation. |
+
+Resident reuse consumes no connection-attempt permit. Captures no longer have a
+session-limit relationship. A complete encoded frame copied into an immutable
+bounded buffer releases its generation lease; decoding remains globally
+admitted but cannot delay session release. More than 64 configured devices,
+obsolete `max_sessions`, out-of-range values, and unsafe parent relationships
+fail offline validation and startup without opening a device connection.
+
+This table is a proposed migration target. It must not be copied into the
+operational README or `config.example.yaml` until the executable loader and
+offline validation implement it.
+
+The required migration is explicit:
+
+```yaml
+# Before: current operation-scoped session capacity
+limits:
+  max_sessions: 8
+```
+
+```yaml
+# After ADR 0008 is implemented: connector pressure and idle ownership
+limits:
+  max_connection_attempts: 8
+  session_idle_timeout: 60s
+```
+
+The values are not semantically equivalent: the old field bounds live
+operation-scoped sessions, while the new field bounds setup attempts only.
+Resident generations consume neither field. Immediate rejection is deliberate
+and must be called out in release notes; silently accepting `max_sessions`
+would misrepresent the resource boundary.
+
 A deprecation must identify the affected field or value and the replacement,
 show a safe migration, retain the old form for the normal deprecation period,
 and test old and new forms during that period. A major release that cannot
@@ -423,8 +531,11 @@ Evidence qualifies only that exact combination and the completed checks. The
 source-run read-only validator may contribute bounded discovery, status,
 virtual-media-status, and capture evidence, but it cannot replace the runbook's
 HID, media lifecycle, power, wake, raw read-only RPC, observation, and cleanup
-checks. Evidence must be refreshed when the product's device protocol behavior
-changes, the model or firmware changes, the relevant runtime, FFmpeg,
+checks. A candidate implementing ADR 0008 must also complete the runbook's
+managed-session supplement; operation telemetry cannot replace its named
+browser observer or prompt record. Evidence must be refreshed when the
+product's device protocol behavior changes, the model or firmware changes, the
+relevant runtime, FFmpeg,
 transport/client, or attached-host fixture changes, or the retained checks no
 longer cover the claim. It does not become an indefinite vendor compatibility
 guarantee. No current retained evidence satisfies this policy, so no model or
@@ -518,6 +629,12 @@ Read-only transient failures may be marked retryable. Mutation failures are
 never marked retryable, and an `unknown` outcome is never reported as completed
 or as safe to retry. Messages omit raw firmware, URLs, paths, credentials, and
 request payloads.
+
+The proposed managed-session target adds the stable nonretryable codes
+`session_released`, `session_taken_over`, and `ownership_uncertain`. The code
+does not override dispatch evidence: known pre-dispatch rejection is
+`not_sent`, an inconclusive dispatched read is `failed`, and a possibly
+dispatched mutation remains `unknown`.
 
 ## Exclusions
 

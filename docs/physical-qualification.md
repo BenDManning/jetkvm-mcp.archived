@@ -107,11 +107,87 @@ media rows pass only when every mount is observed, every unmount is observed,
 the source digests remain unchanged, and all synthetic appliance storage is
 removed. Best-effort cleanup without an observed final state is a failure.
 
+## Proposed managed-session supplement
+
+This supplement becomes mandatory for a release candidate implementing proposed
+[ADR 0008](adr/0008-managed-per-device-webrtc-ownership.md). It is not authority
+to access hardware and does not alter the stop rule above.
+
+Add the exact capability-profile revision and the approved browser/client build
+to the qualification record. The attached disposable host must display a
+changing, non-secret visual marker such as a fixture timestamp or counter. The
+named observer records the marker and browser session-switch prompt state at
+each checkpoint. Retain only capture time, dimensions, byte count, and a
+sanitized marker observation; never retain screenshot or video bytes.
+
+Run these bounded scenarios in the approved order, restoring and independently
+observing the fixture baseline between scenarios:
+
+1. Perform 100 sequential mixed status, media-status, capture, HID, and
+   owner-approved controlled power/media operations. Exactly one server
+   generation becomes active, each mutation reaches its expected observable
+   completion, captures follow the changing marker, and the observer records
+   zero browser session-switch prompts.
+2. Perform 20 concurrent status-plus-capture pairs. Each status is complete,
+   each capture observes a fresh post-admission marker, no frame is shared, and
+   the observer records zero prompts.
+3. During one bounded synthetic virtual-media upload, perform approved reads and
+   captures. Verify upload integrity and cleanup, distinct captures, one
+   generation, and no connection destabilization.
+4. Perform three cycles of `jetkvm_release_session`, external browser
+   connection, browser release, and `jetkvm_take_over_session`. Each server
+   release completes local cleanup before success, the browser connects without
+   a prompt after release, and takeover becomes authoritative without an
+   approval handshake.
+5. Leave the managed generation with no generation-bound work for the configured
+   60-second idle interval. After idle cleanup completes, connect the browser
+   and verify no switch prompt. Then explicitly take over again.
+6. Force an external browser takeover during an in-flight read. Verify the
+   server observes recognized takeover, reports `session_taken_over`, sends no
+   later RPC on the displaced generation, does not reconnect automatically, and
+   resumes only after explicit takeover.
+7. Cause separately approved short and long terminal transport interruptions
+   without a takeover notification. Both must report `ownership_uncertain`,
+   fence ordinary work, avoid automatic reconnect, and require explicit
+   takeover. Do not accept a same-generation recovery grace.
+8. Send SIGTERM during an active read/capture and, in a separate restored
+   scenario, during one owner-approved disposable mutation. Verify bounded
+   cancellation, parallel generation closure, pump joining, mutation phase
+   classification, and no mutation replay.
+9. After explicit release, normal idle expiry, and clean server shutdown,
+   connect the browser at a prescribed checkpoint and verify no switch prompt.
+
+The read-only, non-interactive `jetkvm-mcp-validate` interface may be extended
+only for repeated read/capture evidence that fits its existing inputs and
+sanitized report. Browser handoff, mutation, network interruption, and shutdown
+remain fixture-runbook steps. An automated helper may orchestrate bounded MCP
+call sequences but cannot supply physical observation or authorization.
+
+Retain the exact build, model, firmware, runtime, FFmpeg identity, capability
+profile, prompt observations, sanitized marker observations, operation
+outcomes, session telemetry, and timestamps. A named observer's browser record
+is required; telemetry corroborates generation reuse but never substitutes for
+that record.
+
+If RPC/frame acquisition or upload overlap destabilizes the connection, select
+session-wide serialization in the capability profile and rerun this complete
+supplement. If terminal `Disconnected` behavior does not match the specified
+fence, revise the capability behavior and rerun. If sequential reuse itself
+causes a switch prompt, reject the resident-session design. No failed
+combination is qualified with warnings.
+
+Forced mutation ambiguity is established with fixture-level dispatch-phase
+injection proving `unknown` and no retry. Deliberately interrupting a physical
+mutation requires separate owner authorization and a disposable recovery plan;
+it is not implied by this supplement.
+
 ## Pass and retained evidence
 
 Qualification passes only when every row passes in one approved window, no
 `unknown` mutation outcome occurs, every expected postcondition is independently
-observed, and all cleanup is confirmed. Retain one sanitized record containing:
+observed, and all cleanup is confirmed. A candidate implementing ADR 0008 must
+also pass every managed-session supplement scenario. Retain one sanitized record
+containing:
 
 - every exact identity from the qualification table except the excluded
   private/network identifiers;

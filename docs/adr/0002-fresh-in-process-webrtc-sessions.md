@@ -4,6 +4,9 @@ Status: accepted
 
 Date: 2026-08-12
 
+Proposed replacement: [ADR 0008](0008-managed-per-device-webrtc-ownership.md).
+This record remains accepted until that proposal is accepted and implemented.
+
 ## Context
 
 JetKVM control RPC and video arrive through authenticated WebRTC connections.

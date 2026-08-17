@@ -7,13 +7,23 @@ The browser-to-appliance JetKVM protocol is observed behavior rather than a prom
 - Repository: <https://github.com/jetkvm/kvm>
 - Inspected commit: `b3c29a44d9e2862b8ff7530830781803ce27b060`
 - Relevant surfaces:
-  - `web.go` and `ui/src/routes/devices.$id.tsx`: local authentication and WebSocket signaling
+  - `web.go` and `ui/src/routes/devices.$id.tsx`: local authentication,
+    WebSocket signaling, authoritative-session replacement,
+    `otherSessionConnected`, HID clearing, and delayed old-peer closure
   - `jsonrpc.go`: RPC method registration and parameter names
   - `jsonrpc.go`: `ping` returns the constant `pong`, and `getActiveExtension` reads the current configured extension without mutation
   - `ota.go`: `getLocalVersion` reads local application/system version metadata without mutation
   - `usb.go`: keyboard, mouse, wheel, and USB wake RPC methods
   - `usb_mass_storage.go` and `ui/src/routes/devices.$id.mount.tsx`: virtual-media state, mount, unmount, resumable upload, and authenticated upload endpoint
   - `video.go`: video state behavior
+
+At the inspected revision, a newly authenticated session becomes the current
+operator immediately. Firmware notifies the displaced session with
+`otherSessionConnected`, clears HID state, and permits only a brief old-peer
+overlap while scheduling closure. The protocol does not identify the actor as a
+human or browser and does not provide an approval handshake. Peer
+`Disconnected`, `Failed`, and `Closed` states are terminal in the inspected
+firmware; source review does not establish a same-generation recovery grace.
 
 JetKVM upstream is GPLv2. This project uses upstream source as protocol evidence and does not copy upstream implementation.
 
