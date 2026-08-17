@@ -45,7 +45,7 @@ func (manager *Manager) DebugRPC(ctx context.Context, name, method string, param
 	var result json.RawMessage
 	_, reviewed := debugRPCReadOnlyMethods[method]
 	err = manager.withOperation(ctx, device, !reviewed, false, func() error {
-		return manager.withSession(ctx, device, SessionProfileData, func(session Session) error {
+		return manager.withSession(ctx, device, func(session Session) error {
 			return session.Call(ctx, method, object, &result)
 		})
 	})

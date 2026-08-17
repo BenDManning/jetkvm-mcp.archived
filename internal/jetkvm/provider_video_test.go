@@ -20,7 +20,7 @@ func TestConnectedSessionCapturesH264FromRealPionTrack(t *testing.T) {
 		t.Fatal(err)
 	}
 	connected.peer = client
-	defer connected.Close()
+	defer func() { _ = connected.Close(context.Background()) }()
 	peerConnected := make(chan struct{})
 	var peerConnectedOnce sync.Once
 	client.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {

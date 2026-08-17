@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -32,7 +33,7 @@ func TestDeviceHTTPClientDoesNotUseEnvironmentProxy(t *testing.T) {
 	}
 }
 
-func TestWebRTCProviderClosesIdleHTTPConnectionsAfterAuthenticationFailure(t *testing.T) {
+func TestWebRTCConnectorClosesIdleHTTPConnectionsAfterAuthenticationFailure(t *testing.T) {
 	closed := make(chan struct{}, 1)
 	httpServer := httptest.NewUnstartedServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 		writer.Header().Set("Content-Length", "0")
@@ -55,8 +56,8 @@ func TestWebRTCProviderClosesIdleHTTPConnectionsAfterAuthenticationFailure(t *te
 	if err != nil {
 		t.Fatal(err)
 	}
-	provider := NewWebRTCProvider(WebRTCProviderOptions{})
-	_, err = provider.connect(context.Background(), DeviceConfig{BaseURL: *base}, SessionProfileData)
+	connector := NewWebRTCConnector(WebRTCConnectorOptions{})
+	_, err = connector.connect(context.Background(), DeviceConfig{BaseURL: *base}, SessionProfileData)
 	if !errors.Is(err, ErrAuthentication) {
 		t.Fatalf("error = %v, want authentication failure", err)
 	}
@@ -67,17 +68,19 @@ func TestWebRTCProviderClosesIdleHTTPConnectionsAfterAuthenticationFailure(t *te
 	}
 }
 
-type webRTCProviderFixture struct {
-	provider              *WebRTCProvider
+type webRTCConnectorFixture struct {
+	connector             *WebRTCConnector
 	device                DeviceConfig
 	loginCalls            atomic.Int32
+	pingCalls             atomic.Int32
 	deviceCalls           atomic.Int32
 	authorizedDeviceCalls atomic.Int32
+	offerSDP              atomic.Value
 }
 
-func newWebRTCProviderFixture(t *testing.T) *webRTCProviderFixture {
+func newWebRTCConnectorFixture(t *testing.T) *webRTCConnectorFixture {
 	t.Helper()
-	fixture := new(webRTCProviderFixture)
+	fixture := new(webRTCConnectorFixture)
 	remotePeer, err := webrtc.NewPeerConnection(webrtc.Configuration{})
 	if err != nil {
 		t.Fatal(err)
@@ -98,6 +101,7 @@ func newWebRTCProviderFixture(t *testing.T) *webRTCProviderFixture {
 				return
 			}
 			if request.Method == "ping" {
+				fixture.pingCalls.Add(1)
 				_ = channel.SendText("{\"jsonrpc\":\"2.0\",\"id\":" + jsonNumber(request.ID) + ",\"result\":\"pong\"}")
 			}
 		})
@@ -166,6 +170,7 @@ func newWebRTCProviderFixture(t *testing.T) *webRTCProviderFixture {
 				if err != nil || remotePeer.SetRemoteDescription(offer) != nil {
 					return
 				}
+				fixture.offerSDP.Store(offer.SDP)
 				remoteDescriptionSet = true
 				for _, candidate := range queued {
 					_ = remotePeer.AddICECandidate(candidate)
@@ -198,38 +203,43 @@ func newWebRTCProviderFixture(t *testing.T) *webRTCProviderFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	fixture.provider = NewWebRTCProvider(WebRTCProviderOptions{ConnectTimeout: 10 * time.Second, RequestTimeout: time.Second})
+	fixture.connector = NewWebRTCConnector(WebRTCConnectorOptions{ConnectTimeout: 10 * time.Second, RequestTimeout: time.Second})
 	fixture.device = DeviceConfig{Name: "lab", BaseURL: *base, Password: "correct"}
 	return fixture
 }
 
-func TestWebRTCProviderAuthenticatesSignalsAndCallsRPC(t *testing.T) {
-	fixture := newWebRTCProviderFixture(t)
+func TestWebRTCConnectorAuthenticatesSignalsAndPreservesRPC(t *testing.T) {
+	fixture := newWebRTCConnectorFixture(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-	err := fixture.provider.WithSession(ctx, fixture.device, SessionProfileData, func(session Session) error {
-		var pong string
-		if err := session.Call(ctx, "ping", nil, &pong); err != nil {
-			return err
-		}
-		if pong != "pong" {
-			t.Fatalf("pong = %q", pong)
-		}
-		return nil
-	})
+	connected, err := fixture.connector.Connect(ctx, fixture.device)
 	if err != nil {
 		t.Fatalf("%v (login=%d device=%d authorized=%d)", err, fixture.loginCalls.Load(), fixture.deviceCalls.Load(), fixture.authorizedDeviceCalls.Load())
+	}
+	var pong string
+	if err := connected.Call(ctx, methodPing, nil, &pong); err != nil || pong != "pong" {
+		t.Fatalf("ping = %q, error = %v", pong, err)
+	}
+	if err := connected.Close(ctx); err != nil {
+		t.Fatal(err)
 	}
 	if fixture.loginCalls.Load() != 1 {
 		t.Fatalf("login calls = %d", fixture.loginCalls.Load())
 	}
+	if fixture.pingCalls.Load() != 1 {
+		t.Fatalf("RPC ping calls = %d, want 1", fixture.pingCalls.Load())
+	}
+	offer, _ := fixture.offerSDP.Load().(string)
+	if !strings.Contains(offer, "m=video") || !strings.Contains(strings.ToUpper(offer), "H264/90000") {
+		t.Fatalf("connector did not negotiate the video-capable profile:\n%s", offer)
+	}
 }
 
-func TestWebRTCProviderTeardownDoesNotOutliveOperationDeadline(t *testing.T) {
-	fixture := newWebRTCProviderFixture(t)
+func TestWebRTCConnectorTeardownDoesNotOutliveOperationDeadline(t *testing.T) {
+	fixture := newWebRTCConnectorFixture(t)
 	setupCtx, cancelSetup := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancelSetup()
-	connected, err := fixture.provider.connect(setupCtx, fixture.device, SessionProfileData)
+	connected, err := fixture.connector.connect(setupCtx, fixture.device, SessionProfileData)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -248,10 +258,10 @@ func TestWebRTCProviderTeardownDoesNotOutliveOperationDeadline(t *testing.T) {
 	defer cancelTeardown()
 	resultCh := make(chan error, 1)
 	go func() {
-		resultCh <- withConnectedSession(teardownCtx, connected, func(Session) error {
-			<-teardownCtx.Done()
-			return teardownCtx.Err()
-		})
+		<-teardownCtx.Done()
+		operationErr := teardownCtx.Err()
+		_ = connected.Close(teardownCtx)
+		resultCh <- operationErr
 	}()
 
 	select {

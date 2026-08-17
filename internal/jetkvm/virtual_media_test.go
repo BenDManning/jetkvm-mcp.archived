@@ -29,21 +29,22 @@ type mediaURLPolicyProvider struct {
 	calls   atomic.Int32
 }
 
-func (provider *mediaURLPolicyProvider) WithSession(_ context.Context, _ DeviceConfig, _ SessionProfile, operation func(Session) error) error {
+func (provider *mediaURLPolicyProvider) Connect(_ context.Context, _ DeviceConfig) (ConnectedSession, error) {
 	provider.calls.Add(1)
-	return operation(provider.session)
+	return testConnected(provider.session), nil
 }
 
-func (provider *concurrentMediaProvider) WithSession(_ context.Context, _ DeviceConfig, _ SessionProfile, operation func(Session) error) error {
+func (provider *concurrentMediaProvider) Connect(_ context.Context, _ DeviceConfig) (ConnectedSession, error) {
 	active := provider.active.Add(1)
 	for current := provider.max.Load(); active > current && !provider.max.CompareAndSwap(current, active); current = provider.max.Load() {
 	}
-	defer provider.active.Add(-1)
 	time.Sleep(20 * time.Millisecond)
-	return operation(&fakeSession{results: map[string]any{
+	connected := testConnected(&fakeSession{results: map[string]any{
 		"listStorageFiles":       map[string]any{"files": []any{}},
 		"startStorageFileUpload": map[string]any{"alreadyUploadedBytes": 0, "dataChannel": "upload_12345678-1234-1234-1234-123456789abc"},
 	}})
+	connected.closeFunc = func(context.Context) { provider.active.Add(-1) }
+	return connected, nil
 }
 
 func TestManagerVirtualMediaStatusURLMountAndUnmount(t *testing.T) {

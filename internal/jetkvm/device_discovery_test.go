@@ -16,9 +16,9 @@ type discoveryProvider struct {
 	calls atomic.Int32
 }
 
-func (provider *discoveryProvider) WithSession(context.Context, DeviceConfig, SessionProfile, func(Session) error) error {
+func (provider *discoveryProvider) Connect(context.Context, DeviceConfig) (ConnectedSession, error) {
 	provider.calls.Add(1)
-	return nil
+	return testConnected(&fakeSession{}), nil
 }
 
 func TestManagerListsSortedConfiguredDevicesWithoutPrivateConfiguration(t *testing.T) {

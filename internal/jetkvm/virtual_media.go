@@ -81,7 +81,7 @@ func (manager *Manager) virtualMedia(ctx context.Context, device DeviceConfig, r
 		if err != nil {
 			return mcpserver.VirtualMediaResult{}, classifyOperationError(err, ToolOutcomeNotSent)
 		}
-		err = manager.withSession(ctx, device, SessionProfileData, func(session Session) error {
+		err = manager.withSession(ctx, device, func(session Session) error {
 			return session.Call(ctx, "mountWithHTTP", map[string]any{"url": source.String(), "mode": mode}, nil)
 		})
 		if err != nil {
@@ -89,7 +89,7 @@ func (manager *Manager) virtualMedia(ctx context.Context, device DeviceConfig, r
 		}
 		return mcpserver.VirtualMediaResult{Device: device.Name, Operation: request.Operation, Mounted: true, SourceType: mcpserver.VirtualMediaSourceHTTP, Mode: publicMode, Status: mcpserver.ResultStatusCompleted}, nil
 	case mcpserver.VirtualMediaUnmount:
-		err := manager.withSession(ctx, device, SessionProfileData, func(session Session) error {
+		err := manager.withSession(ctx, device, func(session Session) error {
 			return session.Call(ctx, "unmountImage", nil, nil)
 		})
 		if err != nil {
@@ -105,7 +105,7 @@ func (manager *Manager) virtualMedia(ctx context.Context, device DeviceConfig, r
 
 func (manager *Manager) virtualMediaStatus(ctx context.Context, device DeviceConfig) (mcpserver.VirtualMediaResult, error) {
 	var state *firmwareVirtualMediaState
-	err := manager.withSession(ctx, device, SessionProfileData, func(session Session) error {
+	err := manager.withSession(ctx, device, func(session Session) error {
 		return session.Call(ctx, "getVirtualMediaState", nil, &state)
 	})
 	if err != nil {
@@ -157,7 +157,7 @@ func (manager *Manager) uploadLocalMedia(ctx context.Context, device DeviceConfi
 	}
 
 	mutated := false
-	err = manager.withSession(ctx, device, SessionProfileData, func(session Session) error {
+	err = manager.withSession(ctx, device, func(session Session) error {
 		var err error
 		mutated, err = discardIncompleteUpload(ctx, session, filename)
 		if err != nil {

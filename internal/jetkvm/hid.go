@@ -53,7 +53,7 @@ func (manager *Manager) Keyboard(ctx context.Context, name string, request mcpse
 		return mcpserver.KeyboardResult{}, classifyOperationError(err, ToolOutcomeNotSent)
 	}
 	err = manager.withOperation(ctx, device, true, false, func() error {
-		return manager.withSession(ctx, device, SessionProfileData, func(session Session) error {
+		return manager.withSession(ctx, device, func(session Session) error {
 			pressed := false
 			defer func() {
 				if pressed {
@@ -89,7 +89,7 @@ func (manager *Manager) Mouse(ctx context.Context, name string, request mcpserve
 		return mcpserver.MouseResult{}, classifyOperationError(err, ToolOutcomeNotSent)
 	}
 	err = manager.withOperation(ctx, device, true, false, func() error {
-		return manager.withSession(ctx, device, SessionProfileData, func(session Session) error {
+		return manager.withSession(ctx, device, func(session Session) error {
 			pressed := false
 			defer func() {
 				if pressed {

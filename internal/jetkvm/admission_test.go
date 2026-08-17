@@ -23,16 +23,16 @@ type blockingProvider struct {
 	session Session
 }
 
-func (provider *blockingProvider) WithSession(ctx context.Context, _ DeviceConfig, _ SessionProfile, operation func(Session) error) error {
+func (provider *blockingProvider) Connect(ctx context.Context, _ DeviceConfig) (ConnectedSession, error) {
 	provider.mu.Lock()
 	provider.calls++
 	provider.mu.Unlock()
 	provider.entered <- struct{}{}
 	select {
 	case <-provider.release:
-		return operation(provider.session)
+		return testConnected(provider.session), nil
 	case <-ctx.Done():
-		return ctx.Err()
+		return nil, ctx.Err()
 	}
 }
 
@@ -60,7 +60,7 @@ func (admissionSession) CaptureH264(context.Context) ([]byte, time.Time, error) 
 	return []byte{0, 0, 0, 1, 0x65}, time.Now(), nil
 }
 
-func admissionManager(t *testing.T, limits Limits, provider SessionProvider, devices ...string) *Manager {
+func admissionManager(t *testing.T, limits Limits, provider SessionConnector, devices ...string) *Manager {
 	t.Helper()
 	base, err := url.Parse("https://jetkvm.invalid")
 	if err != nil {
@@ -262,7 +262,7 @@ type panicOnceProvider struct {
 	mu       sync.Mutex
 }
 
-func (provider *panicOnceProvider) WithSession(_ context.Context, _ DeviceConfig, _ SessionProfile, operation func(Session) error) error {
+func (provider *panicOnceProvider) Connect(_ context.Context, _ DeviceConfig) (ConnectedSession, error) {
 	provider.mu.Lock()
 	panicNow := !provider.panicked
 	provider.panicked = true
@@ -270,7 +270,7 @@ func (provider *panicOnceProvider) WithSession(_ context.Context, _ DeviceConfig
 	if panicNow {
 		panic("test provider panic")
 	}
-	return operation(provider.session)
+	return testConnected(provider.session), nil
 }
 
 func TestManagerAdmissionReleasesPermitsAfterProviderPanic(t *testing.T) {
@@ -294,15 +294,15 @@ type errorOnceProvider struct {
 	mu      sync.Mutex
 }
 
-func (provider *errorOnceProvider) WithSession(_ context.Context, _ DeviceConfig, _ SessionProfile, operation func(Session) error) error {
+func (provider *errorOnceProvider) Connect(_ context.Context, _ DeviceConfig) (ConnectedSession, error) {
 	provider.mu.Lock()
 	fail := !provider.failed
 	provider.failed = true
 	provider.mu.Unlock()
 	if fail {
-		return ErrDeviceUnreachable
+		return nil, ErrDeviceUnreachable
 	}
-	return operation(provider.session)
+	return testConnected(provider.session), nil
 }
 
 func TestManagerAdmissionReleasesPermitsAfterProviderError(t *testing.T) {
@@ -374,8 +374,8 @@ func TestManagerSerializesCompleteHIDAndVirtualMediaMutations(t *testing.T) {
 
 type sequenceProvider struct{ session *sequenceSession }
 
-func (provider *sequenceProvider) WithSession(_ context.Context, _ DeviceConfig, _ SessionProfile, operation func(Session) error) error {
-	return operation(provider.session)
+func (provider *sequenceProvider) Connect(_ context.Context, _ DeviceConfig) (ConnectedSession, error) {
+	return testConnected(provider.session), nil
 }
 
 type sequenceSession struct {

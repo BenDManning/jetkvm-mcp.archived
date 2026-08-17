@@ -83,21 +83,38 @@ func (session *fakeSession) CaptureH264(context.Context) ([]byte, time.Time, err
 type fakeProvider struct {
 	session *fakeSession
 	device  DeviceConfig
-	profile SessionProfile
 }
 
 type failingBeforeSessionProvider struct {
 	err error
 }
 
-func (provider *failingBeforeSessionProvider) WithSession(context.Context, DeviceConfig, SessionProfile, func(Session) error) error {
-	return provider.err
+func (provider *failingBeforeSessionProvider) Connect(context.Context, DeviceConfig) (ConnectedSession, error) {
+	return nil, provider.err
 }
 
-func (provider *fakeProvider) WithSession(ctx context.Context, device DeviceConfig, profile SessionProfile, operation func(Session) error) error {
+func (provider *fakeProvider) Connect(_ context.Context, device DeviceConfig) (ConnectedSession, error) {
 	provider.device = device
-	provider.profile = profile
-	return operation(provider.session)
+	return testConnected(provider.session), nil
+}
+
+type testConnectedSession struct {
+	Session
+	done      chan struct{}
+	closeFunc func(context.Context)
+}
+
+func testConnected(session Session) *testConnectedSession {
+	return &testConnectedSession{Session: session, done: make(chan struct{})}
+}
+
+func (session *testConnectedSession) Done() <-chan struct{} { return session.done }
+
+func (session *testConnectedSession) Close(ctx context.Context) error {
+	if session.closeFunc != nil {
+		session.closeFunc(ctx)
+	}
+	return nil
 }
 
 func TestManagerStatusProjectsOrdinaryDeviceState(t *testing.T) {
@@ -341,7 +358,7 @@ func TestManagerStatusCancellationDuringProviderSetupStaysNotSent(t *testing.T) 
 	}
 	manager, err := NewManager(
 		[]DeviceConfig{{Name: "lab", BaseURL: *base}},
-		NewWebRTCProvider(WebRTCProviderOptions{}),
+		NewWebRTCConnector(WebRTCConnectorOptions{}),
 	)
 	if err != nil {
 		t.Fatal(err)

@@ -71,7 +71,7 @@ func (manager *Manager) captureScreen(ctx context.Context, name string, request 
 	var annexB []byte
 	var capturedAt time.Time
 	err = manager.withOperation(captureCtx, device, false, true, func() error {
-		return manager.withSession(captureCtx, device, SessionProfileVideo, func(session Session) error {
+		return manager.withSession(captureCtx, device, func(session Session) error {
 			var state struct {
 				Ready *bool `json:"ready"`
 			}

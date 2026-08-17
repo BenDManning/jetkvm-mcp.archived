@@ -91,8 +91,8 @@ func TestDetachedUploadCleanupPreservesOperationCorrelation(t *testing.T) {
 }
 
 func TestOperationTelemetryStageMatrix(t *testing.T) {
-	fixture := newWebRTCProviderFixture(t)
-	manager, err := NewManager([]DeviceConfig{fixture.device}, fixture.provider)
+	fixture := newWebRTCConnectorFixture(t)
+	manager, err := NewManager([]DeviceConfig{fixture.device}, fixture.connector)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -101,7 +101,7 @@ func TestOperationTelemetryStageMatrix(t *testing.T) {
 	baseCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	ctx, operation := recorder.Start(baseCtx, telemetry.TransportStdio, telemetry.OperationStatus)
-	err = manager.withSession(ctx, fixture.device, SessionProfileData, func(session Session) error {
+	err = manager.withSession(ctx, fixture.device, func(session Session) error {
 		var pong string
 		if err := session.Call(ctx, "ping", nil, &pong); err != nil {
 			return err

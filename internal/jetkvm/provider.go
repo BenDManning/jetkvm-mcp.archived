@@ -20,56 +20,47 @@ import (
 	"github.com/pion/webrtc/v4"
 )
 
-type WebRTCProviderOptions struct {
+type WebRTCConnectorOptions struct {
 	ConnectTimeout time.Duration
 	RequestTimeout time.Duration
 }
 
-type WebRTCProvider struct {
-	options WebRTCProviderOptions
+type WebRTCConnector struct {
+	options WebRTCConnectorOptions
 }
 
-func NewWebRTCProvider(options WebRTCProviderOptions) *WebRTCProvider {
+func NewWebRTCConnector(options WebRTCConnectorOptions) *WebRTCConnector {
 	if options.ConnectTimeout <= 0 {
 		options.ConnectTimeout = 15 * time.Second
 	}
 	if options.RequestTimeout <= 0 {
 		options.RequestTimeout = 10 * time.Second
 	}
-	return &WebRTCProvider{options: options}
+	return &WebRTCConnector{options: options}
 }
 
-func (provider *WebRTCProvider) WithSession(ctx context.Context, device DeviceConfig, profile SessionProfile, operation func(Session) error) error {
-	if provider == nil || operation == nil {
-		return errors.New("WebRTC provider and operation are required")
+func (connector *WebRTCConnector) Connect(ctx context.Context, device DeviceConfig) (ConnectedSession, error) {
+	if connector == nil {
+		return nil, errors.New("WebRTC connector is required")
 	}
-	connectCtx, cancel := context.WithTimeout(ctx, provider.options.ConnectTimeout)
+	connectCtx, cancel := context.WithTimeout(ctx, connector.options.ConnectTimeout)
 	defer cancel()
 	connectStage := telemetry.BeginStage(ctx, telemetry.StageConnect)
-	connected, err := provider.connect(connectCtx, device, profile)
+	connected, err := connector.connect(connectCtx, device, SessionProfileVideo)
 	finishTelemetryStage(connectStage, err)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return withConnectedSession(ctx, connected, operation)
-}
-
-func withConnectedSession(ctx context.Context, connected *connectedSession, operation func(Session) error) error {
-	defer func() {
-		cleanupStage := telemetry.BeginStage(ctx, telemetry.StageCleanup)
-		connected.CloseContext(ctx)
-		finishTelemetryStage(cleanupStage, nil)
-	}()
-	return operation(connected)
+	return connected, nil
 }
 
 func closeConnectedOnError(ctx context.Context, connected *connectedSession, returnErr *error) {
 	if returnErr != nil && *returnErr != nil {
-		connected.CloseContext(ctx)
+		_ = connected.Close(ctx)
 	}
 }
 
-func (provider *WebRTCProvider) connect(ctx context.Context, device DeviceConfig, profile SessionProfile) (_ *connectedSession, returnErr error) {
+func (connector *WebRTCConnector) connect(ctx context.Context, device DeviceConfig, profile SessionProfile) (_ *connectedSession, returnErr error) {
 	if profile != SessionProfileData && profile != SessionProfileVideo {
 		return nil, errors.New("invalid session profile")
 	}
@@ -112,7 +103,7 @@ func (provider *WebRTCProvider) connect(ctx context.Context, device DeviceConfig
 	if err != nil {
 		return nil, fmt.Errorf("%w: RPC data channel", ErrProtocol)
 	}
-	connected.rpc = newRPCSession(connectedCtx, channel, provider.options.RequestTimeout)
+	connected.rpc = newRPCSession(connectedCtx, channel, connector.options.RequestTimeout)
 	ready := make(chan struct{})
 	var readyOnce sync.Once
 	channel.OnOpen(func() { readyOnce.Do(func() { close(ready) }) })
@@ -216,6 +207,7 @@ type connectedSession struct {
 	video      *videoReceiver
 
 	closeOnce    sync.Once
+	pumpsDone    chan struct{}
 	pumpMu       sync.Mutex
 	pumps        sync.WaitGroup
 	closed       bool
@@ -265,18 +257,24 @@ func (session *connectedSession) CaptureH264(ctx context.Context) ([]byte, time.
 	return session.video.Capture(ctx)
 }
 
-func (session *connectedSession) Close() {
-	session.CloseContext(context.Background())
+func (session *connectedSession) Done() <-chan struct{} {
+	if session == nil || session.ctx == nil {
+		done := make(chan struct{})
+		close(done)
+		return done
+	}
+	return session.ctx.Done()
 }
 
-func (session *connectedSession) CloseContext(ctx context.Context) {
+func (session *connectedSession) Close(ctx context.Context) error {
 	if session == nil {
-		return
+		return nil
 	}
 	if ctx == nil {
 		ctx = context.Background()
 	}
 	session.closeOnce.Do(func() {
+		session.pumpsDone = make(chan struct{})
 		session.pumpMu.Lock()
 		session.closed = true
 		session.cancel()
@@ -296,16 +294,17 @@ func (session *connectedSession) CloseContext(ctx context.Context) {
 		if session.httpClient != nil {
 			session.httpClient.CloseIdleConnections()
 		}
-		pumpsDone := make(chan struct{})
 		go func() {
 			session.pumps.Wait()
-			close(pumpsDone)
+			close(session.pumpsDone)
 		}()
-		select {
-		case <-pumpsDone:
-		case <-ctx.Done():
-		}
 	})
+	select {
+	case <-session.pumpsDone:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 func (session *connectedSession) handleTrack(track *webrtc.TrackRemote, _ *webrtc.RTPReceiver) {

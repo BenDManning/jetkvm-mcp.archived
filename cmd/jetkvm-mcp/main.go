@@ -103,16 +103,16 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	if err != nil {
 		return err
 	}
-	provider := jetkvm.NewWebRTCProvider(jetkvm.WebRTCProviderOptions{})
+	connector := jetkvm.NewWebRTCConnector(jetkvm.WebRTCConnectorOptions{})
 	if options.kind == commandConfigValidate {
-		if _, err := jetkvm.NewManager(loaded.Devices, provider, jetkvm.WithLimits(loaded.Limits)); err != nil {
+		if _, err := jetkvm.NewManager(loaded.Devices, connector, jetkvm.WithLimits(loaded.Limits)); err != nil {
 			return err
 		}
 		_, err := io.WriteString(stdout, "configuration valid\n")
 		return err
 	}
 	if options.kind == commandDebugRPC {
-		manager, err := jetkvm.NewManager(loaded.Devices, provider, jetkvm.WithLimits(loaded.Limits))
+		manager, err := jetkvm.NewManager(loaded.Devices, connector, jetkvm.WithLimits(loaded.Limits))
 		if err != nil {
 			return err
 		}
@@ -134,7 +134,7 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	if err != nil {
 		return err
 	}
-	manager, err := jetkvm.NewManager(loaded.Devices, provider, jetkvm.WithDecoder(decoder), jetkvm.WithLimits(loaded.Limits))
+	manager, err := jetkvm.NewManager(loaded.Devices, connector, jetkvm.WithDecoder(decoder), jetkvm.WithLimits(loaded.Limits))
 	if err != nil {
 		return err
 	}

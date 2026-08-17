@@ -8,11 +8,11 @@ import (
 	"testing"
 )
 
-func TestManagerDebugRPCUsesDataSessionAndReturnsRawResult(t *testing.T) {
+func TestManagerDebugRPCUsesConnectedSessionAndReturnsRawResult(t *testing.T) {
 	session := &fakeSession{results: map[string]any{"customMethod": map[string]any{"value": 42}}}
 	provider := &fakeProvider{session: session}
 	manager := testManager(t, session)
-	manager.provider = provider
+	manager.connector = provider
 	result, err := manager.DebugRPC(context.Background(), "lab", "customMethod", json.RawMessage(`{"input":true}`), true)
 	if err != nil {
 		t.Fatal(err)
@@ -21,8 +21,8 @@ func TestManagerDebugRPCUsesDataSessionAndReturnsRawResult(t *testing.T) {
 	if err := json.Unmarshal(result, &decoded); err != nil || decoded["value"] != float64(42) {
 		t.Fatalf("result = %s err=%v", result, err)
 	}
-	if provider.profile != SessionProfileData || len(session.calls) != 1 || session.calls[0].method != "customMethod" {
-		t.Fatalf("profile=%v calls=%#v", provider.profile, session.calls)
+	if len(session.calls) != 1 || session.calls[0].method != "customMethod" {
+		t.Fatalf("calls=%#v", session.calls)
 	}
 }
 

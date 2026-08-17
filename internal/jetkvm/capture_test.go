@@ -103,8 +103,8 @@ func TestManagerCaptureScreenUsesVideoSessionAndDecoder(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if provider.profile != SessionProfileVideo || decoder.maxWidth != 800 || decoder.maxHeight != 600 || result.Width != 2 || result.Height != 1 || result.MIMEType != "image/png" || !result.CapturedAt.Equal(capturedAt) {
-		t.Fatalf("profile=%v decoder=%+v result=%+v", provider.profile, decoder, result)
+	if decoder.maxWidth != 800 || decoder.maxHeight != 600 || result.Width != 2 || result.Height != 1 || result.MIMEType != "image/png" || !result.CapturedAt.Equal(capturedAt) {
+		t.Fatalf("decoder=%+v result=%+v", decoder, result)
 	}
 }
 
@@ -678,20 +678,20 @@ type captureTestProvider struct {
 	setup   func(context.Context) error
 }
 
-func (provider *captureTestProvider) WithSession(ctx context.Context, _ DeviceConfig, _ SessionProfile, operation func(Session) error) error {
+func (provider *captureTestProvider) Connect(ctx context.Context, _ DeviceConfig) (ConnectedSession, error) {
 	if provider.setup != nil {
 		if err := provider.setup(ctx); err != nil {
-			return err
+			return nil, err
 		}
 	}
-	return operation(provider.session)
+	return testConnected(provider.session), nil
 }
 
 func newCaptureTestManager(t *testing.T, session Session, decoder Decoder) *Manager {
 	return newCaptureTestManagerWithProvider(t, &captureTestProvider{session: session}, decoder)
 }
 
-func newCaptureTestManagerWithProvider(t *testing.T, provider SessionProvider, decoder Decoder) *Manager {
+func newCaptureTestManagerWithProvider(t *testing.T, provider SessionConnector, decoder Decoder) *Manager {
 	t.Helper()
 	base, err := url.Parse("https://jetkvm.invalid")
 	if err != nil {

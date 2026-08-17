@@ -114,6 +114,15 @@ type Session interface {
 	CaptureH264(ctx context.Context) ([]byte, time.Time, error)
 }
 
+// ConnectedSession is one ready, video-capable JetKVM connection. It exposes
+// operations and lifecycle signals without exposing WebRTC or signaling
+// mechanics to Manager callers.
+type ConnectedSession interface {
+	Session
+	Done() <-chan struct{}
+	Close(ctx context.Context) error
+}
+
 type SessionProfile uint8
 
 const (
@@ -121,13 +130,13 @@ const (
 	SessionProfileVideo
 )
 
-type SessionProvider interface {
-	WithSession(ctx context.Context, device DeviceConfig, profile SessionProfile, operation func(Session) error) error
+type SessionConnector interface {
+	Connect(ctx context.Context, device DeviceConfig) (ConnectedSession, error)
 }
 
 type Manager struct {
 	devices    map[string]DeviceConfig
-	provider   SessionProvider
+	connector  SessionConnector
 	decoder    Decoder
 	operations chan struct{}
 	deviceOps  map[string]chan struct{}
@@ -137,13 +146,13 @@ type Manager struct {
 	mutations  map[string]chan struct{}
 }
 
-func NewManager(devices []DeviceConfig, provider SessionProvider, options ...ManagerOption) (*Manager, error) {
-	if provider == nil {
-		return nil, errors.New("session provider is required")
+func NewManager(devices []DeviceConfig, connector SessionConnector, options ...ManagerOption) (*Manager, error) {
+	if connector == nil {
+		return nil, errors.New("session connector is required")
 	}
 	manager := &Manager{
 		devices:   make(map[string]DeviceConfig, len(devices)),
-		provider:  provider,
+		connector: connector,
 		deviceOps: make(map[string]chan struct{}, len(devices)),
 		mutations: make(map[string]chan struct{}, len(devices)),
 	}
@@ -250,7 +259,7 @@ func (manager *Manager) Status(ctx context.Context, name string) (mcpserver.Stat
 	}
 	status := mcpserver.Status{Device: device.Name}
 	err = manager.withOperation(ctx, device, false, false, func() error {
-		return manager.withSession(ctx, device, SessionProfileData, func(session Session) error {
+		return manager.withSession(ctx, device, func(session Session) error {
 			var pong string
 			if err := session.Call(ctx, methodPing, nil, &pong); err != nil {
 				return err
@@ -373,7 +382,7 @@ func (manager *Manager) Power(ctx context.Context, name string, action mcpserver
 		return mcpserver.PowerResult{}, err
 	}
 	if err := manager.withOperation(ctx, device, true, false, func() error {
-		return manager.withSession(ctx, device, SessionProfileData, func(session Session) error {
+		return manager.withSession(ctx, device, func(session Session) error {
 			return session.Call(ctx, method, params, nil)
 		})
 	}); err != nil {
@@ -382,7 +391,7 @@ func (manager *Manager) Power(ctx context.Context, name string, action mcpserver
 	return mcpserver.PowerResult{Device: device.Name, Action: action, Target: targetName, Status: mcpserver.ResultStatusCompleted}, nil
 }
 
-func (manager *Manager) withSession(ctx context.Context, device DeviceConfig, profile SessionProfile, operation func(Session) error) error {
+func (manager *Manager) withSession(ctx context.Context, device DeviceConfig, operation func(Session) error) error {
 	admission := telemetry.BeginStage(ctx, telemetry.StageAdmission)
 	if !tryAcquire(manager.sessions) {
 		err := busyNotSent()
@@ -391,12 +400,8 @@ func (manager *Manager) withSession(ctx context.Context, device DeviceConfig, pr
 	}
 	finishTelemetryStage(admission, nil)
 	defer release(manager.sessions)
-	invoked := false
-	err := manager.provider.WithSession(ctx, device, profile, func(session Session) error {
-		invoked = true
-		return operation(session)
-	})
-	if err != nil && !invoked {
+	connected, err := manager.connector.Connect(ctx, device)
+	if err != nil {
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return classifyOperationError(ctxErr, ToolOutcomeNotSent)
 		}
@@ -406,7 +411,15 @@ func (manager *Manager) withSession(ctx context.Context, device DeviceConfig, pr
 		}
 		return classifyOperationError(err, ToolOutcomeNotSent)
 	}
-	return err
+	if connected == nil {
+		return classifyOperationError(ErrInvalidResponse, ToolOutcomeNotSent)
+	}
+	defer func() {
+		cleanup := telemetry.BeginStage(ctx, telemetry.StageCleanup)
+		_ = connected.Close(ctx)
+		finishTelemetryStage(cleanup, nil)
+	}()
+	return operation(connected)
 }
 
 func (manager *Manager) withOperation(ctx context.Context, device DeviceConfig, mutation, capture bool, operation func() error) error {
