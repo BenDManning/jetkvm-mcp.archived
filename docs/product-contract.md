@@ -63,7 +63,7 @@ minor line is supported. From v1 onward, only the latest stable release is
 supported. This document does not duplicate a current release number. There is
 no SLA, blanket backport promise, or EOL service.
 
-### Accepted public v1 release destination
+### V1 release surface
 
 The first trustworthy public-release target is `v1.0.0`. The canonical GitHub
 repository is to become public, and that release is to provide native
@@ -78,6 +78,13 @@ private-era historical evidence. This accepted target does not claim that the
 repository, release, or container is already public, and it does not authorize
 the separate owner-controlled acts of changing repository visibility or
 publishing a release.
+
+Repository implementation, GitHub workflow operation, physical qualification,
+repository visibility, and release publication are separate authorities. A
+merge or green workflow does not authorize hardware access, visibility changes,
+or publication. This contract governs release distribution, not deployment,
+and makes no compliance claim or artifact promise beyond the supported surface
+listed above.
 
 One GitHub-hosted workflow builds every supported release deliverable from the
 same protected tag. It produces GoReleaser Linux amd64 and arm64 archives, a
@@ -102,6 +109,8 @@ relevant base, FFmpeg, or CA-package security update produces a product patch
 release. Exact apt package pins, custom FFmpeg builds, scratch or distroless
 conversion, and a separate container release cadence are not part of v1.
 
+### Publication authorization and immutable identity
+
 An owner push of a protected annotated `vX.Y.Z` tag at the exact green `main`
 commit is the single release-publication authorization. The workflow stages,
 rebuilds, and verifies all deliverables before publishing an immutable GitHub
@@ -109,7 +118,11 @@ Release and `ghcr.io/bendmanning/jetkvm-mcp:vX.Y.Z`. Only `latest` moves after a
 stable release succeeds; no moving major or minor image tags are published.
 The version tag and image digest are canonical. Published tags and artifacts
 are never updated, reused, or repaired in place. A failed tagged release
-consumes that version and correction requires a new version.
+consumes that version and correction requires a new version. The protected tag
+is the whole publication approval; the workflow requires no duplicate approval
+ceremony.
+
+### Correction and compromise response
 
 Ordinary defects are corrected only by a new patch release, movement of
 `latest`, clear identification of affected versions, and a Go module retraction
@@ -117,9 +130,12 @@ when useful. For suspected compromise, the owner may stop workflows and
 publication, revoke affected authority, disable mutable distribution pointers,
 and remove actively dangerous assets only when necessary to prevent continuing
 harm. The response must preserve hashes and available evidence, publish an
-advisory naming affected versions and digests, and issue a clean new version.
-Release revocation, deletion, and replacement publication remain owner-only
-actions; compromised history is never silently rewritten.
+advisory naming affected versions and digests, retract affected Go module
+versions when useful, and issue a clean new version. Release revocation,
+deletion, and replacement publication remain owner-only actions; compromised
+history is never silently rewritten.
+
+### Release record and deprecation
 
 Each immutable GitHub Release is the sole canonical changelog record; the
 repository does not duplicate it in a checked-in `CHANGELOG.md`. Curated release
@@ -128,6 +144,13 @@ native, container, and physically qualified surfaces; security-relevant fixes
 and known limitations; artifact digests and verification identities; and any
 superseded or retracted versions. A generated commit list may seed the notes but
 is never published without review.
+
+Deprecation notice must appear in documentation and release notes, identify a
+replacement and migration when one exists, and normally leave the deprecated
+surface available through at least one subsequent minor release. Removal is
+still a major change. Security, safety, or factual-correctness fixes may shorten
+that period, but must still be described in release notes and use the SemVer
+classification dictated by their compatibility impact.
 
 The v1 MCP compatibility surface supports exactly revision `2026-07-28` over
 both stdio and Streamable HTTP. Legacy and unknown revisions must be rejected
@@ -251,13 +274,6 @@ state intended names and target matrices; they do not guarantee that an archive
 or container was published, remains available, or belongs to a permanent
 channel.
 
-Deprecation notice must appear in documentation and release notes, identify a
-replacement and migration when one exists, and normally leave the deprecated
-surface available through at least one subsequent minor release. Removal is
-still a major change. Security, safety, or factual-correctness fixes may shorten
-that period, but must still be described in release notes and use the SemVer
-classification dictated by their compatibility impact.
-
 Sensitive reports use the private route in the repository
 [`SECURITY.md`](../SECURITY.md). Ordinary best-effort support uses GitHub Issues
 as defined in [`SUPPORT.md`](../SUPPORT.md). Secrets, credentials, device data,
@@ -276,15 +292,15 @@ or point-in-time protocol observations.
 | Product releases | During v0.x, declared support is the latest non-prerelease release in the current minor line | The canonical release record, not this document, identifies the current non-prerelease version and line. `dev` builds are unreleased and outside release support. |
 | MCP revision and SDK | Declared: MCP revision `2026-07-28`; implemented with Go SDK `v1.7.0` | Exercised by stdio and Streamable HTTP tests. Older revisions the SDK may negotiate are unsupported unless this contract and repository tests add them. Exact SDK provenance is in [protocol sources](protocol-sources.md). |
 | Go source and build | Declared source minimum: Go 1.25.13. CI, release, and container build toolchain: Go 1.26.6 | `go.mod` and minimum CI require 1.25.13 with `GOTOOLCHAIN=local`. Primary CI, the tracked GoReleaser snapshot path, and the container builder select 1.26.6. No promise covers every intervening toolchain or runtime combination. |
-| Native OS/architecture | Declared binary targets: `linux/amd64`, `linux/arm64`, `darwin/amd64`, `darwin/arm64` | CI cross-builds all four. Runtime qualification for every target is not recorded. Windows and all unlisted combinations are unsupported. |
+| Native OS/architecture | Declared v1 release targets: `linux/amd64`, `linux/arm64` | CI also cross-builds `darwin/amd64` and `darwin/arm64` as engineering evidence only. macOS, Windows, and all unlisted combinations are unsupported and receive no v1 release artifacts. |
 | FFmpeg | External prerequisite: an executable named `ffmpeg` on `PATH` for normal serving and capture | Startup and decoder tests exercise executable discovery and bounded invocation. No implementation or version range is qualified; compatibility is unknown beyond successful checks in a specific environment. |
 | JetKVM model/firmware | No model or firmware version is currently qualified or supported by a positive compatibility claim | Upstream source observations, fake-device tests, and validator runs are evidence, not guarantees. Claim requirements are defined below. |
 | YAML configuration | Declared: the current strict, unversioned grammar; no schema-version field or migration engine | Loader tests cover the grammar. The exact example is [`config.example.yaml`](../config.example.yaml); unknown fields, empty or over-1 MiB input, multiple YAML documents, unsafe admission limits, and device-URL user information/query/fragment components are rejected. Device URL path prefixes remain supported. |
 | Server CLI | Declared: help, `--config`, optional `--http`, `--version`, offline `config validate`, and `debug rpc` with its documented flags, streams, and JSON result | Parser and integration tests exercise these entry points. `debug rpc` permits only `ping`, `getLocalVersion`, and `getActiveExtension` by default; every other method requires per-invocation `--unsafe-acknowledge-risk`. Free-form diagnostic wording is not stable unless documented as structured output. |
 | Validator CLI | Declared source-run interface: required `--binary`, `--config`, and `--device`; sanitized JSON and exit status | Unit tests exercise argument and report shape. Physical qualification is absent until retained evidence satisfies the policy below. No validator binary is distributed. |
 | MCP tools, results, errors, and annotations | Declared: the 17 one-purpose tools, their schemas, structured results/content, tool-result error semantics, and annotations | [`server.go`](../internal/mcpserver/server.go), [`controls.go`](../internal/mcpserver/controls.go), and their tests are the executable source of truth. Execution failures use tool results with `IsError`, not protocol errors. `jetkvm_list_devices` returns sorted configured aliases and configuration-derived availability flags; it does not open a device session or qualify firmware capabilities. The v1 surface removes `jetkvm_virtual_media`; the README maps each former operation to its one-purpose replacement. |
-| Binary artifacts | Intended: one `jetkvm-mcp` binary in `jetkvm-mcp_<version>_<os>_<arch>.tar.gz` for each declared native target, plus `checksums.txt` | [GoReleaser configuration](../.goreleaser.yaml) and CI establish naming and cross-build evidence, not publication or runtime qualification. |
-| Container artifacts | Intended: Linux amd64 and arm64, one `jetkvm-mcp` entry point, bundled FFmpeg, UID/GID 10001 | The [Dockerfile](../Dockerfile) and CI establish build intent. No image name, registry channel, publication, indefinite availability, or per-platform runtime qualification is promised. |
+| Binary artifacts | Intended: one `jetkvm-mcp` binary in `jetkvm-mcp_<version>_<os>_<arch>.tar.gz` for each declared Linux release target, plus `checksums.txt` | [GoReleaser configuration](../.goreleaser.yaml) and CI establish naming and cross-build evidence, not publication or runtime qualification. |
+| Container artifacts | Intended v1: one `ghcr.io/bendmanning/jetkvm-mcp:vX.Y.Z` Linux amd64/arm64 image, one `jetkvm-mcp` entry point, bundled FFmpeg, UID/GID 10001 | The [Dockerfile](../Dockerfile) and CI establish build intent, not completed publication. The canonical GitHub Release records the published image digest; indefinite availability and unrecorded per-platform runtime qualification are not promised. |
 
 ## Semantic Versioning rules
 
@@ -300,7 +316,7 @@ minor only when supported clients can ignore or omit it without breaking.
 | Results, content, annotations, and errors | Rename `connected`; change `width` type; replace PNG content; turn a tool-result `IsError` into a protocol error; change `openWorldHint`, destructive, or idempotence metadata in a way that can alter client safety decisions | Add an optional status field or ignorable metadata without changing existing meaning | Correct result serialization or execution while preserving wire shape, meaning, error category, and annotations |
 | YAML fields, semantics, and defaults | Rename `password_env`; make `http` required; incompatibly change behavior when `media_directory` is absent; reject previously accepted meaningful configuration | Add an optional field whose omission preserves current behavior | Correct compatible origin normalization or validation without invalidating meaningful accepted configuration |
 | CLI and validator | Remove `--http`; require a formerly optional flag; move MCP data off stdout; incompatibly change exit semantics or the validator's sanitized JSON | Add an optional flag or command, or an optional sanitized JSON field | Fix execution or human-readable diagnostics while preserving documented invocation, streams, exit behavior, and structured output |
-| Artifact targets, names, and layout | Remove `darwin/arm64`; rename `jetkvm-mcp_<version>_<os>_<arch>.tar.gz`, its binary, or `checksums.txt`; incompatibly change the container entry point or UID/GID | Add a target or artifact alongside the existing matrix and layout | Repair packaging or metadata without changing supported names, contents, layout, or runtime contract |
+| Artifact targets, names, and layout | Remove `linux/arm64`; rename `jetkvm-mcp_<version>_<os>_<arch>.tar.gz`, its binary, or `checksums.txt`; incompatibly change the container entry point or UID/GID | Add a supported target or artifact alongside the existing matrix and layout | Repair packaging or metadata without changing supported names, contents, layout, or runtime contract |
 
 The same impact test governs timing or consequence changes to boot, power, wake,
 and virtual-media operations: an incompatible consequence is major, an optional
@@ -512,9 +528,10 @@ containers; and treating a fake appliance as product authority. Test fixtures
 support implementation only.
 
 The following are unsupported but revisitable only through a new accepted
-objective and an update to this contract: Windows and unlisted OS/architecture
-targets; MCP OAuth; deprecated HTTP+SSE; additional transports or integrations;
-packaged validator artifacts; and new guaranteed publication channels. Anything
-not declared in the compatibility matrix is unsupported or unknown, not
-implicitly accepted. A permanent boundary cannot be treated as revisitable
-without first amending this section through an accepted product-contract change.
+objective and an update to this contract: macOS, Windows, and unlisted
+OS/architecture targets; MCP OAuth; deprecated HTTP+SSE; additional transports
+or integrations; packaged validator artifacts; and new guaranteed publication
+channels. Anything not declared in the compatibility matrix is unsupported or
+unknown, not implicitly accepted. A permanent boundary cannot be treated as
+revisitable without first amending this section through an accepted
+product-contract change.

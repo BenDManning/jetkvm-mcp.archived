@@ -40,10 +40,8 @@ Release binaries are built for:
 
 - Linux amd64
 - Linux arm64
-- macOS amd64
-- macOS arm64
 
-Windows is unsupported and not planned.
+macOS and Windows are unsupported and receive no release artifacts.
 
 ### Option C: Container image
 
