@@ -5,6 +5,11 @@ COVERAGE_DIR ?= /tmp/jetkvm-mcp-coverage
 MCP_GATE_DIR ?= /tmp/jetkvm-mcp-gates
 MCP_GATE_SERVER ?= /tmp/jetkvm-mcp-gates-server
 CONTAINER_VERSION ?= ci
+CONTAINER_SOURCE ?= https://github.com/BenDManning/jetkvm-mcp
+CONTAINER_REVISION ?= $(shell git rev-parse HEAD)
+CONTAINER_CREATED ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
+CONTAINER_CREATED := $(CONTAINER_CREATED)
+CONTAINER_SBOM_DIR ?= /tmp/jetkvm-mcp-container-sbom
 CONTAINER_AMD64_IMAGE ?= jetkvm-mcp:ci-amd64
 CONTAINER_ARM64_IMAGE ?= jetkvm-mcp:ci-arm64
 
@@ -91,17 +96,15 @@ update-tool-manifest:
 	JETKVM_UPDATE_TOOL_MANIFEST=1 go test ./internal/mcpserver -run '^TestToolManifestFixtureUpdate$$' -count=1
 
 container:
-	docker build -t jetkvm-mcp:dev .
+	docker build --build-arg VERSION=dev --build-arg SOURCE=$(CONTAINER_SOURCE) --build-arg REVISION=$(CONTAINER_REVISION) --build-arg CREATED=$(CONTAINER_CREATED) -t jetkvm-mcp:dev .
 
 define verify-container-image
-docker buildx build --platform $(1) --build-arg VERSION=$(CONTAINER_VERSION) --load --tag $(2) .
-test "$$(docker run --rm $(2) --version)" = "jetkvm-mcp $(CONTAINER_VERSION)"
-docker run --rm --entrypoint ffmpeg $(2) -version >/dev/null
-test "$$(docker run --rm --entrypoint id $(2) -u)" = "10001"
-test "$$(docker run --rm --entrypoint id $(2) -g)" = "10001"
-docker run --rm -e JETKVM_LAB_PASSWORD=ci-fixture -v "$(CURDIR)/config.example.yaml:/config.yaml:ro" $(2) config validate --config /config.yaml
+docker buildx build --platform $(1) --build-arg VERSION=$(CONTAINER_VERSION) --build-arg SOURCE=$(CONTAINER_SOURCE) --build-arg REVISION=$(CONTAINER_REVISION) --build-arg CREATED=$(CONTAINER_CREATED) --load --tag $(2) .
+GOTOOLCHAIN=go$(RELEASE_GO_VERSION) go -C tools tool syft docker:$(2) --output spdx-json=$(CONTAINER_SBOM_DIR)/$(3).spdx.json
+scripts/smoke-container.sh $(2) $(1) $(CONTAINER_VERSION) $(CONTAINER_SOURCE) $(CONTAINER_REVISION) $(CONTAINER_CREATED) $(CONTAINER_SBOM_DIR)/$(3).spdx.json
 endef
 
 container-verify:
-	$(call verify-container-image,linux/amd64,$(CONTAINER_AMD64_IMAGE))
-	$(call verify-container-image,linux/arm64,$(CONTAINER_ARM64_IMAGE))
+	mkdir -p $(CONTAINER_SBOM_DIR)
+	$(call verify-container-image,linux/amd64,$(CONTAINER_AMD64_IMAGE),amd64)
+	$(call verify-container-image,linux/arm64,$(CONTAINER_ARM64_IMAGE),arm64)

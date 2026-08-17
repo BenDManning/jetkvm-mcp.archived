@@ -1,0 +1,6 @@
+devices:
+  lab:
+    url: https://jetkvm.example.invalid
+    password_env: JETKVM_LAB_PASSWORD
+http:
+  bearer_token_env: JETKVM_MCP_HTTP_TOKEN

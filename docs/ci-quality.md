@@ -62,7 +62,7 @@ pull requests.
 | Minimum Go | Go 1.25.13 with `GOTOOLCHAIN=local` | `GOTOOLCHAIN=go1.25.13 make ci-minimum` | One ordinary full test and server build against the module's declared minimum |
 | Go quality | Go 1.26.6 | `GOTOOLCHAIN=go1.26.6 make ci-quality` | Format, tidy, module integrity, one race/coverage suite, vet, pinned analyzers, reachable vulnerabilities, fuzz smoke, and Linux native cross-builds |
 | MCP protocol | Go 1.26.6 / Node 22.22.0 | `GOTOOLCHAIN=go1.26.6 make protocol-gates` | One server build followed by pinned conformance and Inspector scenarios from `testdata/mcp-gates/pins.json` |
-| Container | Docker Buildx | `make container-verify` | One final amd64 image and one final arm64 image, each with runtime smokes |
+| Container | Docker Buildx / Go 1.26.6 tracked Syft | `make container-verify` | One final amd64 image and one final arm64 image, each with runtime smokes and inspected SPDX package identity |
 
 `GOTOOLCHAIN=local` in CI prevents the minimum lane from silently downloading a
 newer compiler. A local machine may use `GOTOOLCHAIN=go1.25.13` to select the
@@ -95,9 +95,11 @@ same compiler before running `make ci-minimum`.
 - `make verify`: tests, vet, and supported release cross-builds.
 - `make protocol-gates`: build and run the pinned MCP conformance/Inspector
   harness. `MCP_GATE_SERVER` and `MCP_GATE_DIR` may redirect temporary outputs.
-- `make container-verify`: build each final platform image once and smoke its
-  injected version, FFmpeg executable, UID/GID, and offline configuration
-  validation.
+- `make container-verify`: build each final platform image once and verify its
+  OCI metadata, embedded version and architecture, UID/GID, resolved Debian and
+  FFmpeg identities matched against a generated SPDX SBOM, network-isolated
+  configuration validation, read-only-root health startup, and actual
+  H.264-to-PNG decoding.
 
 ## Coverage and evidence
 
