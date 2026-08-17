@@ -102,12 +102,10 @@ jobs:
           cp "${{ steps.sbom_amd64.outputs.bundle-path }}" dist/container/sbom-linux-amd64.sigstore.json
           cp "${{ steps.sbom_arm64.outputs.bundle-path }}" dist/container/sbom-linux-arm64.sigstore.json
           identity=https://github.com/${GITHUB_REPOSITORY}/.github/workflows/container-release.yml@${RELEASE_IDENTITY_REF}
-          workflow=${GITHUB_REPOSITORY}/.github/workflows/container-release.yml
           gh attestation verify dist/container/image-manifest.json \
             --repo ${GITHUB_REPOSITORY} \
             --bundle dist/container/provenance.sigstore.json \
             --cert-identity ${identity} \
-            --signer-workflow ${workflow} \
             --source-ref ${RELEASE_IDENTITY_REF} \
             --source-digest ${GITHUB_SHA} \
             --deny-self-hosted-runners
@@ -117,7 +115,6 @@ jobs:
               --bundle dist/container/sbom-linux-${architecture}.sigstore.json \
               --predicate-type https://spdx.dev/Document/v2.3 \
               --cert-identity ${identity} \
-              --signer-workflow ${workflow} \
               --source-ref ${RELEASE_IDENTITY_REF} \
               --source-digest ${GITHUB_SHA} \
               --deny-self-hosted-runners

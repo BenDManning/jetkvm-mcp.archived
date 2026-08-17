@@ -71,7 +71,6 @@ while read -r _ subject; do
     --repo "$repo" \
     --bundle provenance.sigstore.json \
     --cert-identity "https://github.com/${workflow}@${release_ref}" \
-    --signer-workflow "$workflow" \
     --source-ref "$release_ref" \
     --source-digest "$release_commit" \
     --deny-self-hosted-runners
@@ -157,7 +156,6 @@ gh attestation verify image-manifest.json \
   --repo "$repo" \
   --bundle provenance.sigstore.json \
   --cert-identity "https://github.com/${workflow}@${release_ref}" \
-  --signer-workflow "$workflow" \
   --source-ref "$release_ref" \
   --source-digest "$release_commit" \
   --deny-self-hosted-runners
@@ -168,7 +166,6 @@ for architecture in amd64 arm64; do
     --bundle "sbom-linux-${architecture}.sigstore.json" \
     --predicate-type https://spdx.dev/Document/v2.3 \
     --cert-identity "https://github.com/${workflow}@${release_ref}" \
-    --signer-workflow "$workflow" \
     --source-ref "$release_ref" \
     --source-digest "$release_commit" \
     --deny-self-hosted-runners

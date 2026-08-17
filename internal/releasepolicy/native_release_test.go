@@ -185,7 +185,7 @@ func TestHostedNativeRehearsalUsesKeylessConstrainedIdentityWithoutPublishing(t 
 		"uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2",
 		"subject-checksums: dist/checksums.txt",
 		"gh attestation verify",
-		"--signer-workflow ${GITHUB_REPOSITORY}/.github/workflows/native-release.yml",
+		"--cert-identity https://github.com/${GITHUB_REPOSITORY}/.github/workflows/native-release.yml@${RELEASE_IDENTITY_REF}",
 		"--source-ref ${RELEASE_IDENTITY_REF}",
 		"--source-digest ${GITHUB_SHA}",
 	} {
@@ -194,7 +194,7 @@ func TestHostedNativeRehearsalUsesKeylessConstrainedIdentityWithoutPublishing(t 
 		}
 	}
 	for _, forbidden := range []string{
-		"contents: write", "packages: write", "pull_request_target", "secrets.", "cosign.key", "--key", "gh release create", "goreleaser release --clean", "--certificate-github-workflow-trigger workflow_dispatch", "push:", "tags:",
+		"contents: write", "packages: write", "pull_request_target", "secrets.", "cosign.key", "--key", "--signer-workflow", "gh release create", "goreleaser release --clean", "--certificate-github-workflow-trigger workflow_dispatch", "push:", "tags:",
 	} {
 		if strings.Contains(text, forbidden) {
 			t.Errorf("native release workflow unexpectedly contains %q", forbidden)

@@ -81,7 +81,6 @@ jobs:
               --repo ${GITHUB_REPOSITORY} \
               --bundle dist/provenance.sigstore.json \
               --cert-identity https://github.com/${GITHUB_REPOSITORY}/.github/workflows/native-release.yml@${RELEASE_IDENTITY_REF} \
-              --signer-workflow ${GITHUB_REPOSITORY}/.github/workflows/native-release.yml \
               --source-ref ${RELEASE_IDENTITY_REF} \
               --source-digest ${GITHUB_SHA} \
               --deny-self-hosted-runners

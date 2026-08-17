@@ -122,7 +122,7 @@ func TestHostedContainerRehearsalVerifiesDigestEvidenceWithoutPublishing(t *test
 		}
 	}
 	for _, forbidden := range []string{
-		"packages: write", "contents: write", "pull_request", "pull_request_target", "secrets.", "docker/login-action", "--push", "cache-from", "cache-to", "ghcr.io/bendmanning/jetkvm-mcp:latest",
+		"packages: write", "contents: write", "pull_request", "pull_request_target", "secrets.", "docker/login-action", "--push", "--signer-workflow", "cache-from", "cache-to", "ghcr.io/bendmanning/jetkvm-mcp:latest",
 	} {
 		if strings.Contains(text, forbidden) {
 			t.Errorf("container rehearsal unexpectedly contains %q", forbidden)
@@ -167,6 +167,9 @@ func TestReadmeExplainsContainerRehearsalVerificationWithoutPublicationClaims(t 
 		if !strings.Contains(text, expected) {
 			t.Errorf("README container rehearsal guidance does not contain %q", expected)
 		}
+	}
+	if strings.Contains(text, "--signer-workflow") {
+		t.Error("README consumer verification uses --signer-workflow with the mutually exclusive --cert-identity selector")
 	}
 }
 
