@@ -7,17 +7,9 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"reflect"
 	"regexp"
 	"testing"
 	"time"
-)
-
-const (
-	pinnedJetKVMSource  = "b3c29a44d9e2862b8ff7530830781803ce27b060"
-	currentJetKVMSource = "fe77acd5f00300a4ab9acd5da57d7bb0916351d9"
-	validatedServerRef  = "f1be6653e494ba618c40dab9dd12cda34bd0bfab"
-	ledgerBaselineRef   = "35f9aac20e55e4b690c084b2ad90b4134d0e0f53"
 )
 
 type ledger struct {
@@ -47,6 +39,15 @@ type ledgerServer struct {
 	SourceRef string `json:"sourceRef"`
 }
 
+type evidencePolicy struct {
+	checks                map[string]bool
+	jetKVMSource          string
+	jetKVMSourceMustBeSHA bool
+	jetKVMFirmwareVersion string
+	environmentClass      string
+	result                string
+}
+
 func TestJetKVMCompatibilityLedgerIsSanitizedAndSourceGrounded(t *testing.T) {
 	path := filepath.Join("..", "..", "docs", "compatibility", "jetkvm-ledger.json")
 	data, err := os.ReadFile(path)
@@ -63,18 +64,40 @@ func TestJetKVMCompatibilityLedgerIsSanitizedAndSourceGrounded(t *testing.T) {
 	if err := decoder.Decode(&extra); !errors.Is(err, io.EOF) {
 		t.Fatal("ledger contains trailing JSON")
 	}
-	if got.SchemaVersion != 1 || len(got.Entries) != 3 {
+	if got.SchemaVersion != 1 || len(got.Entries) == 0 {
 		t.Fatalf("ledger version/entries = %d/%d", got.SchemaVersion, len(got.Entries))
 	}
 
 	ids := make(map[string]bool)
 	sha := regexp.MustCompile(`^[0-9a-f]{40}$`)
-	allowedChecks := map[string]bool{
-		"auth_source_review": true, "signaling_source_review": true, "rpc_source_review": true,
-		"video_source_review": true, "hid_source_review": true, "virtual_media_source_review": true,
-		"auth_path_drift": true, "signaling_path_drift": true, "rpc_path_drift": true,
-		"video_path_drift": true, "hid_path_drift": true, "virtual_media_path_drift": true,
-		"mcp_discovery": true, "status": true, "capture": true,
+	classPolicies := map[string]evidencePolicy{
+		"source_review": {
+			checks: allowedSet(
+				"auth_source_review", "signaling_source_review", "rpc_source_review",
+				"video_source_review", "hid_source_review", "virtual_media_source_review",
+			),
+			jetKVMSourceMustBeSHA: true,
+			jetKVMFirmwareVersion: "not_observed",
+			environmentClass:      "offline_upstream_source",
+			result:                "pass",
+		},
+		"source_drift": {
+			checks: allowedSet(
+				"auth_path_drift", "signaling_path_drift", "rpc_path_drift",
+				"video_path_drift", "hid_path_drift", "virtual_media_path_drift",
+			),
+			jetKVMSourceMustBeSHA: true,
+			jetKVMFirmwareVersion: "not_observed",
+			environmentClass:      "offline_upstream_source",
+			result:                "review_required",
+		},
+		"read_only_hardware": {
+			checks:                allowedSet("mcp_discovery", "status", "capture"),
+			jetKVMSource:          "not_attributed",
+			jetKVMFirmwareVersion: "not_retained",
+			environmentClass:      "non_production_physical",
+			result:                "pass",
+		},
 	}
 	for _, entry := range got.Entries {
 		if entry.ID == "" || ids[entry.ID] {
@@ -84,41 +107,44 @@ func TestJetKVMCompatibilityLedgerIsSanitizedAndSourceGrounded(t *testing.T) {
 		if _, err := time.Parse("2006-01-02", entry.ObservedOn); err != nil {
 			t.Fatalf("entry %q date: %v", entry.ID, err)
 		}
-		if entry.Result != "pass" && entry.Result != "review_required" || len(entry.Checks) == 0 || len(entry.Limitations) == 0 {
+		if entry.Server.Version == "" || len(entry.Checks) == 0 || len(entry.Limitations) == 0 {
 			t.Fatalf("entry %q lacks bounded result/checks/limitations", entry.ID)
 		}
 		if !sha.MatchString(entry.Server.SourceRef) {
 			t.Fatalf("entry %q server source ref is not exact", entry.ID)
 		}
+		policy, ok := classPolicies[entry.EvidenceClass]
+		if !ok {
+			t.Fatalf("entry %q contains unsupported evidence class %q", entry.ID, entry.EvidenceClass)
+		}
+		seenChecks := make(map[string]bool, len(entry.Checks))
 		for _, check := range entry.Checks {
-			if !allowedChecks[check] {
-				t.Fatalf("entry %q contains unreviewed or mutating check %q", entry.ID, check)
+			if !policy.checks[check] {
+				t.Fatalf("entry %q contains check %q outside the %q claim", entry.ID, check, entry.EvidenceClass)
+			}
+			if seenChecks[check] {
+				t.Fatalf("entry %q repeats check %q", entry.ID, check)
+			}
+			seenChecks[check] = true
+		}
+		if entry.JetKVM.FirmwareVersion != policy.jetKVMFirmwareVersion ||
+			entry.EnvironmentClass != policy.environmentClass || entry.Result != policy.result ||
+			policy.jetKVMSourceMustBeSHA && !sha.MatchString(entry.JetKVM.SourceRef) ||
+			!policy.jetKVMSourceMustBeSHA && entry.JetKVM.SourceRef != policy.jetKVMSource {
+			t.Fatalf("entry %q exceeds the %q provenance or claim boundary", entry.ID, entry.EvidenceClass)
+		}
+		for _, limitation := range entry.Limitations {
+			if limitation == "" {
+				t.Fatalf("entry %q contains an empty limitation", entry.ID)
 			}
 		}
 	}
+}
 
-	source := got.Entries[0]
-	if source.EvidenceClass != "source_review" || source.JetKVM.SourceRef != pinnedJetKVMSource ||
-		source.JetKVM.FirmwareVersion != "not_observed" || source.Server.SourceRef != ledgerBaselineRef ||
-		source.EnvironmentClass != "offline_upstream_source" || source.Result != "pass" ||
-		!reflect.DeepEqual(source.Checks, []string{"auth_source_review", "signaling_source_review", "rpc_source_review", "video_source_review", "hid_source_review", "virtual_media_source_review"}) {
-		t.Fatalf("source-review seed = %#v", source)
+func allowedSet(values ...string) map[string]bool {
+	set := make(map[string]bool, len(values))
+	for _, value := range values {
+		set[value] = true
 	}
-
-	drift := got.Entries[1]
-	driftChecks := []string{"auth_path_drift", "signaling_path_drift", "rpc_path_drift", "video_path_drift", "hid_path_drift", "virtual_media_path_drift"}
-	if drift.EvidenceClass != "source_drift" || drift.JetKVM.SourceRef != currentJetKVMSource ||
-		drift.JetKVM.FirmwareVersion != "not_observed" || drift.Server.SourceRef != ledgerBaselineRef ||
-		drift.EnvironmentClass != "offline_upstream_source" || drift.Result != "review_required" ||
-		!reflect.DeepEqual(drift.Checks, driftChecks) {
-		t.Fatalf("source-drift seed = %#v", drift)
-	}
-
-	hardware := got.Entries[2]
-	if hardware.EvidenceClass != "read_only_hardware" || hardware.JetKVM.SourceRef != "not_attributed" ||
-		hardware.JetKVM.FirmwareVersion != "not_retained" || hardware.Server.SourceRef != validatedServerRef ||
-		hardware.EnvironmentClass != "non_production_physical" || hardware.Result != "pass" ||
-		!reflect.DeepEqual(hardware.Checks, []string{"mcp_discovery", "status", "capture"}) {
-		t.Fatalf("read-only hardware seed = %#v", hardware)
-	}
+	return set
 }

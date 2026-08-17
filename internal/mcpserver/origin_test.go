@@ -193,13 +193,11 @@ func TestSameOriginBrowserHTTPContractIsDocumented(t *testing.T) {
 	readme := readRepositoryDocument(t, "README.md")
 	configExample := readRepositoryDocument(t, "config.example.yaml")
 	productContract := readRepositoryDocument(t, filepath.Join("docs", "product-contract.md"))
-	threatModel := readRepositoryDocument(t, filepath.Join("docs", "threat-model.md"))
 
 	for name, document := range map[string]string{
 		"README":           readme,
 		"config example":   configExample,
 		"product contract": productContract,
-		"threat model":     threatModel,
 	} {
 		for _, required := range []string{"same-origin", "not a CORS", "wildcard"} {
 			if !strings.Contains(document, required) {

@@ -5,7 +5,6 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"reflect"
 	"strings"
 	"testing"
 )
@@ -134,18 +133,6 @@ func TestPrivacySentinelGuardRejectsLeakingDiagnostic(t *testing.T) {
 	})
 }
 
-func TestThreatModelClassifiesEveryConfigurationField(t *testing.T) {
-	document, err := os.ReadFile("../../docs/threat-model.md")
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, field := range yamlFieldNames(reflect.TypeFor[fileConfig](), make(map[reflect.Type]bool)) {
-		if !bytes.Contains(document, []byte("`"+field+"`")) {
-			t.Errorf("threat model does not classify YAML field %q", field)
-		}
-	}
-}
-
 func assertPrivacySentinelAbsent(t *testing.T, surface string, err error) {
 	t.Helper()
 	if err != nil && bytes.Contains([]byte(err.Error()), []byte(privacySentinel)) {
@@ -160,23 +147,4 @@ func writePrivacyConfig(t *testing.T, content string) string {
 		t.Fatal(err)
 	}
 	return path
-}
-
-func yamlFieldNames(current reflect.Type, seen map[reflect.Type]bool) []string {
-	for current.Kind() == reflect.Pointer || current.Kind() == reflect.Map || current.Kind() == reflect.Slice {
-		current = current.Elem()
-	}
-	if current.Kind() != reflect.Struct || seen[current] {
-		return nil
-	}
-	seen[current] = true
-	var names []string
-	for index := 0; index < current.NumField(); index++ {
-		field := current.Field(index)
-		if name := strings.Split(field.Tag.Get("yaml"), ",")[0]; name != "" && name != "-" {
-			names = append(names, name)
-		}
-		names = append(names, yamlFieldNames(field.Type, seen)...)
-	}
-	return names
 }

@@ -155,9 +155,6 @@ Consequence classes are cumulative:
 
 ## Input, output, and configuration field walkthrough
 
-This walkthrough is checked against the committed MCP manifest by
-`TestThreatModelInputOutputFieldWalkThrough`.
-
 ### MCP inputs
 
 | Fields | Classification and flow |
@@ -324,19 +321,18 @@ Secondary industry context:
 
 ## Verification checklist
 
-- **Input/output/config field walk-through:** the consequence and field tables
-  were compared with strict YAML tags, CLI flags, and every current input/output
-  property in the committed tool manifest. The automated walk-through fails if
-  a manifest tool lacks a consequence row or a schema field lacks classification.
+- **Input/output/config field review:** review the consequence and field tables
+  alongside strict YAML tags, CLI flags, and the committed tool manifest when
+  those executable surfaces change.
 - **Secret-sentinel redaction review:** private values exercised resolved
   credentials, rejected inline credentials, short malformed YAML scalars,
   missing private config paths, source-bearing media schema failures, and
   validator/report output. The tests assert that these values are absent from
   application diagnostics/reports and every MCP validation or operational-error
   result while proving the guard detects a leak.
-- **Threat-to-control traceability check:** every T-01 through T-13 row names
-  implemented code/test evidence, deployment obligations, and missing controls;
-  the document test rejects missing rows or classification markers.
+- **Threat-to-control traceability review:** review threat entries against their
+  linked executable evidence, deployment obligations, and residual controls
+  when a boundary or consequence changes.
 - **No general policy redesign:** the accepted per-device exact-origin boundary
   adds no OAuth, stateful HTTP, dynamic grant service, per-file approval database,
   raw-RPC tool, or wildcard authorization. Such controls require a separately

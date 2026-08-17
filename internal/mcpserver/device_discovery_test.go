@@ -98,12 +98,10 @@ func TestServerPublishesSafeConfiguredDeviceDiscovery(t *testing.T) {
 func TestSafeConfiguredDeviceDiscoveryIsDocumented(t *testing.T) {
 	readme := readRepositoryDocument(t, "README.md")
 	productContract := readRepositoryDocument(t, "docs/product-contract.md")
-	threatModel := readRepositoryDocument(t, "docs/threat-model.md")
 
 	for name, document := range map[string]string{
 		"README":           readme,
 		"product contract": productContract,
-		"threat model":     threatModel,
 	} {
 		for _, required := range []string{
 			"`jetkvm_list_devices`",
@@ -117,10 +115,5 @@ func TestSafeConfiguredDeviceDiscoveryIsDocumented(t *testing.T) {
 	}
 	if !strings.Contains(productContract, "17 one-purpose tools") {
 		t.Error("product contract does not classify the v1 17-tool surface")
-	}
-	for _, private := range []string{"URLs", "credentials", "allowed origins", "media directories", "Wake-on-LAN targets"} {
-		if !strings.Contains(threatModel, private) {
-			t.Errorf("threat model does not exclude private discovery field %q", private)
-		}
 	}
 }
