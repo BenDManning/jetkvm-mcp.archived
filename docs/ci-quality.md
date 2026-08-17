@@ -87,6 +87,9 @@ same compiler before running `make ci-minimum`.
   run the tracked GoReleaser and Syft with Go 1.26.6 in non-publishing snapshot
   mode, then verify the two Linux archives, embedded versions/commits, notices,
   checksums, and artifact-bound SPDX JSON SBOMs.
+- `make release-subjects RELEASE_TAG=vX.Y.Z`: build and verify the same native
+  subjects with an exact workflow-supplied semantic version while keeping
+  GoReleaser publication disabled.
 - `make container-release-snapshot`: build one cacheless amd64/arm64 OCI index
   without pushing it, generate a runtime-package SPDX JSON SBOM for each final
   platform, verify every OCI descriptor and accepted image label, and record
@@ -111,19 +114,27 @@ same compiler before running `make ci-minimum`.
   configuration validation, read-only-root health startup, and actual
   H.264-to-PNG decoding.
 
-The `Native release rehearsal` and `Container release rehearsal` are release
-jobs with OIDC and attestation-write permissions. Direct dispatch is restricted
-to the exact default-branch ref; each reusable entry point accepts only an exact
-`refs/tags/vX.Y.Z` ref for the later integrated protected-tag workflow. Neither
-job has package or release publication permission or handles a long-lived
-signing secret; the container rehearsal disables the Go cache, and neither job
-consumes untrusted pull-request caches. The native job creates and immediately
-verifies a keyless Cosign bundle for `checksums.txt` and hosted provenance for
-every checksummed archive and SBOM. The container job signs and attests the exact
-two-platform index manifest and binds each platform's SPDX document to that
-platform's immutable manifest. Verification constrains the repository,
-workflow, source ref, and source commit; retained workflow artifacts are
-rehearsal evidence, not a GitHub Release or container package.
+The `Integrated release` workflow is the only hosted owner of native and
+container release deliverables. Pull requests use read-only, cacheless staging
+jobs to build and locally verify both supported subject sets; they cannot enter
+the credentialed release job. Direct dispatch is restricted to the exact
+default-branch ref and runs the complete signing, attestation, and verification
+path without publishing. Only a protected annotated `vX.Y.Z` tag at a green
+`main` commit selects publication. The rehearsal job receives only read,
+attestation, and short-lived OIDC permissions; the publish job alone receives
+release and package write authority. Neither handles a long-lived signing
+secret. Production tag runs refuse reruns, so any failed attempt consumes the
+protected version and correction requires a new version.
+
+Before publication, that job reverifies both staged subject sets, creates and
+verifies keyless Cosign bundles, attests every checksummed native archive and
+SBOM, attests the exact two-platform index, and binds each platform SPDX
+document to its immutable manifest. Verification constrains the repository,
+workflow, source ref, and source commit. Publication first creates a draft
+version-consumption marker, then uploads the exact container version, publishes
+the immutable GitHub Release, and moves only `latest` last. A failed attempt
+therefore cannot look complete or change the mutable pointer, and the protected
+version is not reused.
 
 ## Coverage and evidence
 

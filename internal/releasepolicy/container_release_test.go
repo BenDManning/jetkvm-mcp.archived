@@ -10,11 +10,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
-	"regexp"
 	"strings"
 	"testing"
-
-	"gopkg.in/yaml.v3"
 )
 
 func TestContainerReleaseSnapshotBuildsOneVerifiedMultiPlatformSubject(t *testing.T) {
@@ -51,87 +48,6 @@ func TestContainerReleaseSnapshotBuildsOneVerifiedMultiPlatformSubject(t *testin
 	for _, forbidden := range []string{"--push", "cache-from", "cache-to", "docker login", "latest"} {
 		if strings.Contains(text, forbidden) {
 			t.Errorf("container release snapshot unexpectedly contains %q\n%s", forbidden, text)
-		}
-	}
-}
-
-func TestHostedContainerRehearsalVerifiesDigestEvidenceWithoutPublishing(t *testing.T) {
-	root := filepath.Clean(filepath.Join("..", ".."))
-	data, err := os.ReadFile(filepath.Join(root, ".github", "workflows", "container-release.yml"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	text := string(data)
-	var workflow struct {
-		On          map[string]any    `yaml:"on"`
-		Permissions map[string]string `yaml:"permissions"`
-		Jobs        map[string]struct {
-			Permissions map[string]string `yaml:"permissions"`
-		} `yaml:"jobs"`
-	}
-	if err := yaml.Unmarshal(data, &workflow); err != nil {
-		t.Fatal(err)
-	}
-	if _, ok := workflow.On["workflow_dispatch"]; !ok {
-		t.Error("container rehearsal is missing workflow_dispatch")
-	}
-	if _, ok := workflow.On["workflow_call"]; !ok {
-		t.Error("container rehearsal is missing workflow_call")
-	}
-	if len(workflow.On) != 2 {
-		t.Errorf("container rehearsal triggers = %#v", workflow.On)
-	}
-	if !reflect.DeepEqual(workflow.Permissions, map[string]string{"contents": "read"}) {
-		t.Errorf("default permissions = %#v", workflow.Permissions)
-	}
-	job, ok := workflow.Jobs["container-rehearsal"]
-	if !ok {
-		t.Fatal("container-rehearsal job is missing")
-	}
-	if !reflect.DeepEqual(job.Permissions, map[string]string{
-		"attestations": "write",
-		"contents":     "read",
-		"id-token":     "write",
-	}) {
-		t.Errorf("container rehearsal permissions = %#v", job.Permissions)
-	}
-
-	for _, expected := range []string{
-		"persist-credentials: false",
-		"cache: false",
-		"RELEASE_IDENTITY_REF: ${{ inputs.release_ref || github.ref }}",
-		"[[ ${REUSABLE_RELEASE_REF} =~ ^refs/tags/v",
-		"[[ ${GITHUB_REF} == refs/heads/main ]]",
-		"make container-release-snapshot",
-		"cosign sign-blob --yes",
-		"cosign verify-blob",
-		"--certificate-identity https://github.com/${GITHUB_REPOSITORY}/.github/workflows/container-release.yml@${RELEASE_IDENTITY_REF}",
-		"subject-path: dist/container/image-manifest.json",
-		"subject-path: dist/container/image-manifest-linux-amd64.json",
-		"subject-path: dist/container/image-manifest-linux-arm64.json",
-		"sbom-path: dist/container/linux-amd64.spdx.json",
-		"sbom-path: dist/container/linux-arm64.spdx.json",
-		"gh attestation verify dist/container/image-manifest.json",
-		"--predicate-type https://spdx.dev/Document/v2.3",
-		"manifest-digests.json",
-		"publication-plan.json",
-		"retention-days: 30",
-	} {
-		if !strings.Contains(text, expected) {
-			t.Errorf("container rehearsal does not contain %q", expected)
-		}
-	}
-	for _, forbidden := range []string{
-		"packages: write", "contents: write", "pull_request", "pull_request_target", "secrets.", "docker/login-action", "--push", "--signer-workflow", "cache-from", "cache-to", "ghcr.io/bendmanning/jetkvm-mcp:latest",
-	} {
-		if strings.Contains(text, forbidden) {
-			t.Errorf("container rehearsal unexpectedly contains %q", forbidden)
-		}
-	}
-	pinned := regexp.MustCompile(`^[[:space:]]+(?:- )?uses: [^@[:space:]]+@[0-9a-f]{40} # v[^[:space:]]+$`)
-	for _, line := range strings.Split(text, "\n") {
-		if strings.Contains(line, "uses:") && !pinned.MatchString(line) {
-			t.Errorf("Action is not pinned to a full SHA with a version comment: %s", line)
 		}
 	}
 }

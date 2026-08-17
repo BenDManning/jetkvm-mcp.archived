@@ -20,6 +20,11 @@ as trusted changes.
   verified before installation. QEMU, BuildKit, container frontend, builder, and
   runtime images use reviewable tag-plus-digest references. A tag explains the
   selected line; the digest fixes fetched bytes.
+- The tag-only publisher downloads ORAS from the canonical
+  `oras-project/oras` GitHub Release at the exact version and SHA-256 recorded in
+  the finalization action. That action is the ORAS version/checksum authority;
+  updates review the upstream release, license, advisories, archive checksum,
+  OCI-layout copy behavior, authentication, resolve, and tag semantics together.
 - Debian `ca-certificates` and `ffmpeg` remain distribution-selected packages.
   Their exact resolved versions are release evidence recorded from the built
   image and its SBOM, not reproducible package pins. The repository makes no
@@ -68,7 +73,7 @@ security impact blocks the update until resolved.
 | Changed input | Minimum local or pull-request evidence |
 |---|---|
 | Application Go module or root Go tool | `make tidy module-verify race vet staticcheck govulncheck verify` |
-| Release tool | `make tools-tidy tools-module-verify release-tool-versions release-snapshot` |
+| Release tool | `make tools-tidy tools-module-verify release-tool-versions release-snapshot`; for ORAS, inspect its version/checksum and exercise the integrated non-publishing state-machine rehearsal |
 | GitHub Action or downloaded workflow build helper | Inspect the full-SHA or checksum diff. Require all unprivileged build/verification logic to pass from the pull request without write or release credentials. An accepted OIDC-only release identity stage is exercised by a non-publishing default-branch rehearsal after merge and before its ticket closes. |
 | Docker frontend, builder, runtime, or distro package resolution | `make container-verify`; inspect both platform results and record resolved image/package identities. |
 | MCP npm protocol input | `make protocol-gates` plus deliberate review of the upstream commit, integrity, MCP revision, and scenario inventory. |

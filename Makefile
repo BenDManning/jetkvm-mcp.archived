@@ -17,7 +17,7 @@ CONTAINER_RELEASE_ARCHIVE ?= $(CONTAINER_RELEASE_DIR)/jetkvm-mcp.oci.tar
 CONTAINER_RELEASE_AMD64_SBOM ?= $(CONTAINER_RELEASE_DIR)/linux-amd64.spdx.json
 CONTAINER_RELEASE_ARM64_SBOM ?= $(CONTAINER_RELEASE_DIR)/linux-arm64.spdx.json
 
-.PHONY: build format tidy tools-tidy module-verify tools-module-verify test race race-coverage vet staticcheck govulncheck release-tool-versions release-snapshot container-release-snapshot coverage cross-build-linux verify protocol-gates fuzz-smoke fuzz ci-minimum ci-quality update-tool-manifest container container-verify
+.PHONY: build format tidy tools-tidy module-verify tools-module-verify test race race-coverage vet staticcheck govulncheck release-tool-versions release-snapshot release-subjects container-release-snapshot coverage cross-build-linux verify protocol-gates fuzz-smoke fuzz ci-minimum ci-quality update-tool-manifest container container-verify
 
 build:
 	go build -trimpath -o $(BINARY) ./cmd/jetkvm-mcp
@@ -69,6 +69,15 @@ release-snapshot:
 		GOROOT="$$release_goroot" GOTOOLCHAIN=local PATH="$$release_goroot/bin:$$(dirname "$$syft_path"):$$PATH" \
 		"$$(GOTOOLCHAIN=go$(RELEASE_GO_VERSION) go -C tools tool -n goreleaser)" release --snapshot --clean --skip=publish
 	scripts/verify-native-release.sh dist
+
+release-subjects:
+	test -n "$(RELEASE_TAG)"
+	go run ./scripts/generate-third-party-notices.go -check THIRD_PARTY_NOTICES.md ./cmd/jetkvm-mcp
+	release_goroot="$$(GOTOOLCHAIN=go$(RELEASE_GO_VERSION) go env GOROOT)"; \
+		syft_path="$$(GOTOOLCHAIN=go$(RELEASE_GO_VERSION) go -C tools tool -n syft)"; \
+		GOROOT="$$release_goroot" GOTOOLCHAIN=local GORELEASER_CURRENT_TAG="$(RELEASE_TAG)" PATH="$$release_goroot/bin:$$(dirname "$$syft_path"):$$PATH" \
+		"$$(GOTOOLCHAIN=go$(RELEASE_GO_VERSION) go -C tools tool -n goreleaser)" release --clean --skip=announce,publish,validate
+	RELEASE_EXPECTED_VERSION="$${RELEASE_TAG#v}" RELEASE_EXPECTED_COMMIT="$${GITHUB_SHA:-$$(git rev-parse HEAD)}" scripts/verify-native-release.sh dist
 
 container-release-snapshot:
 	mkdir -p $(CONTAINER_RELEASE_DIR)

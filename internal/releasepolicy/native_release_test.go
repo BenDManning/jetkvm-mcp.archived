@@ -5,7 +5,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
-	"regexp"
 	"strings"
 	"testing"
 
@@ -129,81 +128,29 @@ func TestReleaseSnapshotUsesAcceptedToolchainAndVerifiesItsSubjects(t *testing.T
 	}
 }
 
-func TestHostedNativeRehearsalUsesKeylessConstrainedIdentityWithoutPublishing(t *testing.T) {
+func TestExactReleaseSubjectsUseTheProtectedVersionWithoutPublishing(t *testing.T) {
 	root := filepath.Clean(filepath.Join("..", ".."))
-	data, err := os.ReadFile(filepath.Join(root, ".github", "workflows", "native-release.yml"))
+	command := exec.Command("make", "-n", "release-subjects", "RELEASE_TAG=v1.2.3")
+	command.Dir = root
+	output, err := command.CombinedOutput()
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("make -n release-subjects: %v\n%s", err, output)
 	}
-	text := string(data)
-	var workflow struct {
-		On          map[string]any    `yaml:"on"`
-		Permissions map[string]string `yaml:"permissions"`
-		Jobs        map[string]struct {
-			Permissions map[string]string `yaml:"permissions"`
-		} `yaml:"jobs"`
-	}
-	if err := yaml.Unmarshal(data, &workflow); err != nil {
-		t.Fatal(err)
-	}
-	_, hasDispatch := workflow.On["workflow_dispatch"]
-	_, hasCall := workflow.On["workflow_call"]
-	if len(workflow.On) != 2 || !hasDispatch || !hasCall {
-		t.Errorf("workflow triggers = %#v, want workflow_dispatch and workflow_call", workflow.On)
-	}
-	if !reflect.DeepEqual(workflow.Permissions, map[string]string{"contents": "read"}) {
-		t.Errorf("default workflow permissions = %#v, want contents: read", workflow.Permissions)
-	}
-	job, ok := workflow.Jobs["native-rehearsal"]
-	if !ok || !reflect.DeepEqual(job.Permissions, map[string]string{
-		"attestations": "write",
-		"contents":     "read",
-		"id-token":     "write",
-	}) {
-		t.Errorf("native rehearsal permissions = %#v", job.Permissions)
-	}
-
+	text := string(output)
 	for _, expected := range []string{
-		"workflow_dispatch:",
-		"workflow_call:",
-		"release_ref:",
-		"RELEASE_IDENTITY_REF: ${{ inputs.release_ref || github.ref }}",
-		"RELEASE_IDENTITY_TRIGGER: ${{ inputs.release_ref && 'push' || 'workflow_dispatch' }}",
-		"REUSABLE_RELEASE_REF: ${{ inputs.release_ref }}",
-		"[[ ${REUSABLE_RELEASE_REF} =~ ^refs/tags/v",
-		"[[ ${GITHUB_REF} == refs/heads/main ]]",
-		"[[ ${GITHUB_REF} == ${RELEASE_IDENTITY_REF} ]]",
-		"contents: read",
-		"id-token: write",
-		"attestations: write",
-		"make release-snapshot RELEASE_VERIFY_ARM64=1",
-		"cosign sign-blob --yes --bundle dist/checksums.txt.sigstore.json dist/checksums.txt",
-		"cosign verify-blob",
-		"--certificate-identity https://github.com/${GITHUB_REPOSITORY}/.github/workflows/native-release.yml@${RELEASE_IDENTITY_REF}",
-		"--certificate-github-workflow-sha ${GITHUB_SHA}",
-		"--certificate-github-workflow-trigger ${RELEASE_IDENTITY_TRIGGER}",
-		"uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2",
-		"subject-checksums: dist/checksums.txt",
-		"gh attestation verify",
-		"--cert-identity https://github.com/${GITHUB_REPOSITORY}/.github/workflows/native-release.yml@${RELEASE_IDENTITY_REF}",
-		"--source-ref ${RELEASE_IDENTITY_REF}",
-		"--source-digest ${GITHUB_SHA}",
+		`GORELEASER_CURRENT_TAG="v1.2.3"`,
+		"release --clean --skip=announce,publish,validate",
+		`RELEASE_EXPECTED_VERSION="${RELEASE_TAG#v}"`,
+		`RELEASE_EXPECTED_COMMIT="${GITHUB_SHA:-$(git rev-parse HEAD)}"`,
+		"scripts/verify-native-release.sh dist",
 	} {
 		if !strings.Contains(text, expected) {
-			t.Errorf("native release workflow does not contain %q", expected)
+			t.Errorf("release-subjects output does not contain %q\n%s", expected, text)
 		}
 	}
-	for _, forbidden := range []string{
-		"contents: write", "packages: write", "pull_request_target", "secrets.", "cosign.key", "--key", "--signer-workflow", "gh release create", "goreleaser release --clean", "--certificate-github-workflow-trigger workflow_dispatch", "push:", "tags:",
-	} {
+	for _, forbidden := range []string{"--snapshot", "gh release", "COSIGN_PASSWORD"} {
 		if strings.Contains(text, forbidden) {
-			t.Errorf("native release workflow unexpectedly contains %q", forbidden)
-		}
-	}
-	pinned := regexp.MustCompile(`^[[:space:]]+(?:- )?uses: [^@[:space:]]+@[0-9a-f]{40} # v[^[:space:]]+$`)
-	for _, line := range strings.Split(text, "\n") {
-		if strings.Contains(line, "uses:") && !pinned.MatchString(line) {
-			t.Errorf("Action is not pinned to a full SHA with a version comment: %s", line)
+			t.Errorf("release-subjects output unexpectedly contains %q\n%s", forbidden, text)
 		}
 	}
 }

@@ -1,0 +1,95 @@
+name: Finalize integrated release
+description: Reverify, sign, attest, and either retain or publish all staged release subjects
+inputs:
+  release-mode:
+    description: Either rehearse or publish
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Reverify staged subjects before signing
+      shell: bash
+      run: |
+        set -euo pipefail
+        RELEASE_EXPECTED_VERSION="${RELEASE_TAG#v}" RELEASE_EXPECTED_COMMIT="$GITHUB_SHA" \
+          scripts/verify-native-release.sh release/native
+        container_created=$(git show -s --format=%cI "${GITHUB_SHA}")
+        CONTAINER_EXPECTED_VERSION="$RELEASE_TAG" \
+        CONTAINER_EXPECTED_SOURCE=https://github.com/BenDManning/jetkvm-mcp \
+        CONTAINER_EXPECTED_REVISION="$GITHUB_SHA" \
+        CONTAINER_EXPECTED_CREATED="$container_created" \
+          scripts/verify-container-release.sh release/container/jetkvm-mcp.oci.tar release/container
+    - name: Keylessly sign the checksum manifest and image manifest
+      shell: bash
+      run: |
+        set -euo pipefail
+        cosign_path=$(GOTOOLCHAIN=go1.26.6 go -C tools tool -n cosign)
+        PATH="$(dirname "$cosign_path"):${PATH}"
+        cosign sign-blob --yes --bundle release/native/checksums.txt.sigstore.json release/native/checksums.txt
+        cosign sign-blob --yes --bundle release/container/image-manifest.sigstore.json release/container/image-manifest.json
+    - name: Attest every native archive and SBOM
+      id: native_provenance
+      uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+      with:
+        subject-checksums: release/native/checksums.txt
+    - name: Attest the immutable container index
+      id: container_provenance
+      uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+      with:
+        subject-path: release/container/image-manifest.json
+    - name: Bind the amd64 SBOM to its platform manifest
+      id: sbom_amd64
+      uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+      with:
+        subject-path: release/container/image-manifest-linux-amd64.json
+        sbom-path: release/container/linux-amd64.spdx.json
+    - name: Bind the arm64 SBOM to its platform manifest
+      id: sbom_arm64
+      uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+      with:
+        subject-path: release/container/image-manifest-linux-arm64.json
+        sbom-path: release/container/linux-arm64.spdx.json
+    - name: Collect hosted attestation bundles
+      shell: bash
+      run: |
+        cp '${{ steps.native_provenance.outputs.bundle-path }}' release/native/provenance.sigstore.json
+        cp '${{ steps.container_provenance.outputs.bundle-path }}' release/container/provenance.sigstore.json
+        cp '${{ steps.sbom_amd64.outputs.bundle-path }}' release/container/sbom-linux-amd64.sigstore.json
+        cp '${{ steps.sbom_arm64.outputs.bundle-path }}' release/container/sbom-linux-arm64.sigstore.json
+    - name: Install immutable ORAS client for publication
+      if: inputs.release-mode == 'publish'
+      shell: bash
+      env:
+        ORAS_VERSION: 1.3.3
+        ORAS_SHA256: 9ce999f8d2de03fc03968b29d743077a58783e545e5eaa53917ca177352d0e59
+      run: |
+        set -euo pipefail
+        archive="${RUNNER_TEMP}/oras.tar.gz"
+        curl --fail --location --proto '=https' --tlsv1.2 \
+          --output "$archive" \
+          "https://github.com/oras-project/oras/releases/download/v${ORAS_VERSION}/oras_${ORAS_VERSION}_linux_amd64.tar.gz"
+        printf '%s  %s\n' "$ORAS_SHA256" "$archive" | sha256sum --check --strict
+        tar -xzf "$archive" -C "$RUNNER_TEMP" oras
+        install -m 0755 "${RUNNER_TEMP}/oras" "${RUNNER_TEMP}/release-oras"
+        echo "ORAS_PATH=${RUNNER_TEMP}/release-oras" >> "$GITHUB_ENV"
+    - name: Verify the complete release or publish the protected version
+      shell: bash
+      run: scripts/publish-release.sh release/native release/container
+    - name: Retain an ambiguous publication outcome for owner reconciliation
+      if: failure() && inputs.release-mode == 'publish'
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      with:
+        name: release-owner-reconciliation-${{ github.sha }}
+        path: release/reconciliation.json
+        if-no-files-found: ignore
+        retention-days: 30
+    - name: Retain the complete non-publishing rehearsal
+      if: inputs.release-mode == 'rehearse'
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      with:
+        name: integrated-release-rehearsal-${{ github.sha }}
+        path: |
+          release/native
+          release/container
+        if-no-files-found: error
+        retention-days: 30

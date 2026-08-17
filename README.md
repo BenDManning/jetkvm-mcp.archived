@@ -51,7 +51,7 @@ repository, workflow, ref, and commit:
 
 ```sh
 repo=BenDManning/jetkvm-mcp
-workflow=BenDManning/jetkvm-mcp/.github/workflows/native-release.yml
+workflow=BenDManning/jetkvm-mcp/.github/workflows/release.yml
 release_ref=refs/tags/vX.Y.Z
 release_commit=REPLACE_WITH_THE_RELEASE_COMMIT
 
@@ -98,7 +98,8 @@ do not claim that a release has been published.
 
 The image contains the Go server and FFmpeg in one image and runs one Go server process. Until a GitHub Container Registry package is published under the release policy, build it from the canonical checkout:
 
-The `Container release rehearsal` workflow assembles the supported platforms
+The non-publishing `workflow_dispatch` path of the `Integrated release`
+workflow assembles the supported platforms
 into a local OCI archive and retains its exact index and platform manifests,
 platform digests, per-platform SPDX JSON SBOMs, keyless signature bundle, and
 hosted provenance/SBOM bundles. Its `publication-plan.json` records the exact
@@ -107,13 +108,14 @@ and records that the rehearsal published nothing.
 The `linux-amd64.spdx.json` and `linux-arm64.spdx.json` documents are bound to
 `image-manifest-linux-amd64.json` and `image-manifest-linux-arm64.json`,
 respectively.
-It does not publish an image, move a tag, or expose package credentials. After
+That rehearsal path does not publish an image, move a tag, or expose package
+credentials. After
 downloading and extracting a rehearsal artifact, set its recorded identity and
 verify every subject with:
 
 ```sh
 repo=BenDManning/jetkvm-mcp
-workflow=BenDManning/jetkvm-mcp/.github/workflows/container-release.yml
+workflow=BenDManning/jetkvm-mcp/.github/workflows/release.yml
 release_ref=refs/heads/main
 release_commit=REPLACE_WITH_THE_REHEARSAL_COMMIT
 release_trigger=workflow_dispatch
@@ -172,11 +174,56 @@ for architecture in amd64 arm64; do
 done
 ```
 
-For a protected-tag rehearsal, use that `refs/tags/vX.Y.Z` identity and `push`
-trigger instead. This evidence proves the recorded subjects and workflow
-identity; it does not claim reproducibility or a SLSA level. The eventual
-immutable release record remains responsible for the published GHCR digest and
-its registry-oriented verification commands.
+For a published release, download `release-record.json`,
+`manifest-digests.json`, the three manifest JSON files, both SPDX files, and
+the signature/provenance/SBOM bundles from that GitHub Release. It intentionally
+does not contain the rehearsal-only `publication-plan.json`. Set the protected
+identity from the immutable record, verify the record against the downloaded
+manifest, then run the platform, Cosign, SPDX, and hosted-attestation commands
+above while omitting only the `publication-plan.json` assertion:
+
+```sh
+repo=BenDManning/jetkvm-mcp
+workflow=BenDManning/jetkvm-mcp/.github/workflows/release.yml
+release_ref=refs/tags/vX.Y.Z
+release_commit=REPLACE_WITH_THE_RELEASE_COMMIT
+release_trigger=push
+
+jq -e \
+  --arg ref "$release_ref" \
+  --arg commit "$release_commit" \
+  --arg workflow "$workflow" '
+    .ref == $ref and
+    .commit == $commit and
+    .workflow == $workflow and
+    .immutable == true and
+    .published == true and
+    (.container | test("^ghcr.io/bendmanning/jetkvm-mcp@sha256:[0-9a-f]{64}$"))
+  ' release-record.json
+container_ref=$(jq -er .container release-record.json)
+expected_manifest=$(jq -er .manifest_digest manifest-digests.json)
+test "$container_ref" = "ghcr.io/bendmanning/jetkvm-mcp@$expected_manifest"
+docker pull "$container_ref"
+```
+
+Pull requests run the same cacheless subject builds and local verification with
+read-only permissions but do not enter either credentialed release-stage job.
+A protected annotated tag uses the same staged subjects and verification path,
+publishes the immutable version, and moves `latest` only after the GitHub
+Release is immutable and the exact container digest is stable. This evidence
+proves the recorded subjects and workflow identity; it does not claim reproducibility or a SLSA level.
+
+The owner-authorized production tag must be annotated with a JSON release-note
+object containing `summary`, `compatibilityAndMigration`,
+`securityRelevantFixes`, `knownLimitations`, `supersededVersions`, and
+`retractedVersions`. The first is a nonempty string and the others are arrays
+of strings; an empty array explicitly records “none.” Publication also requires
+one reviewed `physical_qualification` ledger entry for the exact tag commit.
+That entry records the exact authorization/window, date, JetKVM model and
+firmware, server version/commit, runtime OS/architecture, FFmpeg identity, MCP
+transport/client, attached-host fixture, completed checks, and limitations.
+The workflow combines those inputs with the exact artifact identities and
+verification commands in the immutable GitHub Release.
 
 ```sh
 docker build -t jetkvm-mcp:local .

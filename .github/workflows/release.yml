@@ -1,0 +1,248 @@
+name: Integrated release
+
+on:
+  pull_request:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  prepare:
+    name: Prepare release identity
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      checks: read
+      contents: read
+    outputs:
+      release_mode: ${{ steps.identity.outputs.release_mode }}
+      release_ref: ${{ steps.identity.outputs.release_ref }}
+      release_tag: ${{ steps.identity.outputs.release_tag }}
+      release_trigger: ${{ steps.identity.outputs.release_trigger }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Admit only verification, main rehearsal, or a protected release tag
+        id: identity
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          case ${GITHUB_EVENT_NAME} in
+            pull_request)
+              release_mode=verify
+              release_ref=${GITHUB_REF}
+              release_tag=v0.0.0-verify.${GITHUB_SHA:0:12}
+              release_trigger=pull_request
+              ;;
+            workflow_dispatch)
+              [[ ${GITHUB_REF} == refs/heads/main ]]
+              release_mode=rehearse
+              release_ref=${GITHUB_REF}
+              release_tag=v0.0.0-rehearsal.${GITHUB_SHA:0:12}
+              release_trigger=workflow_dispatch
+              ;;
+            push)
+              [[ ${GITHUB_REF_PROTECTED} == true ]]
+              [[ ${GITHUB_ACTOR} == BenDManning ]]
+              [[ ${GITHUB_RUN_ATTEMPT} == 1 ]]
+              [[ ${GITHUB_REF} =~ ^refs/tags/v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
+              [[ $(git cat-file -t "${GITHUB_REF}") == tag ]]
+              [[ $(git rev-parse "${GITHUB_REF}^{}") == "${GITHUB_SHA}" ]]
+              git merge-base --is-ancestor "${GITHUB_SHA}" refs/remotes/origin/main
+              checks=$(gh api --method GET "repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/check-runs" -f per_page=100)
+              for required in 'Go quality' 'Minimum Go' 'MCP protocol' 'Container'; do
+                jq -e --arg required "$required" '
+                  any(.check_runs[]; .name == $required and .conclusion == "success")
+                ' <<<"$checks" >/dev/null
+              done
+              release_mode=publish
+              release_ref=${GITHUB_REF}
+              release_tag=${GITHUB_REF#refs/tags/}
+              release_trigger=push
+              ;;
+            *)
+              echo "unsupported release event: ${GITHUB_EVENT_NAME}" >&2
+              exit 1
+              ;;
+          esac
+          {
+            echo "release_mode=${release_mode}"
+            echo "release_ref=${release_ref}"
+            echo "release_tag=${release_tag}"
+            echo "release_trigger=${release_trigger}"
+          } >> "$GITHUB_OUTPUT"
+
+  stage-native:
+    name: Stage native subjects
+    needs: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    env:
+      RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26.6'
+          cache: false
+      - uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4.2.0
+        with:
+          image: docker.io/tonistiigi/binfmt:qemu-v10.2.3-68@sha256:400a4873b838d1b89194d982c45e5fb3cda4593fbfd7e08a02e76b03b21166f0
+          platforms: arm64
+      - name: Build and verify exact native subjects
+        run: make release-subjects RELEASE_TAG="$RELEASE_TAG" RELEASE_VERIFY_ARM64=1
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: native-release-subjects
+          path: |
+            dist/*.tar.gz
+            dist/*.spdx.json
+            dist/checksums.txt
+            dist/metadata.json
+            dist/artifacts.json
+          if-no-files-found: error
+          retention-days: 30
+
+  stage-container:
+    name: Stage container subjects
+    needs: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    env:
+      RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26.6'
+          cache: false
+      - uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4.2.0
+        with:
+          image: docker.io/tonistiigi/binfmt:qemu-v10.2.3-68@sha256:400a4873b838d1b89194d982c45e5fb3cda4593fbfd7e08a02e76b03b21166f0
+          platforms: arm64
+      - name: Install checksum-pinned Buildx
+        env:
+          BUILDX_VERSION: v0.36.1
+          BUILDX_SHA256: 48af8a397ebd60178778bf63611dbcebe5f5e7a9be90eb9147b24b9587455778
+        run: |
+          set -euo pipefail
+          buildx_path="${RUNNER_TEMP}/docker-buildx"
+          curl --fail --location --proto '=https' --tlsv1.2 \
+            --output "$buildx_path" \
+            "https://github.com/docker/buildx/releases/download/${BUILDX_VERSION}/buildx-${BUILDX_VERSION}.linux-amd64"
+          printf '%s  %s\n' "$BUILDX_SHA256" "$buildx_path" | sha256sum --check --strict
+          install -D -m 0755 "$buildx_path" "${HOME}/.docker/cli-plugins/docker-buildx"
+          docker buildx version
+      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+        with:
+          driver-opts: image=moby/buildkit:v0.32.2@sha256:28a898719c18a33f4e8000685287fa36fd0dd9560c6440227d3a732d79bb41d8
+      - name: Build and verify exact container subjects
+        run: |
+          set -euo pipefail
+          container_created=$(git show -s --format=%cI "${GITHUB_SHA}")
+          make container-release-snapshot \
+            CONTAINER_VERSION="$RELEASE_TAG" \
+            CONTAINER_REVISION="$GITHUB_SHA" \
+            CONTAINER_CREATED="$container_created"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: container-release-subjects
+          path: dist/container
+          if-no-files-found: error
+          retention-days: 30
+
+  rehearse:
+    name: Rehearse all release subjects
+    if: needs.prepare.outputs.release_mode == 'rehearse'
+    needs: [prepare, stage-native, stage-container]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      attestations: write
+      contents: read
+      id-token: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_MODE: rehearse
+      RELEASE_REF: ${{ needs.prepare.outputs.release_ref }}
+      RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
+      RELEASE_TRIGGER: ${{ needs.prepare.outputs.release_trigger }}
+      RELEASE_WORKFLOW: BenDManning/jetkvm-mcp/.github/workflows/release.yml
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26.6'
+          cache: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: native-release-subjects
+          path: release/native
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: container-release-subjects
+          path: release/container
+      - uses: ./.github/actions/finalize-release
+        with:
+          release-mode: rehearse
+
+  publish:
+    name: Publish all release subjects
+    if: needs.prepare.outputs.release_mode == 'publish'
+    needs: [prepare, stage-native, stage-container]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      attestations: write
+      contents: write
+      id-token: write
+      packages: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_MODE: publish
+      RELEASE_REF: ${{ needs.prepare.outputs.release_ref }}
+      RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
+      RELEASE_TRIGGER: ${{ needs.prepare.outputs.release_trigger }}
+      RELEASE_WORKFLOW: BenDManning/jetkvm-mcp/.github/workflows/release.yml
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26.6'
+          cache: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: native-release-subjects
+          path: release/native
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: container-release-subjects
+          path: release/container
+      - uses: ./.github/actions/finalize-release
+        with:
+          release-mode: publish
