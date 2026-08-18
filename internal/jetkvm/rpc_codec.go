@@ -12,7 +12,15 @@ const maxRPCFrame = 16 << 10
 type rpcResponse struct {
 	ID     uint64
 	Result json.RawMessage
+	Event  rpcEvent
 }
+
+type rpcEvent uint8
+
+const (
+	rpcEventNone rpcEvent = iota
+	rpcEventOtherSessionConnected
+)
 
 type rpcWireError struct {
 	Code    *int    `json:"code"`
@@ -57,6 +65,11 @@ func decodeRPCResponse(data []byte) (rpcResponse, error) {
 	}
 	if len(members["id"]) == 0 {
 		if len(members["method"]) != 0 {
+			var method string
+			if json.Unmarshal(members["method"], &method) == nil && method == "otherSessionConnected" &&
+				len(members["params"]) == 0 && len(members["result"]) == 0 && len(members["error"]) == 0 {
+				return rpcResponse{Event: rpcEventOtherSessionConnected}, nil
+			}
 			return rpcResponse{}, ErrUnsolicitedRPC
 		}
 		return rpcResponse{}, ErrInvalidResponse

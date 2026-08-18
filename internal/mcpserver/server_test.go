@@ -22,6 +22,10 @@ func (*recordingDevice) ReleaseSession(context.Context, string) (SessionReleaseR
 	return SessionReleaseResult{}, nil
 }
 
+func (*recordingDevice) TakeOverSession(context.Context, string) (SessionTakeoverResult, error) {
+	return SessionTakeoverResult{}, nil
+}
+
 func (*recordingDevice) Power(context.Context, string, PowerAction, string) (PowerResult, error) {
 	return PowerResult{}, nil
 }
@@ -87,6 +91,7 @@ func TestServerPublishesExplicitPowerTools(t *testing.T) {
 	assertTool(t, tools, ListDevicesToolName, true, false, true, nil)
 	assertTool(t, tools, "jetkvm_get_status", true, false, true, []string{"device"})
 	assertTool(t, tools, ReleaseSessionToolName, true, false, true, []string{"device"})
+	assertTool(t, tools, TakeOverSessionToolName, false, false, false, []string{"device"})
 	assertTool(t, tools, "jetkvm_press_host_power_button", false, true, false, []string{"device"})
 	assertTool(t, tools, "jetkvm_force_host_power_off", false, true, false, []string{"device"})
 	assertTool(t, tools, "jetkvm_press_host_reset_button", false, true, false, []string{"device"})

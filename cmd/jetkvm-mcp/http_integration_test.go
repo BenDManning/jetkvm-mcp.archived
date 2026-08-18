@@ -188,6 +188,10 @@ func (*rootCancellationDevice) ReleaseSession(context.Context, string) (mcpserve
 	return mcpserver.SessionReleaseResult{}, nil
 }
 
+func (*rootCancellationDevice) TakeOverSession(context.Context, string) (mcpserver.SessionTakeoverResult, error) {
+	return mcpserver.SessionTakeoverResult{}, nil
+}
+
 func (device *rootCancellationDevice) Status(ctx context.Context, _ string) (mcpserver.Status, error) {
 	close(device.started)
 	select {

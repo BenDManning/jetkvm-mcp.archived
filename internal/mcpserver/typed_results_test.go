@@ -183,6 +183,7 @@ func TestPublicOutputSchemasConstrainFixedVocabularies(t *testing.T) {
 
 	expected := map[string]map[string][]string{
 		ReleaseSessionToolName:         {"status": {string(SessionStatusReleased)}},
+		TakeOverSessionToolName:        {"status": {string(SessionStatusAuthoritative)}},
 		PressHostPowerButtonToolName:   {"action": {string(PowerActionPressHostPowerButton)}, "status": {"completed"}},
 		ForceHostPowerOffToolName:      {"action": {string(PowerActionForceHostPowerOff)}, "status": {"completed"}},
 		PressHostResetButtonToolName:   {"action": {string(PowerActionPressHostResetButton)}, "status": {"completed"}},

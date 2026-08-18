@@ -85,6 +85,7 @@ func TestREADMEExplainsEveryPublicToolAndSafeRetryRules(t *testing.T) {
 	for name := range map[string]expectedToolMetadata{
 		ListDevicesToolName: {}, GetStatusToolName: {}, CaptureScreenToolName: {}, KeyboardToolName: {}, MouseToolName: {},
 		ReleaseSessionToolName:        {},
+		TakeOverSessionToolName:       {},
 		GetVirtualMediaStatusToolName: {}, MountVirtualMediaURLToolName: {}, MountVirtualMediaFileToolName: {}, UnmountVirtualMediaToolName: {}, UploadVirtualMediaFileToolName: {},
 		PressHostPowerButtonToolName: {}, ForceHostPowerOffToolName: {}, PressHostResetButtonToolName: {}, TurnHostDCPowerOnToolName: {}, TurnHostDCPowerOffToolName: {}, WakeHostUSBToolName: {}, WakeHostLANToolName: {},
 	} {
@@ -107,6 +108,7 @@ func TestEveryToolPublishesConsequenceCompleteMetadata(t *testing.T) {
 		ListDevicesToolName:            {"List configured JetKVM devices", true, false, true, false, []string{"without contacting", "configured", "retry"}},
 		GetStatusToolName:              {"Get JetKVM status", true, false, true, false, []string{"configured", "private", "retry"}},
 		ReleaseSessionToolName:         {"Release JetKVM session", true, false, true, false, []string{"configured", "another authenticated operator", "not appliance", "sticky", "takeover"}},
+		TakeOverSessionToolName:        {"Take over JetKVM session", false, false, false, false, []string{"configured", "immediately displace", "external authenticated operator", "not appliance", "replay"}},
 		CaptureScreenToolName:          {"Capture host screen", true, false, true, false, []string{"configured", "private", "png", "retry"}},
 		KeyboardToolName:               {"Send keyboard input", false, true, false, false, []string{"configured", "private", "hid", "unknown", "retry"}},
 		MouseToolName:                  {"Send mouse input", false, true, false, false, []string{"configured", "hid", "unknown", "retry"}},

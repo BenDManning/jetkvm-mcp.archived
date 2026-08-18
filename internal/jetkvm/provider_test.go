@@ -50,6 +50,20 @@ func TestConnectedSessionTreatsDisconnectedPeerAsTerminal(t *testing.T) {
 	}
 }
 
+func TestConnectedSessionRecognizedTakeoverIsLatchedBeforeTermination(t *testing.T) {
+	connectedCtx, cancel := context.WithCancel(context.Background())
+	session := &connectedSession{ctx: connectedCtx, cancel: cancel}
+	session.recognizeTakeover()
+	if !session.RecognizedTakeover() || !session.SuppressHIDCleanup() {
+		t.Fatal("recognized takeover was not latched for owner and HID cleanup")
+	}
+	select {
+	case <-session.Done():
+	default:
+		t.Fatal("recognized takeover did not terminate the generation")
+	}
+}
+
 func TestWebRTCConnectorClosesIdleHTTPConnectionsAfterAuthenticationFailure(t *testing.T) {
 	closed := make(chan struct{}, 1)
 	httpServer := httptest.NewUnstartedServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {

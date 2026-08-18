@@ -170,10 +170,9 @@ carrying the duplicate private-era surface into the first public release.
 [Specification #107](https://github.com/BenDManning/jetkvm-mcp/issues/107) and
 [ADR 0008](adr/0008-managed-per-device-webrtc-ownership.md) replace
 operation-scoped WebRTC sessions with one managed authoritative generation per
-configured device. Resident ordinary ownership and the replacement configuration
-grammar are current executable behavior. The explicit lifecycle tools and sticky
-ownership branches described below remain tracked implementation work until their
-dependent managed-session slices are delivered.
+configured device. Resident ordinary ownership, the replacement configuration
+grammar, explicit lifecycle tools, and sticky ownership branches described below
+are current executable behavior.
 
 The proposal makes connection acquisition consequential and distinct from
 authority to dispatch or reconcile work. An ordinary operation may lazily
@@ -220,7 +219,7 @@ remains `unknown`. Unexplained terminal loss similarly reports
 `ownership_uncertain` with `failed` for an in-flight read, `not_sent` for later
 ordinary demand rejected by the sticky state, and `unknown` for a possibly
 dispatched mutation. ICE `Disconnected`, `Failed`, or `Closed`, data-channel
-closure, and terminal signaling loss end the generation; the proposal has no
+closure, and terminal signaling loss end the generation; v1 has no
 recovery grace, automatic reconnect from sticky states, or mutation replay.
 
 The proposal intentionally breaks accepted configuration by rejecting

@@ -18,6 +18,7 @@ const (
 	ListDevicesToolName          = "jetkvm_list_devices"
 	GetStatusToolName            = "jetkvm_get_status"
 	ReleaseSessionToolName       = "jetkvm_release_session"
+	TakeOverSessionToolName      = "jetkvm_take_over_session"
 	PressHostPowerButtonToolName = "jetkvm_press_host_power_button"
 	ForceHostPowerOffToolName    = "jetkvm_force_host_power_off"
 	PressHostResetButtonToolName = "jetkvm_press_host_reset_button"
@@ -51,7 +52,10 @@ const (
 
 type SessionStatus string
 
-const SessionStatusReleased SessionStatus = "released"
+const (
+	SessionStatusReleased      SessionStatus = "released"
+	SessionStatusAuthoritative SessionStatus = "authoritative"
+)
 
 type StatusWarning string
 
@@ -116,11 +120,17 @@ type SessionReleaseResult struct {
 	Status SessionStatus `json:"status" jsonschema:"released means all locally owned session resources closed and joined"`
 }
 
+type SessionTakeoverResult struct {
+	Device string        `json:"device" jsonschema:"configured device identifier"`
+	Status SessionStatus `json:"status" jsonschema:"authoritative means this server validated or acquired the operator session"`
+}
+
 // Device is the device-layer boundary used by MCP handlers.
 type Device interface {
 	ListDevices(ctx context.Context) (DeviceList, error)
 	Status(ctx context.Context, device string) (Status, error)
 	ReleaseSession(ctx context.Context, device string) (SessionReleaseResult, error)
+	TakeOverSession(ctx context.Context, device string) (SessionTakeoverResult, error)
 	Power(ctx context.Context, device string, action PowerAction, target string) (PowerResult, error)
 	CaptureScreen(ctx context.Context, device string, request CaptureRequest) (CaptureResult, error)
 	Keyboard(ctx context.Context, device string, request KeyboardRequest) (KeyboardResult, error)
@@ -174,6 +184,20 @@ func newServerWithTelemetry(device Device, version string, captureTimeout time.D
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, _ listDevicesInput) (*mcp.CallToolResult, DeviceList, error) {
 		devices, err := device.ListDevices(ctx)
 		return nil, devices, err
+	})
+
+	addMutationTool(server, &mcp.Tool{
+		Name:         TakeOverSessionToolName,
+		Title:        "Take over JetKVM session",
+		Description:  "Take over the authoritative operator session for a configured JetKVM. This may immediately displace an external authenticated operator without consent. It changes server session ownership, not appliance or attached-host state, and never authorizes replay of earlier work.",
+		OutputSchema: sessionTakeoverOutputSchema(),
+		Annotations:  annotations(false, false, false),
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, input deviceInput) (*mcp.CallToolResult, SessionTakeoverResult, error) {
+		if err := validDevice(input.Device); err != nil {
+			return nil, SessionTakeoverResult{}, invalidInput(err)
+		}
+		result, err := device.TakeOverSession(ctx, input.Device)
+		return nil, result, err
 	})
 
 	addReadTool(server, &mcp.Tool{
@@ -538,6 +562,15 @@ func sessionReleaseOutputSchema() *jsonschema.Schema {
 		panic(fmt.Sprintf("session release output schema: %v", err))
 	}
 	setStringEnum(schema.Properties["status"], []string{string(SessionStatusReleased)})
+	return schema
+}
+
+func sessionTakeoverOutputSchema() *jsonschema.Schema {
+	schema, err := jsonschema.For[SessionTakeoverResult](nil)
+	if err != nil {
+		panic(fmt.Sprintf("session takeover output schema: %v", err))
+	}
+	setStringEnum(schema.Properties["status"], []string{string(SessionStatusAuthoritative)})
 	return schema
 }
 

@@ -655,8 +655,8 @@ func TestHIDGenerationEndStillAttemptsNeutralization(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = manager.Close(context.Background()) })
-	if _, err := manager.Keyboard(context.Background(), "lab", mcpserver.KeyboardRequest{Operation: mcpserver.KeyboardPressKey, Key: "a"}); !errors.Is(err, ErrSessionClosed) {
-		t.Fatalf("terminal HID error = %v, want session closed", err)
+	if _, err := manager.Keyboard(context.Background(), "lab", mcpserver.KeyboardRequest{Operation: mcpserver.KeyboardPressKey, Key: "a"}); !errors.Is(err, ErrOwnershipUncertain) {
+		t.Fatalf("terminal HID error = %v, want ownership uncertain", err)
 	}
 	<-session.neutralized
 }

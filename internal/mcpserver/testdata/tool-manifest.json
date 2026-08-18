@@ -1306,6 +1306,55 @@
     },
     {
       "meta": null,
+      "name": "jetkvm_take_over_session",
+      "title": "Take over JetKVM session",
+      "description": "Take over the authoritative operator session for a configured JetKVM. This may immediately displace an external authenticated operator without consent. It changes server session ownership, not appliance or attached-host state, and never authorizes replay of earlier work.",
+      "icons": null,
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "device": {
+            "description": "configured JetKVM device name",
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "device"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "device": {
+            "description": "configured device identifier",
+            "type": "string"
+          },
+          "status": {
+            "description": "authoritative means this server validated or acquired the operator session",
+            "enum": [
+              "authoritative"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "device",
+          "status"
+        ],
+        "type": "object"
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      }
+    },
+    {
+      "meta": null,
       "name": "jetkvm_turn_host_dc_power_off",
       "title": "Turn host DC power off",
       "description": "Disable the physical JetKVM-controlled DC output for a configured attached host, which can interrupt work and cause data loss. If the mutation's outcome is unknown, do not blindly retry; inspect status first.",
@@ -2139,6 +2188,33 @@
       "structuredContent": {
         "device": "fixture",
         "status": "released"
+      }
+    },
+    "jetkvm_take_over_session": {
+      "content": [
+        {
+          "annotations": null,
+          "json": {
+            "device": "fixture",
+            "status": "authoritative"
+          },
+          "meta": null,
+          "type": "text"
+        }
+      ],
+      "inputRequests": null,
+      "isError": false,
+      "meta": {
+        "io.modelcontextprotocol/serverInfo": {
+          "name": "jetkvm-mcp",
+          "version": "contract-test"
+        }
+      },
+      "needsInput": false,
+      "requestState": "",
+      "structuredContent": {
+        "device": "fixture",
+        "status": "authoritative"
       }
     },
     "jetkvm_turn_host_dc_power_off": {

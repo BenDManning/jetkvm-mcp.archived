@@ -33,9 +33,10 @@ type rpcSession struct {
 	sendGate  chan struct{}
 	mu        sync.Mutex
 	pending   map[uint64]chan rpcOutcome
+	takeover  func()
 }
 
-func newRPCSession(parent context.Context, sender textSender, timeout time.Duration) *rpcSession {
+func newRPCSession(parent context.Context, sender textSender, timeout time.Duration, takeover func()) *rpcSession {
 	if timeout <= 0 {
 		timeout = 10 * time.Second
 	}
@@ -44,6 +45,7 @@ func newRPCSession(parent context.Context, sender textSender, timeout time.Durat
 		ctx: ctx, cancel: cancel, sender: sender, timeout: timeout,
 		sendGate: make(chan struct{}, 1), pending: make(map[uint64]chan rpcOutcome),
 	}
+	session.takeover = takeover
 	session.sendGate <- struct{}{}
 	return session
 }
@@ -126,6 +128,12 @@ func (session *rpcSession) HandleMessage(data []byte) {
 		return
 	}
 	response, err := decodeRPCResponse(data)
+	if err == nil && response.Event == rpcEventOtherSessionConnected {
+		if session.takeover != nil {
+			session.takeover()
+		}
+		return
+	}
 	if response.ID == 0 {
 		return
 	}

@@ -94,12 +94,15 @@ func TestRPCRequestAndResponseWireRules(t *testing.T) {
 		wantID     uint64
 		wantResult string
 		wantError  error
+		wantEvent  rpcEvent
 	}{
 		{name: "result", wire: `{"jsonrpc":"2.0","id":7,"result":{"ready":true}}`, wantID: 7, wantResult: `{"ready":true}`},
 		{name: "mutation omission", wire: `{"jsonrpc":"2.0","id":8}`, wantID: 8},
 		{name: "protocol error", wire: `{"jsonrpc":"2.0","id":9,"error":{"code":-32601,"message":"private text"}}`, wantID: 9, wantError: ErrRPCMethodUnavailable},
+		{name: "recognized takeover", wire: `{"jsonrpc":"2.0","method":"otherSessionConnected"}`, wantEvent: rpcEventOtherSessionConnected},
 		{name: "both result and error", wire: `{"jsonrpc":"2.0","id":10,"result":null,"error":{"code":1,"message":"x"}}`, wantError: ErrInvalidResponse},
 		{name: "unsolicited method", wire: `{"jsonrpc":"2.0","method":"event","params":{}}`, wantError: ErrUnsolicitedRPC},
+		{name: "takeover with unexpected params", wire: `{"jsonrpc":"2.0","method":"otherSessionConnected","params":{}}`, wantError: ErrUnsolicitedRPC},
 		{name: "duplicate id", wire: `{"jsonrpc":"2.0","id":1,"id":2,"result":null}`, wantError: ErrInvalidResponse},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -113,7 +116,7 @@ func TestRPCRequestAndResponseWireRules(t *testing.T) {
 				}
 				return
 			}
-			if response.ID != test.wantID || string(response.Result) != test.wantResult {
+			if response.ID != test.wantID || string(response.Result) != test.wantResult || response.Event != test.wantEvent {
 				t.Fatalf("response = %#v", response)
 			}
 		})
