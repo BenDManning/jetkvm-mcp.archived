@@ -164,6 +164,7 @@ type Manager struct {
 	decoder            Decoder
 	operations         chan struct{}
 	deviceOps          map[string]chan struct{}
+	deviceAdmission    map[string]*deviceAdmission
 	connectionAttempts chan struct{}
 	captures           chan struct{}
 	decoders           chan struct{}
@@ -177,14 +178,21 @@ type Manager struct {
 	closed             atomic.Bool
 }
 
+type deviceAdmission struct {
+	mu        sync.Mutex
+	ordinary  int
+	lifecycle bool
+}
+
 func NewManager(devices []DeviceConfig, connector SessionConnector, options ...ManagerOption) (*Manager, error) {
 	if connector == nil {
 		return nil, errors.New("session connector is required")
 	}
 	manager := &Manager{
-		devices:   make(map[string]DeviceConfig, len(devices)),
-		owners:    make(map[string]*deviceOwner, len(devices)),
-		deviceOps: make(map[string]chan struct{}, len(devices)),
+		devices:         make(map[string]DeviceConfig, len(devices)),
+		owners:          make(map[string]*deviceOwner, len(devices)),
+		deviceOps:       make(map[string]chan struct{}, len(devices)),
+		deviceAdmission: make(map[string]*deviceAdmission, len(devices)),
 	}
 	for _, candidate := range devices {
 		name := strings.TrimSpace(candidate.Name)
@@ -218,6 +226,7 @@ func NewManager(devices []DeviceConfig, connector SessionConnector, options ...M
 			}
 		}
 		manager.devices[name] = candidate
+		manager.deviceAdmission[name] = new(deviceAdmission)
 	}
 	if len(manager.devices) == 0 {
 		return nil, errors.New("at least one device is required")
@@ -312,6 +321,45 @@ func (manager *Manager) ListDevices(context.Context) (mcpserver.DeviceList, erro
 		})
 	}
 	return mcpserver.DeviceList{Devices: devices}, nil
+}
+
+func (manager *Manager) ReleaseSession(ctx context.Context, name string) (mcpserver.SessionReleaseResult, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	device, err := manager.device(name)
+	if err != nil {
+		return mcpserver.SessionReleaseResult{}, err
+	}
+	admission := manager.deviceAdmission[device.Name]
+	admission.mu.Lock()
+	if err := ctx.Err(); err != nil {
+		admission.mu.Unlock()
+		return mcpserver.SessionReleaseResult{}, classifyOperationError(err, ToolOutcomeNotSent)
+	}
+	if manager.closed.Load() {
+		admission.mu.Unlock()
+		return mcpserver.SessionReleaseResult{}, classifyOperationError(ErrSessionClosed, ToolOutcomeNotSent)
+	}
+	if admission.lifecycle || admission.ordinary != 0 {
+		admission.mu.Unlock()
+		return mcpserver.SessionReleaseResult{}, busyNotSent()
+	}
+	admission.lifecycle = true
+	admission.mu.Unlock()
+	defer func() {
+		admission.mu.Lock()
+		admission.lifecycle = false
+		admission.mu.Unlock()
+	}()
+	if !tryAcquire(manager.operations) {
+		return mcpserver.SessionReleaseResult{}, busyNotSent()
+	}
+	defer release(manager.operations)
+	if err := manager.owners[device.Name].Release(); err != nil {
+		return mcpserver.SessionReleaseResult{}, err
+	}
+	return mcpserver.SessionReleaseResult{Device: device.Name, Status: mcpserver.SessionStatusReleased}, nil
 }
 
 func (manager *Manager) Status(ctx context.Context, name string) (mcpserver.Status, error) {
@@ -542,20 +590,37 @@ func (manager *Manager) withHIDOperation(ctx context.Context, device DeviceConfi
 }
 
 func (manager *Manager) withScheduledOperation(ctx context.Context, device DeviceConfig, capture bool, class ownerOperationClass, prepare func() error, operation func(context.Context, Session) error) error {
+	admission := manager.deviceAdmission[device.Name]
+	admission.mu.Lock()
 	if manager.closed.Load() {
+		admission.mu.Unlock()
 		return classifyOperationError(ErrSessionClosed, ToolOutcomeNotSent)
 	}
+	if admission.lifecycle {
+		admission.mu.Unlock()
+		return busyNotSent()
+	}
 	if !tryAcquire(manager.operations) {
+		admission.mu.Unlock()
 		return busyNotSent()
 	}
 	if !tryAcquire(manager.deviceOps[device.Name]) {
 		release(manager.operations)
+		admission.mu.Unlock()
 		return busyNotSent()
 	}
+	admission.ordinary++
+	admission.mu.Unlock()
 	return manager.runOperation(ctx, device, capture, class, prepare, operation)
 }
 
 func (manager *Manager) runOperation(ctx context.Context, device DeviceConfig, capture bool, class ownerOperationClass, prepare func() error, operation func(context.Context, Session) error) error {
+	defer func() {
+		admission := manager.deviceAdmission[device.Name]
+		admission.mu.Lock()
+		admission.ordinary--
+		admission.mu.Unlock()
+	}()
 	defer release(manager.operations)
 	defer release(manager.deviceOps[device.Name])
 	if capture {

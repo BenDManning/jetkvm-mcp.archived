@@ -17,6 +17,7 @@ import (
 const (
 	ListDevicesToolName          = "jetkvm_list_devices"
 	GetStatusToolName            = "jetkvm_get_status"
+	ReleaseSessionToolName       = "jetkvm_release_session"
 	PressHostPowerButtonToolName = "jetkvm_press_host_power_button"
 	ForceHostPowerOffToolName    = "jetkvm_force_host_power_off"
 	PressHostResetButtonToolName = "jetkvm_press_host_reset_button"
@@ -47,6 +48,10 @@ const (
 	ResultStatusCompleted ResultStatus = "completed"
 	ResultStatusObserved  ResultStatus = "observed"
 )
+
+type SessionStatus string
+
+const SessionStatusReleased SessionStatus = "released"
 
 type StatusWarning string
 
@@ -106,10 +111,16 @@ type DeviceList struct {
 	Devices []ConfiguredDevice `json:"devices" jsonschema:"configured device aliases in deterministic order"`
 }
 
+type SessionReleaseResult struct {
+	Device string        `json:"device" jsonschema:"configured device identifier"`
+	Status SessionStatus `json:"status" jsonschema:"released means all locally owned session resources closed and joined"`
+}
+
 // Device is the device-layer boundary used by MCP handlers.
 type Device interface {
 	ListDevices(ctx context.Context) (DeviceList, error)
 	Status(ctx context.Context, device string) (Status, error)
+	ReleaseSession(ctx context.Context, device string) (SessionReleaseResult, error)
 	Power(ctx context.Context, device string, action PowerAction, target string) (PowerResult, error)
 	CaptureScreen(ctx context.Context, device string, request CaptureRequest) (CaptureResult, error)
 	Keyboard(ctx context.Context, device string, request KeyboardRequest) (KeyboardResult, error)
@@ -163,6 +174,20 @@ func newServerWithTelemetry(device Device, version string, captureTimeout time.D
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, _ listDevicesInput) (*mcp.CallToolResult, DeviceList, error) {
 		devices, err := device.ListDevices(ctx)
 		return nil, devices, err
+	})
+
+	addReadTool(server, &mcp.Tool{
+		Name:         ReleaseSessionToolName,
+		Title:        "Release JetKVM session",
+		Description:  "Release this server's locally owned session for a configured JetKVM so another authenticated operator can connect. This changes only server session ownership, not appliance or attached-host state, and remains sticky until an explicit takeover succeeds.",
+		OutputSchema: sessionReleaseOutputSchema(),
+		Annotations:  annotations(true, false, true),
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, input deviceInput) (*mcp.CallToolResult, SessionReleaseResult, error) {
+		if err := validDevice(input.Device); err != nil {
+			return nil, SessionReleaseResult{}, invalidInput(err)
+		}
+		result, err := device.ReleaseSession(ctx, input.Device)
+		return nil, result, err
 	})
 
 	addReadTool(server, &mcp.Tool{
@@ -504,6 +529,15 @@ func powerResultSchema(action PowerAction) *jsonschema.Schema {
 	}
 	setStringEnum(schema.Properties["action"], []string{string(action)})
 	setStringEnum(schema.Properties["status"], []string{string(ResultStatusCompleted)})
+	return schema
+}
+
+func sessionReleaseOutputSchema() *jsonschema.Schema {
+	schema, err := jsonschema.For[SessionReleaseResult](nil)
+	if err != nil {
+		panic(fmt.Sprintf("session release output schema: %v", err))
+	}
+	setStringEnum(schema.Properties["status"], []string{string(SessionStatusReleased)})
 	return schema
 }
 

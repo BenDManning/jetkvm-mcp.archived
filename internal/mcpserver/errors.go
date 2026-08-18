@@ -99,7 +99,7 @@ func toolFailure(err error, mutation bool) error {
 
 func validToolErrorCode(code toolErrorCode) bool {
 	switch code {
-	case toolErrorOperationFailed, toolErrorCanceled, toolErrorTimeout, "invalid_input", "busy", "authentication_failed", "device_unavailable", "video_unavailable", "no_signal", "protocol_error":
+	case toolErrorOperationFailed, toolErrorCanceled, toolErrorTimeout, "invalid_input", "busy", "authentication_failed", "device_unavailable", "video_unavailable", "no_signal", "protocol_error", "session_released", "session_taken_over", "ownership_uncertain":
 		return true
 	default:
 		return false
@@ -130,6 +130,12 @@ func toolErrorMessage(code toolErrorCode) string {
 		return "JetKVM video signal is unavailable"
 	case "protocol_error":
 		return "JetKVM protocol operation failed"
+	case "session_released":
+		return "JetKVM session was explicitly released"
+	case "session_taken_over":
+		return "JetKVM session was taken over"
+	case "ownership_uncertain":
+		return "JetKVM session ownership is uncertain"
 	default:
 		return "JetKVM operation failed"
 	}

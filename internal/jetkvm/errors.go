@@ -43,6 +43,12 @@ func classifyOperationError(err error, outcome string) error {
 		code = "invalid_input"
 	case errors.Is(err, ErrVideoBusy), errors.Is(err, ErrBusy):
 		code = "busy"
+	case errors.Is(err, ErrSessionReleased):
+		code = "session_released"
+	case errors.Is(err, ErrSessionTakenOver):
+		code = "session_taken_over"
+	case errors.Is(err, ErrOwnershipUncertain):
+		code = "ownership_uncertain"
 	case errors.Is(err, ErrAuthentication):
 		code = "authentication_failed"
 	case errors.Is(err, ErrDeviceUnreachable), errors.Is(err, ErrSessionClosed):
@@ -78,6 +84,9 @@ var (
 	ErrRPCMethodUnavailable        = errors.New("JetKVM RPC method unavailable")
 	ErrUnsolicitedRPC              = errors.New("unsolicited JetKVM RPC event")
 	ErrSessionClosed               = errors.New("JetKVM session closed")
+	ErrSessionReleased             = errors.New("JetKVM session was explicitly released")
+	ErrSessionTakenOver            = errors.New("JetKVM session was taken over")
+	ErrOwnershipUncertain          = errors.New("JetKVM session ownership is uncertain")
 	ErrUnsupportedInput            = errors.New("unsupported JetKVM input")
 	ErrMediaPath                   = errors.New("invalid media path")
 	ErrMediaDirectoryNotConfigured = errors.New("media directory is not configured")

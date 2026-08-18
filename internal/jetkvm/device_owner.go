@@ -19,6 +19,9 @@ type ownerOwnership uint8
 const (
 	ownerOwnershipIdle ownerOwnership = iota
 	ownerOwnershipActive
+	ownerOwnershipTakenOver
+	ownerOwnershipUncertain
+	ownerOwnershipReleased
 	ownerOwnershipStopped
 )
 
@@ -27,6 +30,7 @@ type ownerTransition uint8
 const (
 	ownerTransitionNone ownerTransition = iota
 	ownerTransitionConnecting
+	ownerTransitionDraining
 	ownerTransitionClosing
 )
 
@@ -165,6 +169,10 @@ type stopDeviceOwner struct{ reply chan error }
 
 func (stopDeviceOwner) ownerCommand() {}
 
+type releaseOwnerSession struct{ reply chan error }
+
+func (releaseOwnerSession) ownerCommand() {}
+
 type ownerCommand interface{ ownerCommand() }
 
 type ownerTimer interface{ Stop() bool }
@@ -175,6 +183,7 @@ type ownerSettings struct {
 	connectTimeout     time.Duration
 	afterFunc          func(time.Duration, func()) ownerTimer
 	profile            capabilityProfile
+	initialOwnership   ownerOwnership
 }
 
 type deviceOwner struct {
@@ -203,8 +212,10 @@ type ownerGenerationState struct {
 }
 
 type ownerCleanupState struct {
-	generation uint64
+	generation *ownerGenerationState
+	target     ownerOwnership
 	err        error
+	reply      chan error
 }
 
 var nextOwnerID atomic.Uint64
@@ -237,7 +248,7 @@ func newDeviceOwnerWithSettings(device DeviceConfig, connector SessionConnector,
 		commands:  make(chan ownerCommand), done: make(chan struct{}),
 	}
 	owner.snapshot.Store(ownerSnapshot{
-		Ownership: ownerOwnershipIdle, Transition: ownerTransitionNone,
+		Ownership: settings.initialOwnership, Transition: ownerTransitionNone,
 		Health: ownerHealthUnavailable, Freshness: ownerFreshnessUnknown,
 		Provenance: ownerProvenanceNone, CapabilityProfileRevision: settings.profile.revision,
 	})
@@ -340,6 +351,16 @@ func (owner *deviceOwner) Close(ctx context.Context) error {
 	}
 }
 
+func (owner *deviceOwner) Release() error {
+	command := releaseOwnerSession{reply: make(chan error, 1)}
+	select {
+	case owner.commands <- command:
+	case <-owner.done:
+		return classifyOperationError(ErrSessionClosed, ToolOutcomeNotSent)
+	}
+	return <-command.reply
+}
+
 func (owner *deviceOwner) loop() {
 	defer close(owner.done)
 	workers := make(map[uint64]*ownerWorkerState)
@@ -352,22 +373,17 @@ func (owner *deviceOwner) loop() {
 	var idleTimer ownerTimer
 	var stopping bool
 	var stopWaiters []chan error
+	ownership := snapshot.Ownership
 
 	publish := func() {
-		switch {
-		case stopping:
+		snapshot.Ownership = ownership
+		if stopping {
 			snapshot.Ownership = ownerOwnershipStopped
-		case generation != nil:
-			snapshot.Ownership = ownerOwnershipActive
-		case cleanup != nil:
-			snapshot.Ownership = ownerOwnershipActive
-		default:
-			snapshot.Ownership = ownerOwnershipIdle
 		}
 		switch {
 		case attempt != nil:
 			snapshot.Transition = ownerTransitionConnecting
-		case cleanup != nil:
+		case cleanup != nil && cleanup.err == nil:
 			snapshot.Transition = ownerTransitionClosing
 		default:
 			snapshot.Transition = ownerTransitionNone
@@ -394,7 +410,7 @@ func (owner *deviceOwner) loop() {
 	}
 
 	startAttempt := func() error {
-		if attempt != nil || generation != nil || cleanup != nil || stopping {
+		if attempt != nil || generation != nil || cleanup != nil || stopping || ownership != ownerOwnershipIdle {
 			return nil
 		}
 		if !tryAcquire(owner.settings.connectionAttempts) {
@@ -453,7 +469,7 @@ func (owner *deviceOwner) loop() {
 		})
 	}
 
-	startCleanup := func(reasonGeneration *ownerGenerationState) {
+	startCleanup := func(reasonGeneration *ownerGenerationState, target ownerOwnership, reply chan error) {
 		if reasonGeneration == nil || cleanup != nil {
 			return
 		}
@@ -465,7 +481,7 @@ func (owner *deviceOwner) loop() {
 			generation = nil
 		}
 		reasonGeneration.cancel()
-		cleanup = &ownerCleanupState{generation: reasonGeneration.id}
+		cleanup = &ownerCleanupState{generation: reasonGeneration, target: target, reply: reply}
 		publish()
 		go owner.runCleanup(reasonGeneration)
 	}
@@ -493,8 +509,12 @@ func (owner *deviceOwner) loop() {
 				command.reply <- ownerRegistration{err: classifyOperationError(ErrSessionClosed, ToolOutcomeNotSent)}
 				break
 			}
+			if ownership != ownerOwnershipIdle && ownership != ownerOwnershipActive {
+				command.reply <- ownerRegistration{err: ownerOwnershipError(ownership)}
+				break
+			}
 			if cleanup != nil && cleanup.err != nil {
-				command.reply <- ownerRegistration{err: busyNotSent()}
+				command.reply <- ownerRegistration{err: classifyOperationError(ErrOwnershipUncertain, ToolOutcomeNotSent)}
 				break
 			}
 			nextWorker++
@@ -570,19 +590,23 @@ func (owner *deviceOwner) loop() {
 			if command.err != nil || command.panicValue != nil {
 				snapshot.Health = ownerHealthDegraded
 				failQueued(ownerResult{err: command.err, panicValue: command.panicValue})
-				if command.cleanupErr != nil {
-					cleanup = &ownerCleanupState{generation: command.generation, err: command.cleanupErr}
+				if command.cleanupErr != nil && command.session != nil {
+					generationCtx, cancel := context.WithCancel(context.Background())
+					failed := &ownerGenerationState{id: command.generation, session: command.session, ctx: generationCtx, cancel: cancel}
+					cleanup = &ownerCleanupState{generation: failed, target: ownerOwnershipIdle, err: command.cleanupErr}
+					ownership = ownerOwnershipUncertain
 				}
 			} else if command.session != nil && !stopping && len(queue) != 0 {
 				generationCtx, cancel := context.WithCancel(context.Background())
 				generation = &ownerGenerationState{id: command.generation, session: command.session, scheduler: newGenerationScheduler(owner.scheduler, command.session.Done()), ctx: generationCtx, cancel: cancel}
+				ownership = ownerOwnershipActive
 				snapshot.Health = ownerHealthHealthy
 				go owner.watchGeneration(generation.id, command.session.Done())
 				startNext()
 			} else if command.session != nil {
 				generationCtx, cancel := context.WithCancel(context.Background())
 				orphan := &ownerGenerationState{id: command.generation, session: command.session, ctx: generationCtx, cancel: cancel}
-				cleanup = &ownerCleanupState{generation: orphan.id}
+				cleanup = &ownerCleanupState{generation: orphan, target: ownerOwnershipIdle}
 				go owner.runCleanup(orphan)
 			}
 			publish()
@@ -611,34 +635,71 @@ func (owner *deviceOwner) loop() {
 
 		case ownerGenerationEnded:
 			if generation != nil && generation.id == command.generation {
-				startCleanup(generation)
+				startCleanup(generation, ownerOwnershipIdle, nil)
 			}
 
 		case ownerIdleExpired:
 			idleTimer = nil
 			if generation != nil && generation.id == command.generation && len(workers) == 0 && len(queue) == 0 && owner.demand.Load() == 0 {
-				startCleanup(generation)
+				startCleanup(generation, ownerOwnershipIdle, nil)
 			}
 
 		case ownerDemandChanged:
 			scheduleIdle()
 
 		case completeOwnerCleanup:
-			if cleanup == nil || cleanup.generation != command.generation {
+			if cleanup == nil || cleanup.generation.id != command.generation {
 				break
 			}
 			if command.err != nil {
 				cleanup.err = command.err
+				ownership = ownerOwnershipUncertain
 				snapshot.Health = ownerHealthDegraded
 				failQueued(ownerResult{err: busyNotSent()})
+				if cleanup.reply != nil {
+					cleanup.reply <- classifyOperationError(ErrOwnershipUncertain, ToolOutcomeFailed)
+					cleanup.reply = nil
+				}
 			} else {
+				target := cleanup.target
+				reply := cleanup.reply
 				cleanup = nil
+				ownership = target
 				snapshot.Health = ownerHealthUnavailable
+				if reply != nil {
+					reply <- nil
+				}
 				if !stopping && len(queue) != 0 {
 					if err := startAttempt(); err != nil {
 						failQueued(ownerResult{err: err})
 					}
 				}
+			}
+			publish()
+
+		case releaseOwnerSession:
+			switch {
+			case stopping:
+				command.reply <- classifyOperationError(ErrSessionClosed, ToolOutcomeNotSent)
+			case len(workers) != 0 || len(queue) != 0 || owner.demand.Load() != 0 || attempt != nil:
+				command.reply <- busyNotSent()
+			case cleanup != nil && cleanup.err == nil:
+				command.reply <- busyNotSent()
+			case ownership == ownerOwnershipReleased:
+				command.reply <- nil
+			case generation != nil:
+				startCleanup(generation, ownerOwnershipReleased, command.reply)
+			case cleanup != nil:
+				cleanup.target = ownerOwnershipReleased
+				cleanup.reply = command.reply
+				cleanup.err = nil
+				go owner.runCleanup(cleanup.generation)
+			case ownership == ownerOwnershipIdle || ownership == ownerOwnershipTakenOver || ownership == ownerOwnershipUncertain:
+				ownership = ownerOwnershipReleased
+				snapshot.Health = ownerHealthUnavailable
+				command.reply <- nil
+			default:
+				command.reply <- busyNotSent()
 			}
 			publish()
 
@@ -668,7 +729,7 @@ func (owner *deviceOwner) loop() {
 					}
 				}
 				if generation != nil {
-					startCleanup(generation)
+					startCleanup(generation, ownerOwnershipStopped, nil)
 				}
 			}
 			stopWaiters = append(stopWaiters, command.reply)
@@ -713,7 +774,9 @@ func (owner *deviceOwner) runAttempt(ctx context.Context, generation uint64) {
 	}
 	if err != nil && session != nil {
 		completion.cleanupErr = owner.closeDetached(session)
-		session = nil
+		if completion.cleanupErr == nil {
+			session = nil
+		}
 	}
 }
 
@@ -745,6 +808,19 @@ func (owner *deviceOwner) runCleanup(generation *ownerGenerationState) {
 	generation.cancel()
 	err := owner.closeDetached(generation.session)
 	owner.send(completeOwnerCleanup{generation: generation.id, err: err})
+}
+
+func ownerOwnershipError(ownership ownerOwnership) error {
+	switch ownership {
+	case ownerOwnershipReleased:
+		return classifyOperationError(ErrSessionReleased, ToolOutcomeNotSent)
+	case ownerOwnershipTakenOver:
+		return classifyOperationError(ErrSessionTakenOver, ToolOutcomeNotSent)
+	case ownerOwnershipUncertain:
+		return classifyOperationError(ErrOwnershipUncertain, ToolOutcomeNotSent)
+	default:
+		return busyNotSent()
+	}
 }
 
 func (owner *deviceOwner) closeDetached(session ConnectedSession) error {

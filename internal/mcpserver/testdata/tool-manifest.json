@@ -1257,6 +1257,55 @@
     },
     {
       "meta": null,
+      "name": "jetkvm_release_session",
+      "title": "Release JetKVM session",
+      "description": "Release this server's locally owned session for a configured JetKVM so another authenticated operator can connect. This changes only server session ownership, not appliance or attached-host state, and remains sticky until an explicit takeover succeeds.",
+      "icons": null,
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "device": {
+            "description": "configured JetKVM device name",
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "device"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "device": {
+            "description": "configured device identifier",
+            "type": "string"
+          },
+          "status": {
+            "description": "released means all locally owned session resources closed and joined",
+            "enum": [
+              "released"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "device",
+          "status"
+        ],
+        "type": "object"
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      }
+    },
+    {
+      "meta": null,
       "name": "jetkvm_turn_host_dc_power_off",
       "title": "Turn host DC power off",
       "description": "Disable the physical JetKVM-controlled DC output for a configured attached host, which can interrupt work and cause data loss. If the mutation's outcome is unknown, do not blindly retry; inspect status first.",
@@ -2063,6 +2112,33 @@
         "action": "press_host_reset_button",
         "device": "fixture-device",
         "status": "completed"
+      }
+    },
+    "jetkvm_release_session": {
+      "content": [
+        {
+          "annotations": null,
+          "json": {
+            "device": "fixture",
+            "status": "released"
+          },
+          "meta": null,
+          "type": "text"
+        }
+      ],
+      "inputRequests": null,
+      "isError": false,
+      "meta": {
+        "io.modelcontextprotocol/serverInfo": {
+          "name": "jetkvm-mcp",
+          "version": "contract-test"
+        }
+      },
+      "needsInput": false,
+      "requestState": "",
+      "structuredContent": {
+        "device": "fixture",
+        "status": "released"
       }
     },
     "jetkvm_turn_host_dc_power_off": {

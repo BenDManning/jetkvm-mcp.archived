@@ -27,7 +27,7 @@ import (
 
 const (
 	updateToolManifestEnvironment = "JETKVM_UPDATE_TOOL_MANIFEST"
-	toolManifestCount             = 17
+	toolManifestCount             = 18
 )
 
 var toolManifestFixturePath = filepath.Join("testdata", "tool-manifest.json")
@@ -54,6 +54,10 @@ func (*contractDevice) Status(context.Context, string) (Status, error) {
 		VirtualMedia: &VirtualMediaState{Mounted: false},
 		USBState:     "attached", USBWakeAttached: &usbWakeAttached, Warnings: []StatusWarning{StatusWarningVideoUnavailable},
 	}, nil
+}
+
+func (*contractDevice) ReleaseSession(_ context.Context, device string) (SessionReleaseResult, error) {
+	return SessionReleaseResult{Device: device, Status: SessionStatusReleased}, nil
 }
 
 func (*contractDevice) Power(_ context.Context, _ string, action PowerAction, target string) (PowerResult, error) {
@@ -559,6 +563,7 @@ func representativeCalls() map[string]map[string]any {
 	return map[string]map[string]any{
 		ListDevicesToolName:            {},
 		GetStatusToolName:              {"device": "fixture"},
+		ReleaseSessionToolName:         {"device": "fixture"},
 		PressHostPowerButtonToolName:   {"device": "fixture"},
 		ForceHostPowerOffToolName:      {"device": "fixture"},
 		PressHostResetButtonToolName:   {"device": "fixture"},

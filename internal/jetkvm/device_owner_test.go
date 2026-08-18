@@ -349,7 +349,7 @@ func TestDeviceOwnerDoesNotReconnectAfterIncompleteIdleCleanup(t *testing.T) {
 	deadline := time.After(time.Second)
 	for {
 		snapshot := owner.Snapshot()
-		if snapshot.Transition == ownerTransitionClosing && snapshot.Health == ownerHealthDegraded {
+		if snapshot.Ownership == ownerOwnershipUncertain && snapshot.Transition == ownerTransitionNone && snapshot.Health == ownerHealthDegraded {
 			break
 		}
 		select {
@@ -359,8 +359,8 @@ func TestDeviceOwnerDoesNotReconnectAfterIncompleteIdleCleanup(t *testing.T) {
 			time.Sleep(time.Millisecond)
 		}
 	}
-	if err := owner.Run(context.Background(), func(context.Context, Session) error { return nil }); !errors.Is(err, ErrBusy) {
-		t.Fatalf("ordinary work after incomplete cleanup = %v, want busy", err)
+	if err := owner.Run(context.Background(), func(context.Context, Session) error { return nil }); !errors.Is(err, ErrOwnershipUncertain) {
+		t.Fatalf("ordinary work after incomplete cleanup = %v, want uncertain ownership", err)
 	}
 	connector.mu.Lock()
 	connects := connector.calls
@@ -386,11 +386,11 @@ func TestDeviceOwnerDoesNotReconnectAfterIncompleteSetupCleanup(t *testing.T) {
 		t.Fatalf("setup error = %v, want %v", err, pingErr)
 	}
 	snapshot := owner.Snapshot()
-	if snapshot.Transition != ownerTransitionClosing || snapshot.Health != ownerHealthDegraded {
+	if snapshot.Ownership != ownerOwnershipUncertain || snapshot.Transition != ownerTransitionNone || snapshot.Health != ownerHealthDegraded {
 		t.Fatalf("setup cleanup failure was not latched: %+v", snapshot)
 	}
-	if err := owner.Run(context.Background(), func(context.Context, Session) error { return nil }); !errors.Is(err, ErrBusy) {
-		t.Fatalf("ordinary work after incomplete setup cleanup = %v, want busy", err)
+	if err := owner.Run(context.Background(), func(context.Context, Session) error { return nil }); !errors.Is(err, ErrOwnershipUncertain) {
+		t.Fatalf("ordinary work after incomplete setup cleanup = %v, want uncertain ownership", err)
 	}
 	connector.mu.Lock()
 	connects := connector.calls

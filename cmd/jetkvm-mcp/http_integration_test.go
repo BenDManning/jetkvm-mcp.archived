@@ -184,6 +184,10 @@ func (*rootCancellationDevice) ListDevices(context.Context) (mcpserver.DeviceLis
 	return mcpserver.DeviceList{Devices: []mcpserver.ConfiguredDevice{{Device: "fixture"}}}, nil
 }
 
+func (*rootCancellationDevice) ReleaseSession(context.Context, string) (mcpserver.SessionReleaseResult, error) {
+	return mcpserver.SessionReleaseResult{}, nil
+}
+
 func (device *rootCancellationDevice) Status(ctx context.Context, _ string) (mcpserver.Status, error) {
 	close(device.started)
 	select {
