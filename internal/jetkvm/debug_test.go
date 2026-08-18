@@ -10,9 +10,7 @@ import (
 
 func TestManagerDebugRPCUsesConnectedSessionAndReturnsRawResult(t *testing.T) {
 	session := &fakeSession{results: map[string]any{"customMethod": map[string]any{"value": 42}}}
-	provider := &fakeProvider{session: session}
 	manager := testManager(t, session)
-	manager.connector = provider
 	result, err := manager.DebugRPC(context.Background(), "lab", "customMethod", json.RawMessage(`{"input":true}`), true)
 	if err != nil {
 		t.Fatal(err)

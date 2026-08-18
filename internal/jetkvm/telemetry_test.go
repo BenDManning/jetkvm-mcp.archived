@@ -101,9 +101,9 @@ func TestOperationTelemetryStageMatrix(t *testing.T) {
 	baseCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	ctx, operation := recorder.Start(baseCtx, telemetry.TransportStdio, telemetry.OperationStatus)
-	err = manager.withSession(ctx, fixture.device, func(session Session) error {
+	err = manager.withSession(ctx, fixture.device, func(operationCtx context.Context, session Session) error {
 		var pong string
-		if err := session.Call(ctx, "ping", nil, &pong); err != nil {
+		if err := session.Call(operationCtx, "ping", nil, &pong); err != nil {
 			return err
 		}
 		if pong != "pong" {

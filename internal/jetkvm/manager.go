@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"sort"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/BenDManning/jetkvm-mcp/internal/mcpserver"
@@ -136,7 +137,7 @@ type SessionConnector interface {
 
 type Manager struct {
 	devices    map[string]DeviceConfig
-	connector  SessionConnector
+	owners     map[string]*deviceOwner
 	decoder    Decoder
 	operations chan struct{}
 	deviceOps  map[string]chan struct{}
@@ -144,6 +145,7 @@ type Manager struct {
 	captures   chan struct{}
 	decoders   chan struct{}
 	mutations  map[string]chan struct{}
+	closed     atomic.Bool
 }
 
 func NewManager(devices []DeviceConfig, connector SessionConnector, options ...ManagerOption) (*Manager, error) {
@@ -152,7 +154,7 @@ func NewManager(devices []DeviceConfig, connector SessionConnector, options ...M
 	}
 	manager := &Manager{
 		devices:   make(map[string]DeviceConfig, len(devices)),
-		connector: connector,
+		owners:    make(map[string]*deviceOwner, len(devices)),
 		deviceOps: make(map[string]chan struct{}, len(devices)),
 		mutations: make(map[string]chan struct{}, len(devices)),
 	}
@@ -204,6 +206,9 @@ func NewManager(devices []DeviceConfig, connector SessionConnector, options ...M
 		if err := WithLimits(DefaultLimits())(manager); err != nil {
 			return nil, err
 		}
+	}
+	for name, device := range manager.devices {
+		manager.owners[name] = newDeviceOwner(device, connector)
 	}
 	return manager, nil
 }
@@ -259,12 +264,12 @@ func (manager *Manager) Status(ctx context.Context, name string) (mcpserver.Stat
 	}
 	status := mcpserver.Status{Device: device.Name}
 	err = manager.withOperation(ctx, device, false, false, func() error {
-		return manager.withSession(ctx, device, func(session Session) error {
+		return manager.withSession(ctx, device, func(operationCtx context.Context, session Session) error {
 			var pong string
-			if err := session.Call(ctx, methodPing, nil, &pong); err != nil {
+			if err := session.Call(operationCtx, methodPing, nil, &pong); err != nil {
 				return err
 			}
-			if err := ctx.Err(); err != nil {
+			if err := statusContextError(ctx, operationCtx); err != nil {
 				return err
 			}
 			if pong != "pong" {
@@ -276,22 +281,22 @@ func (manager *Manager) Status(ctx context.Context, name string) (mcpserver.Stat
 				Application string `json:"appVersion"`
 				System      string `json:"systemVersion"`
 			}
-			probeErr := session.Call(ctx, methodLocalVersion, nil, &version)
-			if err := statusProbeResult(ctx, &status, probeErr, mcpserver.StatusWarningVersionUnavailable); err != nil {
+			probeErr := session.Call(operationCtx, methodLocalVersion, nil, &version)
+			if err := statusProbeResult(ctx, operationCtx, &status, probeErr, mcpserver.StatusWarningVersionUnavailable); err != nil {
 				return err
 			}
 			if probeErr == nil {
 				status.Application, status.System = version.Application, version.System
 			}
 
-			probeErr = session.Call(ctx, methodActiveExtension, nil, &status.Extension)
-			if err := statusProbeResult(ctx, &status, probeErr, mcpserver.StatusWarningActiveExtensionUnavailable); err != nil {
+			probeErr = session.Call(operationCtx, methodActiveExtension, nil, &status.Extension)
+			if err := statusProbeResult(ctx, operationCtx, &status, probeErr, mcpserver.StatusWarningActiveExtensionUnavailable); err != nil {
 				return err
 			}
 
 			var media *firmwareVirtualMediaState
-			probeErr = session.Call(ctx, methodVirtualMediaState, nil, &media)
-			if err := statusProbeResult(ctx, &status, probeErr, mcpserver.StatusWarningVirtualMediaUnavailable); err != nil {
+			probeErr = session.Call(operationCtx, methodVirtualMediaState, nil, &media)
+			if err := statusProbeResult(ctx, operationCtx, &status, probeErr, mcpserver.StatusWarningVirtualMediaUnavailable); err != nil {
 				return err
 			}
 			if probeErr == nil {
@@ -308,16 +313,16 @@ func (manager *Manager) Status(ctx context.Context, name string) (mcpserver.Stat
 				Height int   `json:"height"`
 				FPS    int   `json:"fps"`
 			}
-			probeErr = session.Call(ctx, methodVideoState, nil, &video)
-			if err := statusProbeResult(ctx, &status, probeErr, mcpserver.StatusWarningVideoUnavailable); err != nil {
+			probeErr = session.Call(operationCtx, methodVideoState, nil, &video)
+			if err := statusProbeResult(ctx, operationCtx, &status, probeErr, mcpserver.StatusWarningVideoUnavailable); err != nil {
 				return err
 			}
 			if probeErr == nil {
 				status.VideoReady, status.VideoWidth, status.VideoHeight, status.VideoFPS = video.Ready, video.Width, video.Height, video.FPS
 			}
 
-			probeErr = session.Call(ctx, methodUSBState, nil, &status.USBState)
-			if err := statusProbeResult(ctx, &status, probeErr, mcpserver.StatusWarningUSBUnavailable); err != nil {
+			probeErr = session.Call(operationCtx, methodUSBState, nil, &status.USBState)
+			if err := statusProbeResult(ctx, operationCtx, &status, probeErr, mcpserver.StatusWarningUSBUnavailable); err != nil {
 				return err
 			}
 			if probeErr == nil {
@@ -330,8 +335,8 @@ func (manager *Manager) Status(ctx context.Context, name string) (mcpserver.Stat
 				var atx struct {
 					Power *bool `json:"power"`
 				}
-				probeErr = session.Call(ctx, methodATXState, nil, &atx)
-				if err := statusProbeResult(ctx, &status, probeErr, mcpserver.StatusWarningATXUnavailable); err != nil {
+				probeErr = session.Call(operationCtx, methodATXState, nil, &atx)
+				if err := statusProbeResult(ctx, operationCtx, &status, probeErr, mcpserver.StatusWarningATXUnavailable); err != nil {
 					return err
 				}
 				if probeErr == nil {
@@ -342,8 +347,8 @@ func (manager *Manager) Status(ctx context.Context, name string) (mcpserver.Stat
 					On      *bool   `json:"isOn"`
 					Voltage float64 `json:"voltage"`
 				}
-				probeErr = session.Call(ctx, methodDCPowerState, nil, &dc)
-				if err := statusProbeResult(ctx, &status, probeErr, mcpserver.StatusWarningDCUnavailable); err != nil {
+				probeErr = session.Call(operationCtx, methodDCPowerState, nil, &dc)
+				if err := statusProbeResult(ctx, operationCtx, &status, probeErr, mcpserver.StatusWarningDCUnavailable); err != nil {
 					return err
 				}
 				if probeErr == nil {
@@ -359,8 +364,8 @@ func (manager *Manager) Status(ctx context.Context, name string) (mcpserver.Stat
 	return status, nil
 }
 
-func statusProbeResult(ctx context.Context, status *mcpserver.Status, probeErr error, warning mcpserver.StatusWarning) error {
-	if ctxErr := ctx.Err(); ctxErr != nil {
+func statusProbeResult(callerCtx, operationCtx context.Context, status *mcpserver.Status, probeErr error, warning mcpserver.StatusWarning) error {
+	if ctxErr := statusContextError(callerCtx, operationCtx); ctxErr != nil {
 		if probeErr != nil && errors.Is(probeErr, ctxErr) {
 			return probeErr
 		}
@@ -370,6 +375,13 @@ func statusProbeResult(ctx context.Context, status *mcpserver.Status, probeErr e
 		status.Warnings = append(status.Warnings, warning)
 	}
 	return nil
+}
+
+func statusContextError(callerCtx, operationCtx context.Context) error {
+	if err := callerCtx.Err(); err != nil {
+		return err
+	}
+	return operationCtx.Err()
 }
 
 func (manager *Manager) Power(ctx context.Context, name string, action mcpserver.PowerAction, targetName string) (mcpserver.PowerResult, error) {
@@ -382,8 +394,8 @@ func (manager *Manager) Power(ctx context.Context, name string, action mcpserver
 		return mcpserver.PowerResult{}, err
 	}
 	if err := manager.withOperation(ctx, device, true, false, func() error {
-		return manager.withSession(ctx, device, func(session Session) error {
-			return session.Call(ctx, method, params, nil)
+		return manager.withSession(ctx, device, func(operationCtx context.Context, session Session) error {
+			return session.Call(operationCtx, method, params, nil)
 		})
 	}); err != nil {
 		return mcpserver.PowerResult{}, err
@@ -391,7 +403,7 @@ func (manager *Manager) Power(ctx context.Context, name string, action mcpserver
 	return mcpserver.PowerResult{Device: device.Name, Action: action, Target: targetName, Status: mcpserver.ResultStatusCompleted}, nil
 }
 
-func (manager *Manager) withSession(ctx context.Context, device DeviceConfig, operation func(Session) error) error {
+func (manager *Manager) withSession(ctx context.Context, device DeviceConfig, operation func(context.Context, Session) error) error {
 	admission := telemetry.BeginStage(ctx, telemetry.StageAdmission)
 	if !tryAcquire(manager.sessions) {
 		err := busyNotSent()
@@ -400,29 +412,33 @@ func (manager *Manager) withSession(ctx context.Context, device DeviceConfig, op
 	}
 	finishTelemetryStage(admission, nil)
 	defer release(manager.sessions)
-	connected, err := manager.connector.Connect(ctx, device)
-	if err != nil {
-		if ctxErr := ctx.Err(); ctxErr != nil {
-			return classifyOperationError(ctxErr, ToolOutcomeNotSent)
-		}
-		var classified interface{ ToolErrorOutcome() string }
-		if errors.As(err, &classified) {
-			return err
-		}
-		return classifyOperationError(err, ToolOutcomeNotSent)
+	return manager.owners[device.Name].Run(ctx, operation)
+}
+
+// Close stops device-owner admission, cancels active work, and waits for every
+// operation-scoped generation to finish cleanup within ctx.
+func (manager *Manager) Close(ctx context.Context) error {
+	if ctx == nil {
+		ctx = context.Background()
 	}
-	if connected == nil {
-		return classifyOperationError(ErrInvalidResponse, ToolOutcomeNotSent)
+	manager.closed.Store(true)
+	results := make(chan error, len(manager.owners))
+	for _, owner := range manager.owners {
+		go func(owner *deviceOwner) { results <- owner.Close(ctx) }(owner)
 	}
-	defer func() {
-		cleanup := telemetry.BeginStage(ctx, telemetry.StageCleanup)
-		_ = connected.Close(ctx)
-		finishTelemetryStage(cleanup, nil)
-	}()
-	return operation(connected)
+	var closeErr error
+	for range manager.owners {
+		if err := <-results; err != nil && closeErr == nil {
+			closeErr = err
+		}
+	}
+	return closeErr
 }
 
 func (manager *Manager) withOperation(ctx context.Context, device DeviceConfig, mutation, capture bool, operation func() error) error {
+	if manager.closed.Load() {
+		return classifyOperationError(ErrSessionClosed, ToolOutcomeNotSent)
+	}
 	if !tryAcquire(manager.operations) {
 		return busyNotSent()
 	}

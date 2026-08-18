@@ -52,22 +52,24 @@ func (session *deterministicConnectedSession) Close(ctx context.Context) error {
 
 func TestDeterministicConnectorControlsFailureLossAndCleanupCompletion(t *testing.T) {
 	base, _ := url.Parse("https://jetkvm.invalid")
-	connectErr := errors.New("controlled connect failure")
-	manager, err := NewManager(
-		[]DeviceConfig{{Name: "lab", BaseURL: *base}},
-		&deterministicConnector{err: connectErr},
-	)
-	if err != nil {
-		t.Fatal(err)
+	newManager := func(connector SessionConnector) *Manager {
+		manager, err := NewManager([]DeviceConfig{{Name: "lab", BaseURL: *base}}, connector)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = manager.Close(context.Background()) })
+		return manager
 	}
+	connectErr := errors.New("controlled connect failure")
+	manager := newManager(&deterministicConnector{err: connectErr})
 	if _, err := manager.DebugRPC(context.Background(), "lab", methodPing, nil, false); !errors.Is(err, connectErr) {
 		t.Fatalf("connect error = %v, want controlled failure", err)
 	}
 	pingErr := errors.New("controlled ping failure")
-	manager.connector = &deterministicConnector{session: &deterministicConnectedSession{
+	manager = newManager(&deterministicConnector{session: &deterministicConnectedSession{
 		fakeSession: &fakeSession{err: map[string]error{methodPing: pingErr}},
 		lost:        make(chan struct{}),
-	}}
+	}})
 	if _, err := manager.DebugRPC(context.Background(), "lab", methodPing, nil, false); !errors.Is(err, pingErr) {
 		t.Fatalf("ping error = %v, want controlled RPC failure", err)
 	}
@@ -78,7 +80,7 @@ func TestDeterministicConnectorControlsFailureLossAndCleanupCompletion(t *testin
 		closeStart:  make(chan struct{}),
 		closeDone:   make(chan struct{}),
 	}
-	manager.connector = &deterministicConnector{session: session}
+	manager = newManager(&deterministicConnector{session: session})
 	result := make(chan error, 1)
 	go func() {
 		_, callErr := manager.DebugRPC(context.Background(), "lab", methodPing, nil, false)

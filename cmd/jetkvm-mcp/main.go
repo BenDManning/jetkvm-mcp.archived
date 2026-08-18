@@ -105,10 +105,12 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	}
 	connector := jetkvm.NewWebRTCConnector(jetkvm.WebRTCConnectorOptions{})
 	if options.kind == commandConfigValidate {
-		if _, err := jetkvm.NewManager(loaded.Devices, connector, jetkvm.WithLimits(loaded.Limits)); err != nil {
+		manager, err := jetkvm.NewManager(loaded.Devices, connector, jetkvm.WithLimits(loaded.Limits))
+		if err != nil {
 			return err
 		}
-		_, err := io.WriteString(stdout, "configuration valid\n")
+		_ = manager.Close(context.Background())
+		_, err = io.WriteString(stdout, "configuration valid\n")
 		return err
 	}
 	if options.kind == commandDebugRPC {
@@ -116,6 +118,7 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		if err != nil {
 			return err
 		}
+		defer func() { _ = manager.Close(context.Background()) }()
 		recorder := telemetry.New(stderr, reportedVersion())
 		operationCtx, span := recorder.Start(ctx, telemetry.TransportStdio, telemetry.OperationDebugRPC)
 		result, err := manager.DebugRPC(operationCtx, options.debugDevice, options.debugMethod, options.debugParams, options.debugUnsafeAcknowledged)
@@ -151,6 +154,7 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	} else {
 		serveErr = serveHTTP(ctx, server, options.httpAddress, loaded.HTTPBearerToken, loaded.HTTPAllowedOrigins, stderr)
 	}
+	_ = manager.Close(ctx)
 	finishTelemetry(recorder, transport, serveErr)
 	return serveErr
 }

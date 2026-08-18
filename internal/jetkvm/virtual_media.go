@@ -81,16 +81,16 @@ func (manager *Manager) virtualMedia(ctx context.Context, device DeviceConfig, r
 		if err != nil {
 			return mcpserver.VirtualMediaResult{}, classifyOperationError(err, ToolOutcomeNotSent)
 		}
-		err = manager.withSession(ctx, device, func(session Session) error {
-			return session.Call(ctx, "mountWithHTTP", map[string]any{"url": source.String(), "mode": mode}, nil)
+		err = manager.withSession(ctx, device, func(operationCtx context.Context, session Session) error {
+			return session.Call(operationCtx, "mountWithHTTP", map[string]any{"url": source.String(), "mode": mode}, nil)
 		})
 		if err != nil {
 			return mcpserver.VirtualMediaResult{}, err
 		}
 		return mcpserver.VirtualMediaResult{Device: device.Name, Operation: request.Operation, Mounted: true, SourceType: mcpserver.VirtualMediaSourceHTTP, Mode: publicMode, Status: mcpserver.ResultStatusCompleted}, nil
 	case mcpserver.VirtualMediaUnmount:
-		err := manager.withSession(ctx, device, func(session Session) error {
-			return session.Call(ctx, "unmountImage", nil, nil)
+		err := manager.withSession(ctx, device, func(operationCtx context.Context, session Session) error {
+			return session.Call(operationCtx, "unmountImage", nil, nil)
 		})
 		if err != nil {
 			return mcpserver.VirtualMediaResult{}, err
@@ -105,8 +105,8 @@ func (manager *Manager) virtualMedia(ctx context.Context, device DeviceConfig, r
 
 func (manager *Manager) virtualMediaStatus(ctx context.Context, device DeviceConfig) (mcpserver.VirtualMediaResult, error) {
 	var state *firmwareVirtualMediaState
-	err := manager.withSession(ctx, device, func(session Session) error {
-		return session.Call(ctx, "getVirtualMediaState", nil, &state)
+	err := manager.withSession(ctx, device, func(operationCtx context.Context, session Session) error {
+		return session.Call(operationCtx, "getVirtualMediaState", nil, &state)
 	})
 	if err != nil {
 		return mcpserver.VirtualMediaResult{}, classifyReadFailure(err)
@@ -157,38 +157,38 @@ func (manager *Manager) uploadLocalMedia(ctx context.Context, device DeviceConfi
 	}
 
 	mutated := false
-	err = manager.withSession(ctx, device, func(session Session) error {
+	err = manager.withSession(ctx, device, func(operationCtx context.Context, session Session) error {
 		var err error
-		mutated, err = discardIncompleteUpload(ctx, session, filename)
+		mutated, err = discardIncompleteUpload(operationCtx, session, filename)
 		if err != nil {
 			return err
 		}
 		var started firmwareUploadStart
-		if err := session.Call(ctx, "startStorageFileUpload", map[string]any{"filename": filename, "size": info.Size()}, &started); err != nil {
+		if err := session.Call(operationCtx, "startStorageFileUpload", map[string]any{"filename": filename, "size": info.Size()}, &started); err != nil {
 			return mutationSequenceError(err, mutated)
 		}
 		mutated = true
 		if started.AlreadyUploadedBytes != 0 || !uploadIDPattern.MatchString(started.UploadID) {
-			abortStartedUpload(ctx, session, started.UploadID, filename)
+			abortStartedUpload(operationCtx, session, started.UploadID, filename)
 			return classifyOperationError(fmt.Errorf("%w: upload negotiation", ErrInvalidResponse), ToolOutcomeUnknown)
 		}
 		uploadedHash := sha256.New()
-		uploadErr := session.Upload(ctx, started.UploadID, io.TeeReader(io.LimitReader(file, info.Size()), uploadedHash), info.Size())
+		uploadErr := session.Upload(operationCtx, started.UploadID, io.TeeReader(io.LimitReader(file, info.Size()), uploadedHash), info.Size())
 		if uploadErr != nil {
-			bestEffortDeleteUploadArtifacts(ctx, session, filename)
+			bestEffortDeleteUploadArtifacts(operationCtx, session, filename)
 			return mutationSequenceError(uploadErr, true)
 		}
 		if !bytes.Equal(uploadedHash.Sum(nil), initialDigest) {
-			bestEffortDeleteUploadArtifacts(ctx, session, filename)
+			bestEffortDeleteUploadArtifacts(operationCtx, session, filename)
 			return classifyOperationError(fmt.Errorf("%w: media file changed during upload", ErrMediaPath), ToolOutcomeUnknown)
 		}
-		if err := verifyMediaFileUnchanged(ctx, device.MediaDirectory, request.Source, info, initialDigest); err != nil {
-			bestEffortDeleteUploadArtifacts(ctx, session, filename)
+		if err := verifyMediaFileUnchanged(operationCtx, device.MediaDirectory, request.Source, info, initialDigest); err != nil {
+			bestEffortDeleteUploadArtifacts(operationCtx, session, filename)
 			return mutationSequenceError(err, true)
 		}
 		if request.Operation == mcpserver.VirtualMediaMountFile {
-			if err := session.Call(ctx, "mountWithStorage", map[string]any{"filename": filename, "mode": mode}, nil); err != nil {
-				bestEffortDeleteUploadArtifacts(ctx, session, filename)
+			if err := session.Call(operationCtx, "mountWithStorage", map[string]any{"filename": filename, "mode": mode}, nil); err != nil {
+				bestEffortDeleteUploadArtifacts(operationCtx, session, filename)
 				return mutationSequenceError(err, true)
 			}
 		}

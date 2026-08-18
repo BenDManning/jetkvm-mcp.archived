@@ -71,18 +71,18 @@ func (manager *Manager) captureScreen(ctx context.Context, name string, request 
 	var annexB []byte
 	var capturedAt time.Time
 	err = manager.withOperation(captureCtx, device, false, true, func() error {
-		return manager.withSession(captureCtx, device, func(session Session) error {
+		return manager.withSession(captureCtx, device, func(operationCtx context.Context, session Session) error {
 			var state struct {
 				Ready *bool `json:"ready"`
 			}
-			if err := session.Call(captureCtx, methodVideoState, nil, &state); err != nil {
+			if err := session.Call(operationCtx, methodVideoState, nil, &state); err != nil {
 				return err
 			}
 			if state.Ready != nil && !*state.Ready {
 				return ErrNoSignal
 			}
 			var err error
-			annexB, capturedAt, err = session.CaptureH264(captureCtx)
+			annexB, capturedAt, err = session.CaptureH264(operationCtx)
 			return err
 		})
 	})

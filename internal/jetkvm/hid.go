@@ -53,7 +53,7 @@ func (manager *Manager) Keyboard(ctx context.Context, name string, request mcpse
 		return mcpserver.KeyboardResult{}, classifyOperationError(err, ToolOutcomeNotSent)
 	}
 	err = manager.withOperation(ctx, device, true, false, func() error {
-		return manager.withSession(ctx, device, func(session Session) error {
+		return manager.withSession(ctx, device, func(operationCtx context.Context, session Session) error {
 			pressed := false
 			defer func() {
 				if pressed {
@@ -62,10 +62,10 @@ func (manager *Manager) Keyboard(ctx context.Context, name string, request mcpse
 			}()
 			for index, report := range reports {
 				pressed = true
-				if err := session.Call(ctx, "keyboardReport", map[string]any{"modifier": report.modifier, "keys": []int{report.usage}}, nil); err != nil {
+				if err := session.Call(operationCtx, "keyboardReport", map[string]any{"modifier": report.modifier, "keys": []int{report.usage}}, nil); err != nil {
 					return mutationSequenceError(err, index > 0)
 				}
-				if err := releaseKeyboard(ctx, session); err != nil {
+				if err := releaseKeyboard(operationCtx, session); err != nil {
 					return mutationSequenceError(err, true)
 				}
 				pressed = false
@@ -89,7 +89,7 @@ func (manager *Manager) Mouse(ctx context.Context, name string, request mcpserve
 		return mcpserver.MouseResult{}, classifyOperationError(err, ToolOutcomeNotSent)
 	}
 	err = manager.withOperation(ctx, device, true, false, func() error {
-		return manager.withSession(ctx, device, func(session Session) error {
+		return manager.withSession(ctx, device, func(operationCtx context.Context, session Session) error {
 			pressed := false
 			defer func() {
 				if pressed {
@@ -100,7 +100,7 @@ func (manager *Manager) Mouse(ctx context.Context, name string, request mcpserve
 				if request.Operation == mcpserver.MouseClick && index == 0 {
 					pressed = true
 				}
-				if err := session.Call(ctx, call.method, call.params, nil); err != nil {
+				if err := session.Call(operationCtx, call.method, call.params, nil); err != nil {
 					return mutationSequenceError(err, index > 0)
 				}
 				if request.Operation == mcpserver.MouseClick && index == len(calls)-1 {
