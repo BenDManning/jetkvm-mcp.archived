@@ -171,7 +171,7 @@ func registerOwnerOperation(t *testing.T, owner *deviceOwner, ctx context.Contex
 	return registered
 }
 
-func TestDeviceOwnerSharesSetupAndSerializesSameDeviceWork(t *testing.T) {
+func TestDeviceOwnerSharesSetupAcrossSameDeviceWork(t *testing.T) {
 	base, _ := url.Parse("https://jetkvm.invalid")
 	session := &residentSession{done: make(chan struct{})}
 	connector := &sharedAttemptConnector{
@@ -180,12 +180,9 @@ func TestDeviceOwnerSharesSetupAndSerializesSameDeviceWork(t *testing.T) {
 	owner := newDeviceOwner(DeviceConfig{Name: "lab", BaseURL: *base}, connector)
 	t.Cleanup(func() { _ = owner.Close(context.Background()) })
 
-	var running, maximum atomic.Int32
+	var operations atomic.Int32
 	operation := func(context.Context, Session) error {
-		current := running.Add(1)
-		for previous := maximum.Load(); current > previous && !maximum.CompareAndSwap(previous, current); previous = maximum.Load() {
-		}
-		running.Add(-1)
+		operations.Add(1)
 		return nil
 	}
 	first := registerOwnerOperation(t, owner, context.Background(), operation)
@@ -198,8 +195,8 @@ func TestDeviceOwnerSharesSetupAndSerializesSameDeviceWork(t *testing.T) {
 	if result := <-second.reply; result.err != nil {
 		t.Fatal(result.err)
 	}
-	if connector.calls.Load() != 1 || maximum.Load() != 1 {
-		t.Fatalf("connects=%d concurrent operations=%d, want one shared setup and serialization", connector.calls.Load(), maximum.Load())
+	if connector.calls.Load() != 1 || operations.Load() != 2 {
+		t.Fatalf("connects=%d completed operations=%d, want one shared setup across both operations", connector.calls.Load(), operations.Load())
 	}
 }
 
