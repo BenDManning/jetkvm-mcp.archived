@@ -200,7 +200,7 @@ func (decoder *blockingDecoder) Decode(context.Context, []byte, int, int) ([]byt
 	return nil, 0, 0, ErrDecoderUnavailable
 }
 
-func TestManagerAdmissionDecoderCapacityRejectsBeforeProviderDispatch(t *testing.T) {
+func TestManagerAdmissionDecoderCapacityRejectsAfterFrameAcquisition(t *testing.T) {
 	provider := &blockingProvider{entered: make(chan struct{}, 2), release: make(chan struct{}), session: admissionSession{}}
 	close(provider.release)
 	base, err := url.Parse("https://jetkvm.invalid")
@@ -219,9 +219,12 @@ func TestManagerAdmissionDecoderCapacityRejectsBeforeProviderDispatch(t *testing
 	}()
 	<-decoder.entered
 	_, err = manager.CaptureScreen(context.Background(), "lab", mcpserver.CaptureRequest{})
-	assertBusyNotSent(t, err)
+	var classified *OperationError
+	if !errors.As(err, &classified) || classified.Code != "busy" || classified.Outcome != ToolOutcomeFailed {
+		t.Fatalf("error = %#v, want busy/failed after conclusive frame acquisition", err)
+	}
 	if provider.count() != 1 {
-		t.Fatalf("decoder capacity dispatched %d calls", provider.count())
+		t.Fatalf("resident capture opened %d connections", provider.count())
 	}
 	close(decoder.release)
 	<-first
@@ -372,7 +375,7 @@ func TestManagerSerializesCompleteHIDAndVirtualMediaMutations(t *testing.T) {
 	}
 }
 
-func TestManagerSerializesCompleteSameDeviceOperations(t *testing.T) {
+func TestManagerAllowsConcurrentSameDeviceReads(t *testing.T) {
 	provider := &blockingProvider{entered: make(chan struct{}, 1), release: make(chan struct{}), session: admissionSession{}}
 	close(provider.release)
 	manager := admissionManager(t, Limits{
@@ -400,11 +403,7 @@ func TestManagerSerializesCompleteSameDeviceOperations(t *testing.T) {
 			return nil
 		})
 	}()
-	select {
-	case <-secondStarted:
-		t.Fatal("same-device operation overlapped the complete first operation")
-	case <-time.After(10 * time.Millisecond):
-	}
+	<-secondStarted
 	close(releaseFirst)
 	if err := <-firstDone; err != nil {
 		t.Fatal(err)

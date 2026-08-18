@@ -167,8 +167,9 @@ type Manager struct {
 	connectionAttempts chan struct{}
 	captures           chan struct{}
 	decoders           chan struct{}
-	mutations          map[string]chan struct{}
+	capabilityProfile  capabilityProfile
 	sessionIdleTimeout time.Duration
+	ownerAfterFunc     func(time.Duration, func()) ownerTimer
 	shutdownCtx        context.Context
 	shutdownCancel     context.CancelFunc
 	workMu             sync.Mutex
@@ -184,7 +185,6 @@ func NewManager(devices []DeviceConfig, connector SessionConnector, options ...M
 		devices:   make(map[string]DeviceConfig, len(devices)),
 		owners:    make(map[string]*deviceOwner, len(devices)),
 		deviceOps: make(map[string]chan struct{}, len(devices)),
-		mutations: make(map[string]chan struct{}, len(devices)),
 	}
 	for _, candidate := range devices {
 		name := strings.TrimSpace(candidate.Name)
@@ -243,9 +243,31 @@ func NewManager(devices []DeviceConfig, connector SessionConnector, options ...M
 		manager.owners[name] = newDeviceOwnerWithSettings(device, connector, ownerSettings{
 			connectionAttempts: manager.connectionAttempts,
 			idleTimeout:        manager.sessionIdleTimeout,
+			profile:            manager.capabilityProfile,
+			afterFunc:          manager.ownerAfterFunc,
 		})
 	}
 	return manager, nil
+}
+
+func withOwnerAfterFunc(afterFunc func(time.Duration, func()) ownerTimer) ManagerOption {
+	return func(manager *Manager) error {
+		if afterFunc == nil {
+			return errors.New("owner timer factory is required")
+		}
+		manager.ownerAfterFunc = afterFunc
+		return nil
+	}
+}
+
+func withCapabilityProfile(profile capabilityProfile) ManagerOption {
+	return func(manager *Manager) error {
+		if profile.revision == 0 {
+			return errors.New("capability profile revision is required")
+		}
+		manager.capabilityProfile = profile
+		return nil
+	}
 }
 
 // WithLimits configures bounded, process-wide admission. Capacity exhaustion
@@ -264,7 +286,6 @@ func WithLimits(limits Limits) ManagerOption {
 		manager.decoders = make(chan struct{}, validated.MaxDecoders)
 		for name := range manager.devices {
 			manager.deviceOps[name] = make(chan struct{}, validated.MaxOperationsPerDevice)
-			manager.mutations[name] = make(chan struct{}, 1)
 		}
 		return nil
 	}
@@ -310,6 +331,9 @@ func (manager *Manager) Status(ctx context.Context, name string) (mcpserver.Stat
 		if pong != "pong" {
 			return fmt.Errorf("%w: ping result", ErrInvalidResponse)
 		}
+		if generationEnded(session) {
+			return ErrSessionClosed
+		}
 		status.Connected = true
 
 		var version struct {
@@ -317,7 +341,7 @@ func (manager *Manager) Status(ctx context.Context, name string) (mcpserver.Stat
 			System      string `json:"systemVersion"`
 		}
 		probeErr := session.Call(operationCtx, methodLocalVersion, nil, &version)
-		if err := statusProbeResult(ctx, operationCtx, &status, probeErr, mcpserver.StatusWarningVersionUnavailable); err != nil {
+		if err := statusProbeResult(ctx, operationCtx, session, &status, probeErr, mcpserver.StatusWarningVersionUnavailable); err != nil {
 			return err
 		}
 		if probeErr == nil {
@@ -325,13 +349,13 @@ func (manager *Manager) Status(ctx context.Context, name string) (mcpserver.Stat
 		}
 
 		probeErr = session.Call(operationCtx, methodActiveExtension, nil, &status.Extension)
-		if err := statusProbeResult(ctx, operationCtx, &status, probeErr, mcpserver.StatusWarningActiveExtensionUnavailable); err != nil {
+		if err := statusProbeResult(ctx, operationCtx, session, &status, probeErr, mcpserver.StatusWarningActiveExtensionUnavailable); err != nil {
 			return err
 		}
 
 		var media *firmwareVirtualMediaState
 		probeErr = session.Call(operationCtx, methodVirtualMediaState, nil, &media)
-		if err := statusProbeResult(ctx, operationCtx, &status, probeErr, mcpserver.StatusWarningVirtualMediaUnavailable); err != nil {
+		if err := statusProbeResult(ctx, operationCtx, session, &status, probeErr, mcpserver.StatusWarningVirtualMediaUnavailable); err != nil {
 			return err
 		}
 		if probeErr == nil {
@@ -349,7 +373,7 @@ func (manager *Manager) Status(ctx context.Context, name string) (mcpserver.Stat
 			FPS    int   `json:"fps"`
 		}
 		probeErr = session.Call(operationCtx, methodVideoState, nil, &video)
-		if err := statusProbeResult(ctx, operationCtx, &status, probeErr, mcpserver.StatusWarningVideoUnavailable); err != nil {
+		if err := statusProbeResult(ctx, operationCtx, session, &status, probeErr, mcpserver.StatusWarningVideoUnavailable); err != nil {
 			return err
 		}
 		if probeErr == nil {
@@ -357,7 +381,7 @@ func (manager *Manager) Status(ctx context.Context, name string) (mcpserver.Stat
 		}
 
 		probeErr = session.Call(operationCtx, methodUSBState, nil, &status.USBState)
-		if err := statusProbeResult(ctx, operationCtx, &status, probeErr, mcpserver.StatusWarningUSBUnavailable); err != nil {
+		if err := statusProbeResult(ctx, operationCtx, session, &status, probeErr, mcpserver.StatusWarningUSBUnavailable); err != nil {
 			return err
 		}
 		if probeErr == nil {
@@ -371,7 +395,7 @@ func (manager *Manager) Status(ctx context.Context, name string) (mcpserver.Stat
 				Power *bool `json:"power"`
 			}
 			probeErr = session.Call(operationCtx, methodATXState, nil, &atx)
-			if err := statusProbeResult(ctx, operationCtx, &status, probeErr, mcpserver.StatusWarningATXUnavailable); err != nil {
+			if err := statusProbeResult(ctx, operationCtx, session, &status, probeErr, mcpserver.StatusWarningATXUnavailable); err != nil {
 				return err
 			}
 			if probeErr == nil {
@@ -383,7 +407,7 @@ func (manager *Manager) Status(ctx context.Context, name string) (mcpserver.Stat
 				Voltage float64 `json:"voltage"`
 			}
 			probeErr = session.Call(operationCtx, methodDCPowerState, nil, &dc)
-			if err := statusProbeResult(ctx, operationCtx, &status, probeErr, mcpserver.StatusWarningDCUnavailable); err != nil {
+			if err := statusProbeResult(ctx, operationCtx, session, &status, probeErr, mcpserver.StatusWarningDCUnavailable); err != nil {
 				return err
 			}
 			if probeErr == nil {
@@ -398,7 +422,13 @@ func (manager *Manager) Status(ctx context.Context, name string) (mcpserver.Stat
 	return status, nil
 }
 
-func statusProbeResult(callerCtx, operationCtx context.Context, status *mcpserver.Status, probeErr error, warning mcpserver.StatusWarning) error {
+func statusProbeResult(callerCtx, operationCtx context.Context, session Session, status *mcpserver.Status, probeErr error, warning mcpserver.StatusWarning) error {
+	if generationEnded(session) {
+		if probeErr != nil {
+			return probeErr
+		}
+		return ErrSessionClosed
+	}
 	if ctxErr := statusContextError(callerCtx, operationCtx); ctxErr != nil {
 		if probeErr != nil && errors.Is(probeErr, ctxErr) {
 			return probeErr
@@ -409,6 +439,11 @@ func statusProbeResult(callerCtx, operationCtx context.Context, status *mcpserve
 		status.Warnings = append(status.Warnings, warning)
 	}
 	return nil
+}
+
+func generationEnded(session Session) bool {
+	state, ok := session.(interface{ GenerationEnded() bool })
+	return ok && state.GenerationEnded()
 }
 
 func statusContextError(callerCtx, operationCtx context.Context) error {
@@ -436,9 +471,13 @@ func (manager *Manager) Power(ctx context.Context, name string, action mcpserver
 }
 
 func (manager *Manager) withSession(ctx context.Context, device DeviceConfig, operation func(context.Context, Session) error) error {
+	return manager.withScheduledSession(ctx, device, ownerOperationOrdinary, nil, operation)
+}
+
+func (manager *Manager) withScheduledSession(ctx context.Context, device DeviceConfig, class ownerOperationClass, prepare func() error, operation func(context.Context, Session) error) error {
 	admission := telemetry.BeginStage(ctx, telemetry.StageAdmission)
 	finishTelemetryStage(admission, nil)
-	return manager.owners[device.Name].Run(ctx, operation)
+	return manager.owners[device.Name].RunPrepared(ctx, class, prepare, operation)
 }
 
 // Close stops device-owner admission, cancels active work, and waits for every
@@ -491,6 +530,18 @@ func (manager *Manager) withOperation(ctx context.Context, device DeviceConfig, 
 }
 
 func (manager *Manager) withPreparedOperation(ctx context.Context, device DeviceConfig, mutation, capture bool, prepare func() error, operation func(context.Context, Session) error) error {
+	class := ownerOperationOrdinary
+	if mutation {
+		class = ownerOperationMutation
+	}
+	return manager.withScheduledOperation(ctx, device, capture, class, prepare, operation)
+}
+
+func (manager *Manager) withHIDOperation(ctx context.Context, device DeviceConfig, operation func(context.Context, Session) error) error {
+	return manager.withScheduledOperation(ctx, device, false, ownerOperationHID, nil, operation)
+}
+
+func (manager *Manager) withScheduledOperation(ctx context.Context, device DeviceConfig, capture bool, class ownerOperationClass, prepare func() error, operation func(context.Context, Session) error) error {
 	if manager.closed.Load() {
 		return classifyOperationError(ErrSessionClosed, ToolOutcomeNotSent)
 	}
@@ -501,10 +552,10 @@ func (manager *Manager) withPreparedOperation(ctx context.Context, device Device
 		release(manager.operations)
 		return busyNotSent()
 	}
-	return manager.runOperation(ctx, device, mutation, capture, prepare, operation)
+	return manager.runOperation(ctx, device, capture, class, prepare, operation)
 }
 
-func (manager *Manager) runOperation(ctx context.Context, device DeviceConfig, mutation, capture bool, prepare func() error, operation func(context.Context, Session) error) error {
+func (manager *Manager) runOperation(ctx context.Context, device DeviceConfig, capture bool, class ownerOperationClass, prepare func() error, operation func(context.Context, Session) error) error {
 	defer release(manager.operations)
 	defer release(manager.deviceOps[device.Name])
 	if capture {
@@ -513,18 +564,7 @@ func (manager *Manager) runOperation(ctx context.Context, device DeviceConfig, m
 		}
 		defer release(manager.captures)
 	}
-	if mutation {
-		if err := acquireContext(ctx, manager.mutations[device.Name]); err != nil {
-			return classifyOperationError(err, ToolOutcomeNotSent)
-		}
-		defer release(manager.mutations[device.Name])
-	}
-	if prepare != nil {
-		if err := prepare(); err != nil {
-			return err
-		}
-	}
-	return manager.withSession(ctx, device, operation)
+	return manager.withScheduledSession(ctx, device, class, prepare, operation)
 }
 
 func tryAcquire(permits chan struct{}) bool {
@@ -533,15 +573,6 @@ func tryAcquire(permits chan struct{}) bool {
 		return true
 	default:
 		return false
-	}
-}
-
-func acquireContext(ctx context.Context, permits chan struct{}) error {
-	select {
-	case permits <- struct{}{}:
-		return nil
-	case <-ctx.Done():
-		return ctx.Err()
 	}
 }
 

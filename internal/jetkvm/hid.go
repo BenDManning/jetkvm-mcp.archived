@@ -52,22 +52,16 @@ func (manager *Manager) Keyboard(ctx context.Context, name string, request mcpse
 	if err != nil {
 		return mcpserver.KeyboardResult{}, classifyOperationError(err, ToolOutcomeNotSent)
 	}
-	err = manager.withOperation(ctx, device, true, false, func(operationCtx context.Context, session Session) error {
-		pressed := false
-		defer func() {
-			if pressed {
-				bestEffortKeyboardRelease(session)
-			}
-		}()
+	err = manager.withHIDOperation(ctx, device, func(operationCtx context.Context, session Session) error {
 		for index, report := range reports {
-			pressed = true
+			armHIDNeutralization(session, hidPressedKeyboard)
 			if err := session.Call(operationCtx, "keyboardReport", map[string]any{"modifier": report.modifier, "keys": []int{report.usage}}, nil); err != nil {
 				return mutationSequenceError(err, index > 0)
 			}
 			if err := releaseKeyboard(operationCtx, session); err != nil {
 				return mutationSequenceError(err, true)
 			}
-			pressed = false
+			acknowledgeHIDNeutralization(session)
 		}
 		return nil
 	})
@@ -86,22 +80,16 @@ func (manager *Manager) Mouse(ctx context.Context, name string, request mcpserve
 	if err != nil {
 		return mcpserver.MouseResult{}, classifyOperationError(err, ToolOutcomeNotSent)
 	}
-	err = manager.withOperation(ctx, device, true, false, func(operationCtx context.Context, session Session) error {
-		pressed := false
-		defer func() {
-			if pressed {
-				bestEffortMouseRelease(session)
-			}
-		}()
+	err = manager.withHIDOperation(ctx, device, func(operationCtx context.Context, session Session) error {
 		for index, call := range calls {
 			if request.Operation == mcpserver.MouseClick && index == 0 {
-				pressed = true
+				armHIDNeutralization(session, hidPressedMouse)
 			}
 			if err := session.Call(operationCtx, call.method, call.params, nil); err != nil {
 				return mutationSequenceError(err, index > 0)
 			}
 			if request.Operation == mcpserver.MouseClick && index == len(calls)-1 {
-				pressed = false
+				acknowledgeHIDNeutralization(session)
 			}
 		}
 		return nil

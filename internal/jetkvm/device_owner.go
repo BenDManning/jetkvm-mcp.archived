@@ -99,6 +99,7 @@ type ownerWorkerState struct {
 	evidence  ownerWorkerEvidence
 	ctx       context.Context
 	cancel    context.CancelFunc
+	class     ownerOperationClass
 	operation func(context.Context, Session) error
 	reply     chan ownerResult
 	canceled  bool
@@ -112,6 +113,7 @@ type ownerRegistration struct {
 
 type registerOwnerWorker struct {
 	ctx       context.Context
+	class     ownerOperationClass
 	operation func(context.Context, Session) error
 	reply     chan ownerRegistration
 }
@@ -148,6 +150,10 @@ type ownerIdleExpired struct{ generation uint64 }
 
 func (ownerIdleExpired) ownerCommand() {}
 
+type ownerDemandChanged struct{}
+
+func (ownerDemandChanged) ownerCommand() {}
+
 type completeOwnerCleanup struct {
 	generation uint64
 	err        error
@@ -168,6 +174,7 @@ type ownerSettings struct {
 	idleTimeout        time.Duration
 	connectTimeout     time.Duration
 	afterFunc          func(time.Duration, func()) ownerTimer
+	profile            capabilityProfile
 }
 
 type deviceOwner struct {
@@ -175,8 +182,10 @@ type deviceOwner struct {
 	device    DeviceConfig
 	connector SessionConnector
 	settings  ownerSettings
+	scheduler *ownerScheduler
 	commands  chan ownerCommand
 	done      chan struct{}
+	demand    atomic.Int64
 	snapshot  atomic.Value
 }
 
@@ -186,10 +195,11 @@ type ownerAttemptState struct {
 }
 
 type ownerGenerationState struct {
-	id      uint64
-	session ConnectedSession
-	ctx     context.Context
-	cancel  context.CancelFunc
+	id        uint64
+	session   ConnectedSession
+	scheduler *generationScheduler
+	ctx       context.Context
+	cancel    context.CancelFunc
 }
 
 type ownerCleanupState struct {
@@ -218,14 +228,18 @@ func newDeviceOwnerWithSettings(device DeviceConfig, connector SessionConnector,
 			return time.AfterFunc(delay, fire)
 		}
 	}
+	if settings.profile.revision == 0 {
+		settings.profile = initialCapabilityProfile
+	}
 	owner := &deviceOwner{
 		id: nextOwnerID.Add(1), device: device, connector: connector, settings: settings,
-		commands: make(chan ownerCommand), done: make(chan struct{}),
+		scheduler: newOwnerScheduler(settings.profile),
+		commands:  make(chan ownerCommand), done: make(chan struct{}),
 	}
 	owner.snapshot.Store(ownerSnapshot{
 		Ownership: ownerOwnershipIdle, Transition: ownerTransitionNone,
 		Health: ownerHealthUnavailable, Freshness: ownerFreshnessUnknown,
-		Provenance: ownerProvenanceNone, CapabilityProfileRevision: 1,
+		Provenance: ownerProvenanceNone, CapabilityProfileRevision: settings.profile.revision,
 	})
 	go owner.loop()
 	return owner
@@ -236,6 +250,14 @@ func (owner *deviceOwner) Snapshot() ownerSnapshot {
 }
 
 func (owner *deviceOwner) Run(ctx context.Context, operation func(context.Context, Session) error) error {
+	return owner.RunScheduled(ctx, ownerOperationOrdinary, operation)
+}
+
+func (owner *deviceOwner) RunScheduled(ctx context.Context, class ownerOperationClass, operation func(context.Context, Session) error) error {
+	return owner.RunPrepared(ctx, class, nil, operation)
+}
+
+func (owner *deviceOwner) RunPrepared(ctx context.Context, class ownerOperationClass, prepare func() error, operation func(context.Context, Session) error) error {
 	if operation == nil {
 		return errors.New("device operation is required")
 	}
@@ -245,7 +267,24 @@ func (owner *deviceOwner) Run(ctx context.Context, operation func(context.Contex
 	if err := ctx.Err(); err != nil {
 		return classifyOperationError(err, ToolOutcomeNotSent)
 	}
-	registration := registerOwnerWorker{ctx: ctx, operation: operation, reply: make(chan ownerRegistration, 1)}
+	owner.demand.Add(1)
+	defer func() {
+		if owner.demand.Add(-1) == 0 {
+			owner.send(ownerDemandChanged{})
+		}
+	}()
+	if class == ownerOperationMutation || class == ownerOperationHID {
+		if err := owner.scheduler.mutation.acquire(ctx); err != nil {
+			return classifyOperationError(err, ToolOutcomeNotSent)
+		}
+		defer owner.scheduler.mutation.release()
+	}
+	if prepare != nil {
+		if err := prepare(); err != nil {
+			return err
+		}
+	}
+	registration := registerOwnerWorker{ctx: ctx, class: class, operation: operation, reply: make(chan ownerRegistration, 1)}
 	select {
 	case owner.commands <- registration:
 	case <-owner.done:
@@ -296,8 +335,6 @@ func (owner *deviceOwner) Close(ctx context.Context) error {
 	select {
 	case err := <-command.reply:
 		return err
-	case <-owner.done:
-		return nil
 	case <-ctx.Done():
 		return ctx.Err()
 	}
@@ -308,7 +345,7 @@ func (owner *deviceOwner) loop() {
 	workers := make(map[uint64]*ownerWorkerState)
 	queue := make([]uint64, 0)
 	snapshot := owner.Snapshot()
-	var nextGeneration, nextWorker, activeWorker uint64
+	var nextGeneration, nextWorker uint64
 	var attempt *ownerAttemptState
 	var generation *ownerGenerationState
 	var cleanup *ownerCleanupState
@@ -378,7 +415,7 @@ func (owner *deviceOwner) loop() {
 	}
 
 	startNext := func() {
-		if activeWorker != 0 || generation == nil || stopping {
+		if generation == nil || stopping {
 			return
 		}
 		for len(queue) != 0 {
@@ -397,19 +434,17 @@ func (owner *deviceOwner) loop() {
 				idleTimer.Stop()
 				idleTimer = nil
 			}
-			activeWorker = workerID
 			worker.evidence.generation = generation.id
 			worker.evidence.dispatch = ownerDispatchStarted
 			operationCtx, cancel := context.WithCancel(worker.ctx)
 			worker.cancel = cancel
 			stopGenerationCancel := context.AfterFunc(generation.ctx, cancel)
-			go owner.runOperation(operationCtx, stopGenerationCancel, worker.evidence, generation.session, worker.operation)
-			return
+			go owner.runOperation(operationCtx, stopGenerationCancel, worker.evidence, generation.session, generation.scheduler, worker.class, worker.operation)
 		}
 	}
 
 	scheduleIdle := func() {
-		if stopping || attempt != nil || generation == nil || cleanup != nil || activeWorker != 0 || len(queue) != 0 || idleTimer != nil {
+		if stopping || attempt != nil || generation == nil || cleanup != nil || len(workers) != 0 || len(queue) != 0 || owner.demand.Load() != 0 || idleTimer != nil {
 			return
 		}
 		generationID := generation.id
@@ -464,7 +499,7 @@ func (owner *deviceOwner) loop() {
 			}
 			nextWorker++
 			evidence := ownerWorkerEvidence{owner: owner.id, worker: nextWorker, dispatch: ownerDispatchNotSent}
-			worker := &ownerWorkerState{evidence: evidence, ctx: command.ctx, operation: command.operation, reply: make(chan ownerResult, 1)}
+			worker := &ownerWorkerState{evidence: evidence, ctx: command.ctx, class: command.class, operation: command.operation, reply: make(chan ownerResult, 1)}
 			workers[nextWorker] = worker
 			queue = append(queue, nextWorker)
 			if generation == nil && attempt == nil && cleanup == nil {
@@ -481,10 +516,10 @@ func (owner *deviceOwner) loop() {
 
 		case cancelOwnerWorker:
 			worker := workers[command.evidence.worker]
-			preDispatch := worker != nil && activeWorker != command.evidence.worker
+			preDispatch := worker != nil && worker.evidence.generation == 0
 			if preDispatch {
 				removeQueued(command.evidence.worker)
-				lastAttemptWaiter := attempt != nil && len(queue) == 0 && activeWorker == 0
+				lastAttemptWaiter := attempt != nil && len(queue) == 0
 				if lastAttemptWaiter {
 					worker.canceled = true
 					attempt.cancel()
@@ -540,7 +575,7 @@ func (owner *deviceOwner) loop() {
 				}
 			} else if command.session != nil && !stopping && len(queue) != 0 {
 				generationCtx, cancel := context.WithCancel(context.Background())
-				generation = &ownerGenerationState{id: command.generation, session: command.session, ctx: generationCtx, cancel: cancel}
+				generation = &ownerGenerationState{id: command.generation, session: command.session, scheduler: newGenerationScheduler(owner.scheduler, command.session.Done()), ctx: generationCtx, cancel: cancel}
 				snapshot.Health = ownerHealthHealthy
 				go owner.watchGeneration(generation.id, command.session.Done())
 				startNext()
@@ -555,10 +590,12 @@ func (owner *deviceOwner) loop() {
 		case completeOwnerWorker:
 			completion := command.completion
 			worker := workers[completion.evidence.worker]
-			if worker == nil || activeWorker != completion.evidence.worker || worker.evidence.owner != completion.evidence.owner || worker.evidence.generation != completion.evidence.generation {
+			if worker == nil || worker.evidence.generation == 0 || worker.evidence.owner != completion.evidence.owner || worker.evidence.generation != completion.evidence.generation {
 				break
 			}
-			activeWorker = 0
+			if worker.cancel != nil {
+				worker.cancel()
+			}
 			delete(workers, completion.evidence.worker)
 			if completion.err == nil && completion.panicValue == nil {
 				snapshot.Observations.Completed++
@@ -579,9 +616,12 @@ func (owner *deviceOwner) loop() {
 
 		case ownerIdleExpired:
 			idleTimer = nil
-			if generation != nil && generation.id == command.generation && activeWorker == 0 && len(queue) == 0 {
+			if generation != nil && generation.id == command.generation && len(workers) == 0 && len(queue) == 0 && owner.demand.Load() == 0 {
 				startCleanup(generation)
 			}
+
+		case ownerDemandChanged:
+			scheduleIdle()
 
 		case completeOwnerCleanup:
 			if cleanup == nil || cleanup.generation != command.generation {
@@ -622,8 +662,10 @@ func (owner *deviceOwner) loop() {
 				} else {
 					failQueued(ownerResult{err: classifyOperationError(ErrSessionClosed, ToolOutcomeNotSent)})
 				}
-				if active := workers[activeWorker]; active != nil && active.cancel != nil {
-					active.cancel()
+				for _, active := range workers {
+					if active.cancel != nil {
+						active.cancel()
+					}
 				}
 				if generation != nil {
 					startCleanup(generation)
@@ -675,7 +717,7 @@ func (owner *deviceOwner) runAttempt(ctx context.Context, generation uint64) {
 	}
 }
 
-func (owner *deviceOwner) runOperation(ctx context.Context, stopGenerationCancel func() bool, evidence ownerWorkerEvidence, session Session, operation func(context.Context, Session) error) {
+func (owner *deviceOwner) runOperation(ctx context.Context, stopGenerationCancel func() bool, evidence ownerWorkerEvidence, session Session, scheduler *generationScheduler, class ownerOperationClass, operation func(context.Context, Session) error) {
 	defer stopGenerationCancel()
 	completion := ownerCompletion{evidence: evidence}
 	defer func() {
@@ -685,7 +727,7 @@ func (owner *deviceOwner) runOperation(ctx context.Context, stopGenerationCancel
 		}
 		owner.send(completeOwnerWorker{completion: completion})
 	}()
-	completion.err = operation(ctx, session)
+	completion.err = scheduler.run(ctx, class, session, operation)
 }
 
 func (owner *deviceOwner) watchGeneration(generation uint64, done <-chan struct{}) {

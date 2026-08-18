@@ -66,14 +66,6 @@ func (manager *Manager) captureScreen(ctx context.Context, name string, request 
 	if err := capturePreDispatchContextError(captureCtx); err != nil {
 		return mcpserver.CaptureResult{}, err
 	}
-	if !manager.beginDecoder() {
-		return mcpserver.CaptureResult{}, classifyOperationError(ErrSessionClosed, ToolOutcomeNotSent)
-	}
-	defer manager.decoderWorkers.Done()
-	if !tryAcquire(manager.decoders) {
-		return mcpserver.CaptureResult{}, busyNotSent()
-	}
-	defer release(manager.decoders)
 	var annexB []byte
 	var capturedAt time.Time
 	err = manager.withOperation(captureCtx, device, false, true, func(operationCtx context.Context, session Session) error {
@@ -96,6 +88,14 @@ func (manager *Manager) captureScreen(ctx context.Context, name string, request 
 	if err := captureContextError(captureCtx); err != nil {
 		return mcpserver.CaptureResult{}, err
 	}
+	if !tryAcquire(manager.decoders) {
+		return mcpserver.CaptureResult{}, classifyReadFailure(ErrBusy)
+	}
+	defer release(manager.decoders)
+	if !manager.beginDecoder() {
+		return mcpserver.CaptureResult{}, classifyReadFailure(ErrSessionClosed)
+	}
+	defer manager.decoderWorkers.Done()
 	pngData, width, height, err := manager.decoder.Decode(captureCtx, annexB, maxWidth, maxHeight)
 	if err != nil {
 		return mcpserver.CaptureResult{}, classifyCaptureReadFailure(captureCtx, err)
