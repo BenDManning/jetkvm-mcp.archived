@@ -165,14 +165,15 @@ must map each removed operation to its dedicated status, URL mount, file mount,
 file upload, or unmount replacement. No evidence of external reliance justifies
 carrying the duplicate private-era surface into the first public release.
 
-### Proposed managed-session compatibility change
+### Managed-session compatibility change
 
 [Specification #107](https://github.com/BenDManning/jetkvm-mcp/issues/107) and
-[ADR 0008](adr/0008-managed-per-device-webrtc-ownership.md) propose replacing
+[ADR 0008](adr/0008-managed-per-device-webrtc-ownership.md) replace
 operation-scoped WebRTC sessions with one managed authoritative generation per
-configured device. This subsection is a reviewed target, not current executable
-behavior. Until the ADR is accepted and implemented, the currently discovered
-tool surface and `max_sessions` grammar remain authoritative.
+configured device. Resident ordinary ownership and the replacement configuration
+grammar are current executable behavior. The explicit lifecycle tools and sticky
+ownership branches described below remain tracked implementation work until their
+dependent managed-session slices are delivered.
 
 The proposal makes connection acquisition consequential and distinct from
 authority to dispatch or reconcile work. An ordinary operation may lazily
@@ -453,17 +454,8 @@ rename, newly required fields, or incompatible semantic/default changes are
 major. Compatible validation fixes are patch unless they invalidate previously
 accepted meaningful configurations, in which case they are major.
 
-The optional `limits` mapping controls process-wide admission with defaults of
-16 operations, 4 operations per device, 8 sessions, 2 captures, and 2 decoders.
-Every limit is an integer from 1 through 1024. Per-device/session capacity may
-not exceed global operations, and capture capacity may not exceed sessions.
-Exhaustion returns the existing
-non-retryable `busy`/`not_sent` tool error without device/provider dispatch and
-does not queue work. Mutating HID, power, and virtual-media operations serialize
-per device; waiting for that one bounded mutation slot observes cancellation.
-
-Under the proposed managed-session contract, configuration admits at most 64
-devices and the `limits` mapping instead contains:
+Configuration admits at most 64 devices and the optional `limits` mapping
+contains:
 
 | Field | Default | Validation and meaning |
 |---|---:|---|
@@ -481,20 +473,16 @@ admitted but cannot delay session release. More than 64 configured devices,
 obsolete `max_sessions`, out-of-range values, and unsafe parent relationships
 fail offline validation and startup without opening a device connection.
 
-This table is a proposed migration target. It must not be copied into the
-operational README or `config.example.yaml` until the executable loader and
-offline validation implement it.
-
 The required migration is explicit:
 
 ```yaml
-# Before: current operation-scoped session capacity
+# Before: obsolete operation-scoped session capacity
 limits:
   max_sessions: 8
 ```
 
 ```yaml
-# After ADR 0008 is implemented: connector pressure and idle ownership
+# After: connector pressure and idle ownership
 limits:
   max_connection_attempts: 8
   session_idle_timeout: 60s

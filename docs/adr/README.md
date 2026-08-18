@@ -28,13 +28,13 @@ corrections do not change status.
 | ADR | Decision | Status |
 |---|---|---|
 | [0001](0001-mcp-transports-and-authentication.md) | MCP transports and authentication boundary | accepted |
-| [0002](0002-fresh-in-process-webrtc-sessions.md) | Fresh in-process WebRTC sessions | accepted |
+| [0002](0002-fresh-in-process-webrtc-sessions.md) | Fresh in-process WebRTC sessions | superseded |
 | [0003](0003-ffmpeg-screenshot-decoding.md) | FFmpeg subprocess screenshot decoding | accepted |
 | [0004](0004-virtual-media-integrity-and-cleanup.md) | Virtual-media integrity and cleanup | accepted |
 | [0005](0005-local-only-raw-rpc.md) | Keep raw RPC local and outside MCP | accepted |
 | [0006](0006-virtual-media-url-origin-boundary.md) | Deny virtual-media URL mounts outside configured origins | accepted |
 | [0007](0007-same-origin-browser-http.md) | Keep browser Streamable HTTP same-origin | accepted |
-| [0008](0008-managed-per-device-webrtc-ownership.md) | Managed per-device WebRTC ownership | proposed |
+| [0008](0008-managed-per-device-webrtc-ownership.md) | Managed per-device WebRTC ownership | accepted |
 
 ## Adding or replacing a decision
 

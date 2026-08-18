@@ -273,18 +273,37 @@ http:
   bearer_token_env: JETKVM_MCP_HTTP_TOKEN
   allowed_origins:
     - https://mcp.example.invalid
+
+limits:
+  max_operations: 16
+  max_operations_per_device: 4
+  max_connection_attempts: 8
+  max_captures: 2
+  max_decoders: 2
+  session_idle_timeout: 60s
 ```
 
-`limits` is optional and bounds all in-flight device work equally for stdio and
-stateless HTTP: `max_operations` (16), `max_operations_per_device` (4),
-`max_sessions` (8), `max_captures` (2), and `max_decoders` (2). Values must be
-positive integers no greater than 1024; per-device and session capacity cannot
-exceed global operations, and captures cannot exceed sessions. Exhausted global,
-per-device, session, capture, or decoder
-capacity returns the normal non-retryable `busy`/`not_sent` tool result before
-device dispatch; requests are not queued. Mutating HID, power, and virtual-media
-work is serialized per device, while unrelated devices and read-only work can
-proceed within their separate limits.
+At most 64 devices may be configured. `limits` is optional. The defaults are 16
+operations, 4 operations per device, 8 connection attempts, 2 captures, 2
+decoders, and a 60-second session idle timeout. Integer operation, capture, and
+decoder limits are 1 through 1024. `max_connection_attempts` is 1 through 64;
+it and `max_operations_per_device` cannot exceed `max_operations`.
+`session_idle_timeout` is 10 seconds through one hour.
+
+Ordinary work lazily establishes one video-capable resident session per device.
+Setup readiness requires an open RPC channel and a successful ping; it does not
+require HDMI signal or a video frame. Concurrent callers share one bounded
+connection attempt, and a healthy resident generation consumes no connection-
+attempt permit. Until precise scheduling is qualified, all work admitted for
+one device is serialized on that session. Admitted callers wait cancellably;
+capacity exhaustion itself returns non-retryable `busy`/`not_sent` immediately.
+The idle lease starts only after no work needs the generation, then closes it
+with bounded cleanup.
+
+`max_sessions` is obsolete and rejected. Migrate by replacing it with
+`max_connection_attempts` and choosing `session_idle_timeout`; the replacement
+bounds setup pressure, not resident sessions, so the old numeric value has no
+equivalent live-session meaning.
 
 Validate the complete strict configuration without starting FFmpeg, a listener,
 or a device/network session:

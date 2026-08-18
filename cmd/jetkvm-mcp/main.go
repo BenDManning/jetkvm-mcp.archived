@@ -13,6 +13,7 @@ import (
 	"os/signal"
 	"runtime/debug"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -147,14 +148,16 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	}
 	recorder := telemetry.New(stderr, reportedVersion())
 	server := mcpserver.NewWithTelemetry(manager, reportedVersion(), recorder, transport)
+	shutdown := newShutdownBudget(5 * time.Second)
+	defer shutdown.Close()
 	var serveErr error
 	if options.httpAddress == "" {
 		fmt.Fprintln(stderr, "jetkvm-mcp: serving MCP over stdio")
 		serveErr = server.Run(ctx, &mcp.IOTransport{Reader: io.NopCloser(stdin), Writer: nopWriteCloser{stdout}})
 	} else {
-		serveErr = serveHTTP(ctx, server, options.httpAddress, loaded.HTTPBearerToken, loaded.HTTPAllowedOrigins, stderr)
+		serveErr = serveHTTPWithShutdownBudget(ctx, server, options.httpAddress, loaded.HTTPBearerToken, loaded.HTTPAllowedOrigins, stderr, shutdown, manager.Close)
 	}
-	_ = manager.Close(ctx)
+	_ = manager.Close(shutdown.Context())
 	finishTelemetry(recorder, transport, serveErr)
 	return serveErr
 }
@@ -196,6 +199,29 @@ func finishTelemetry(recorder *telemetry.Recorder, transport string, runErr erro
 	flushCtx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 	_ = recorder.Close(flushCtx)
+}
+
+type shutdownBudget struct {
+	duration time.Duration
+	once     sync.Once
+	ctx      context.Context
+	cancel   context.CancelFunc
+}
+
+func newShutdownBudget(duration time.Duration) *shutdownBudget {
+	return &shutdownBudget{duration: duration}
+}
+
+func (budget *shutdownBudget) Context() context.Context {
+	budget.once.Do(func() {
+		budget.ctx, budget.cancel = context.WithTimeout(context.Background(), budget.duration)
+	})
+	return budget.ctx
+}
+
+func (budget *shutdownBudget) Close() {
+	budget.Context()
+	budget.cancel()
 }
 
 func parseArgs(args []string) (commandOptions, error) {
@@ -271,6 +297,12 @@ func parseArgs(args []string) (commandOptions, error) {
 }
 
 func serveHTTP(ctx context.Context, mcpServer *mcpserver.Server, address, bearerToken string, allowedOrigins []string, stderr io.Writer) error {
+	shutdown := newShutdownBudget(5 * time.Second)
+	defer shutdown.Close()
+	return serveHTTPWithShutdownBudget(ctx, mcpServer, address, bearerToken, allowedOrigins, stderr, shutdown, nil)
+}
+
+func serveHTTPWithShutdownBudget(ctx context.Context, mcpServer *mcpserver.Server, address, bearerToken string, allowedOrigins []string, stderr io.Writer, shutdown *shutdownBudget, stopManaged func(context.Context) error) error {
 	host, _, err := net.SplitHostPort(address)
 	if err != nil {
 		return errors.New("invalid HTTP listen address")
@@ -327,9 +359,7 @@ func serveHTTP(ctx context.Context, mcpServer *mcpserver.Server, address, bearer
 		}
 		return err
 	case <-ctx.Done():
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		shutdownErr := httpServer.Shutdown(shutdownCtx)
-		cancel()
+		shutdownErr, _ := shutdownTogether(shutdown.Context(), httpServer.Shutdown, stopManaged)
 		if shutdownErr != nil {
 			closeErr := httpServer.Close()
 			serveErr := <-done
@@ -350,6 +380,17 @@ func serveHTTP(ctx context.Context, mcpServer *mcpserver.Server, address, bearer
 		}
 		return err
 	}
+}
+
+func shutdownTogether(ctx context.Context, first, second func(context.Context) error) (error, error) {
+	secondDone := make(chan error, 1)
+	if second == nil {
+		secondDone <- nil
+	} else {
+		go func() { secondDone <- second(ctx) }()
+	}
+	firstErr := first(ctx)
+	return firstErr, <-secondDone
 }
 
 // bodyReadDeadline prevents clearing a request's read deadline before either

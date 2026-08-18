@@ -44,6 +44,8 @@ func (manager *Manager) captureScreen(ctx context.Context, name string, request 
 	defer func() { finishTelemetryStage(captureStage, returnErr) }()
 	captureCtx, cancel := context.WithTimeoutCause(ctx, timeout, errCaptureServerDeadline)
 	defer cancel()
+	stopShutdownCancel := context.AfterFunc(manager.shutdownCtx, cancel)
+	defer stopShutdownCancel()
 	device, err := manager.device(name)
 	if err != nil {
 		return mcpserver.CaptureResult{}, err
@@ -64,27 +66,29 @@ func (manager *Manager) captureScreen(ctx context.Context, name string, request 
 	if err := capturePreDispatchContextError(captureCtx); err != nil {
 		return mcpserver.CaptureResult{}, err
 	}
+	if !manager.beginDecoder() {
+		return mcpserver.CaptureResult{}, classifyOperationError(ErrSessionClosed, ToolOutcomeNotSent)
+	}
+	defer manager.decoderWorkers.Done()
 	if !tryAcquire(manager.decoders) {
 		return mcpserver.CaptureResult{}, busyNotSent()
 	}
 	defer release(manager.decoders)
 	var annexB []byte
 	var capturedAt time.Time
-	err = manager.withOperation(captureCtx, device, false, true, func() error {
-		return manager.withSession(captureCtx, device, func(operationCtx context.Context, session Session) error {
-			var state struct {
-				Ready *bool `json:"ready"`
-			}
-			if err := session.Call(operationCtx, methodVideoState, nil, &state); err != nil {
-				return err
-			}
-			if state.Ready != nil && !*state.Ready {
-				return ErrNoSignal
-			}
-			var err error
-			annexB, capturedAt, err = session.CaptureH264(operationCtx)
+	err = manager.withOperation(captureCtx, device, false, true, func(operationCtx context.Context, session Session) error {
+		var state struct {
+			Ready *bool `json:"ready"`
+		}
+		if err := session.Call(operationCtx, methodVideoState, nil, &state); err != nil {
 			return err
-		})
+		}
+		if state.Ready != nil && !*state.Ready {
+			return ErrNoSignal
+		}
+		var err error
+		annexB, capturedAt, err = session.CaptureH264(operationCtx)
+		return err
 	})
 	if err != nil {
 		return mcpserver.CaptureResult{}, classifyCaptureReadFailure(captureCtx, err)

@@ -1,14 +1,12 @@
 # 0008: Managed per-device WebRTC ownership
 
-Status: proposed
+Status: accepted
 
 Date: 2026-08-17
 
 Specification: [GitHub issue #107](https://github.com/BenDManning/jetkvm-mcp/issues/107)
 
-Proposed replacement for
-[ADR 0002](0002-fresh-in-process-webrtc-sessions.md). ADR 0002 remains accepted
-until this record is accepted and implemented.
+Replaces [ADR 0002](0002-fresh-in-process-webrtc-sessions.md).
 
 ## Context
 
@@ -396,7 +394,7 @@ later firmware-specific improvement without weakening unconditional safety.
 
 ## Evidence
 
-- Current operation-scoped provider: [`provider.go`](../../internal/jetkvm/provider.go)
+- Managed-session connector: [`provider.go`](../../internal/jetkvm/provider.go)
 - Current Manager and admission: [`manager.go`](../../internal/jetkvm/manager.go)
 - RPC dispatch phases: [`rpc_session.go`](../../internal/jetkvm/rpc_session.go)
 - Video capture ownership: [`video_receiver.go`](../../internal/jetkvm/video_receiver.go)

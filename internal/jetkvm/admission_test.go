@@ -95,8 +95,8 @@ func TestManagerAdmissionRejectsGlobalAndPerDeviceCapacityBeforeDispatch(t *test
 		second    string
 		wantCalls int
 	}{
-		{"global", Limits{MaxOperations: 1, MaxOperationsPerDevice: 1, MaxSessions: 1, MaxCaptures: 1, MaxDecoders: 1}, "rack", 1},
-		{"per-device", Limits{MaxOperations: 2, MaxOperationsPerDevice: 1, MaxSessions: 2, MaxCaptures: 1, MaxDecoders: 1}, "lab", 1},
+		{"global", Limits{MaxOperations: 1, MaxOperationsPerDevice: 1, MaxConnectionAttempts: 1, MaxCaptures: 1, MaxDecoders: 1}, "rack", 1},
+		{"per-device", Limits{MaxOperations: 2, MaxOperationsPerDevice: 1, MaxConnectionAttempts: 2, MaxCaptures: 1, MaxDecoders: 1}, "lab", 1},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			provider := &blockingProvider{entered: make(chan struct{}, 2), release: make(chan struct{}), session: admissionSession{}}
@@ -120,9 +120,9 @@ func TestManagerAdmissionRejectsGlobalAndPerDeviceCapacityBeforeDispatch(t *test
 	}
 }
 
-func TestManagerAdmissionAllowsUnrelatedDevicesAndBoundsSessions(t *testing.T) {
+func TestManagerAdmissionAllowsUnrelatedDevicesAndBoundsConnectionAttempts(t *testing.T) {
 	provider := &blockingProvider{entered: make(chan struct{}, 3), release: make(chan struct{}), session: admissionSession{}}
-	manager := admissionManager(t, Limits{MaxOperations: 2, MaxOperationsPerDevice: 1, MaxSessions: 1, MaxCaptures: 1, MaxDecoders: 1}, provider, "lab", "rack")
+	manager := admissionManager(t, Limits{MaxOperations: 2, MaxOperationsPerDevice: 1, MaxConnectionAttempts: 1, MaxCaptures: 1, MaxDecoders: 1}, provider, "lab", "rack")
 	done := make(chan error, 1)
 	go func() {
 		_, err := manager.Power(context.Background(), "lab", mcpserver.PowerActionPressHostPowerButton, "")
@@ -140,7 +140,7 @@ func TestManagerAdmissionAllowsUnrelatedDevicesAndBoundsSessions(t *testing.T) {
 	}
 
 	provider = &blockingProvider{entered: make(chan struct{}, 3), release: make(chan struct{}), session: admissionSession{}}
-	manager = admissionManager(t, Limits{MaxOperations: 2, MaxOperationsPerDevice: 1, MaxSessions: 2, MaxCaptures: 1, MaxDecoders: 1}, provider, "lab", "rack")
+	manager = admissionManager(t, Limits{MaxOperations: 2, MaxOperationsPerDevice: 1, MaxConnectionAttempts: 2, MaxCaptures: 1, MaxDecoders: 1}, provider, "lab", "rack")
 	done = make(chan error, 2)
 	go func() {
 		_, err := manager.Power(context.Background(), "lab", mcpserver.PowerActionPressHostPowerButton, "")
@@ -171,7 +171,7 @@ func (*admissionDecoder) Decode(context.Context, []byte, int, int) ([]byte, int,
 }
 
 func TestManagerAdmissionCaptureAndDecoderCapacityRejectBeforeSecondDispatch(t *testing.T) {
-	limits := Limits{MaxOperations: 2, MaxOperationsPerDevice: 2, MaxSessions: 2, MaxCaptures: 1, MaxDecoders: 2}
+	limits := Limits{MaxOperations: 2, MaxOperationsPerDevice: 2, MaxConnectionAttempts: 2, MaxCaptures: 1, MaxDecoders: 2}
 	provider := &blockingProvider{entered: make(chan struct{}, 2), release: make(chan struct{}), session: admissionSession{}}
 	manager := admissionManager(t, limits, provider, "lab")
 	done := make(chan error, 1)
@@ -208,7 +208,7 @@ func TestManagerAdmissionDecoderCapacityRejectsBeforeProviderDispatch(t *testing
 		t.Fatal(err)
 	}
 	decoder := &blockingDecoder{entered: make(chan struct{}, 1), release: make(chan struct{})}
-	manager, err := NewManager([]DeviceConfig{{Name: "lab", BaseURL: *base}}, provider, WithLimits(Limits{MaxOperations: 2, MaxOperationsPerDevice: 2, MaxSessions: 2, MaxCaptures: 2, MaxDecoders: 1}), WithDecoder(decoder))
+	manager, err := NewManager([]DeviceConfig{{Name: "lab", BaseURL: *base}}, provider, WithLimits(Limits{MaxOperations: 2, MaxOperationsPerDevice: 2, MaxConnectionAttempts: 2, MaxCaptures: 2, MaxDecoders: 1}), WithDecoder(decoder))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -229,7 +229,7 @@ func TestManagerAdmissionDecoderCapacityRejectsBeforeProviderDispatch(t *testing
 
 func TestManagerMutationWaitIsCancelableAndPermitReleases(t *testing.T) {
 	provider := &blockingProvider{entered: make(chan struct{}, 3), release: make(chan struct{}), session: admissionSession{}}
-	manager := admissionManager(t, Limits{MaxOperations: 3, MaxOperationsPerDevice: 3, MaxSessions: 3, MaxCaptures: 1, MaxDecoders: 1}, provider, "lab")
+	manager := admissionManager(t, Limits{MaxOperations: 3, MaxOperationsPerDevice: 3, MaxConnectionAttempts: 3, MaxCaptures: 1, MaxDecoders: 1}, provider, "lab")
 	first := make(chan error, 1)
 	go func() {
 		_, err := manager.Power(context.Background(), "lab", mcpserver.PowerActionPressHostPowerButton, "")
@@ -275,7 +275,7 @@ func (provider *panicOnceProvider) Connect(_ context.Context, _ DeviceConfig) (C
 
 func TestManagerAdmissionReleasesPermitsAfterProviderPanic(t *testing.T) {
 	provider := &panicOnceProvider{session: admissionSession{}}
-	manager := admissionManager(t, Limits{MaxOperations: 1, MaxOperationsPerDevice: 1, MaxSessions: 1, MaxCaptures: 1, MaxDecoders: 1}, provider, "lab")
+	manager := admissionManager(t, Limits{MaxOperations: 1, MaxOperationsPerDevice: 1, MaxConnectionAttempts: 1, MaxCaptures: 1, MaxDecoders: 1}, provider, "lab")
 	panicked := make(chan struct{})
 	go func() {
 		defer close(panicked)
@@ -307,7 +307,7 @@ func (provider *errorOnceProvider) Connect(_ context.Context, _ DeviceConfig) (C
 
 func TestManagerAdmissionReleasesPermitsAfterProviderError(t *testing.T) {
 	provider := &errorOnceProvider{session: admissionSession{}}
-	manager := admissionManager(t, Limits{MaxOperations: 1, MaxOperationsPerDevice: 1, MaxSessions: 1, MaxCaptures: 1, MaxDecoders: 1}, provider, "lab")
+	manager := admissionManager(t, Limits{MaxOperations: 1, MaxOperationsPerDevice: 1, MaxConnectionAttempts: 1, MaxCaptures: 1, MaxDecoders: 1}, provider, "lab")
 	_, err := manager.Power(context.Background(), "lab", mcpserver.PowerActionPressHostPowerButton, "")
 	if !errors.Is(err, ErrDeviceUnreachable) {
 		t.Fatalf("first error = %v", err)
@@ -323,7 +323,7 @@ func TestManagerSerializesCompleteHIDAndVirtualMediaMutations(t *testing.T) {
 		t.Fatal(err)
 	}
 	session := &sequenceSession{entered: make(chan struct{}), release: make(chan struct{})}
-	manager, err := NewManager([]DeviceConfig{{Name: "lab", BaseURL: *base}}, &sequenceProvider{session: session}, WithLimits(Limits{MaxOperations: 3, MaxOperationsPerDevice: 3, MaxSessions: 3, MaxCaptures: 1, MaxDecoders: 1}))
+	manager, err := NewManager([]DeviceConfig{{Name: "lab", BaseURL: *base}}, &sequenceProvider{session: session}, WithLimits(Limits{MaxOperations: 3, MaxOperationsPerDevice: 3, MaxConnectionAttempts: 3, MaxCaptures: 1, MaxDecoders: 1}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -372,6 +372,48 @@ func TestManagerSerializesCompleteHIDAndVirtualMediaMutations(t *testing.T) {
 	}
 }
 
+func TestManagerSerializesCompleteSameDeviceOperations(t *testing.T) {
+	provider := &blockingProvider{entered: make(chan struct{}, 1), release: make(chan struct{}), session: admissionSession{}}
+	close(provider.release)
+	manager := admissionManager(t, Limits{
+		MaxOperations: 2, MaxOperationsPerDevice: 2, MaxConnectionAttempts: 1,
+		MaxCaptures: 1, MaxDecoders: 1,
+	}, provider, "lab")
+	device := manager.devices["lab"]
+	firstStarted := make(chan struct{})
+	releaseFirst := make(chan struct{})
+	firstDone := make(chan error, 1)
+	go func() {
+		firstDone <- manager.withOperation(context.Background(), device, false, false, func(context.Context, Session) error {
+			close(firstStarted)
+			<-releaseFirst
+			return nil
+		})
+	}()
+	<-firstStarted
+
+	secondStarted := make(chan struct{})
+	secondDone := make(chan error, 1)
+	go func() {
+		secondDone <- manager.withOperation(context.Background(), device, false, false, func(context.Context, Session) error {
+			close(secondStarted)
+			return nil
+		})
+	}()
+	select {
+	case <-secondStarted:
+		t.Fatal("same-device operation overlapped the complete first operation")
+	case <-time.After(10 * time.Millisecond):
+	}
+	close(releaseFirst)
+	if err := <-firstDone; err != nil {
+		t.Fatal(err)
+	}
+	if err := <-secondDone; err != nil {
+		t.Fatal(err)
+	}
+}
+
 type sequenceProvider struct{ session *sequenceSession }
 
 func (provider *sequenceProvider) Connect(_ context.Context, _ DeviceConfig) (ConnectedSession, error) {
@@ -403,7 +445,7 @@ func (*sequenceSession) CaptureH264(context.Context) ([]byte, time.Time, error) 
 
 func TestStatelessHTTPAdmissionRejectsExcessWorkWithoutSecondProviderDispatch(t *testing.T) {
 	provider := &blockingProvider{entered: make(chan struct{}, 2), release: make(chan struct{}), session: admissionSession{}}
-	manager := admissionManager(t, Limits{MaxOperations: 1, MaxOperationsPerDevice: 1, MaxSessions: 1, MaxCaptures: 1, MaxDecoders: 1}, provider, "lab")
+	manager := admissionManager(t, Limits{MaxOperations: 1, MaxOperationsPerDevice: 1, MaxConnectionAttempts: 1, MaxCaptures: 1, MaxDecoders: 1}, provider, "lab")
 	server := httptest.NewServer(mcpserver.NewHTTPHandler(mcpserver.New(manager, "test"), ""))
 	defer server.Close()
 	client, err := mcp.NewClient(&mcp.Implementation{Name: "admission-test", Version: "test"}, nil).Connect(context.Background(), &mcp.StreamableClientTransport{Endpoint: server.URL + mcpserver.MCPPath}, nil)

@@ -114,11 +114,7 @@ func (connector *WebRTCConnector) connect(ctx context.Context, device DeviceConf
 	})
 	channel.OnClose(cancel)
 	channel.OnError(func(error) { cancel() })
-	peer.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
-		if state == webrtc.PeerConnectionStateFailed || state == webrtc.PeerConnectionStateClosed {
-			cancel()
-		}
-	})
+	peer.OnConnectionStateChange(connected.handleConnectionState)
 
 	signalingURL := endpoint(device.BaseURL, signalingPath)
 	if signalingURL.Scheme == "https" {
@@ -212,6 +208,12 @@ type connectedSession struct {
 	pumps        sync.WaitGroup
 	closed       bool
 	trackStarted bool
+}
+
+func (session *connectedSession) handleConnectionState(state webrtc.PeerConnectionState) {
+	if state == webrtc.PeerConnectionStateDisconnected || state == webrtc.PeerConnectionStateFailed || state == webrtc.PeerConnectionStateClosed {
+		session.cancel()
+	}
 }
 
 func (session *connectedSession) Call(ctx context.Context, method string, params any, result any) error {

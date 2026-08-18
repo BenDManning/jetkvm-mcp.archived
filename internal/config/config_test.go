@@ -7,6 +7,9 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/BenDManning/jetkvm-mcp/internal/jetkvm"
 )
 
 func TestLoadAppliesUnicodeIdentifierBoundsAfterTrimming(t *testing.T) {
@@ -141,7 +144,7 @@ devices:
 	if err != nil {
 		t.Fatal(err)
 	}
-	if loaded.Limits.MaxOperations != 16 || loaded.Limits.MaxOperationsPerDevice != 4 || loaded.Limits.MaxSessions != 8 || loaded.Limits.MaxCaptures != 2 || loaded.Limits.MaxDecoders != 2 {
+	if loaded.Limits.MaxOperations != 16 || loaded.Limits.MaxOperationsPerDevice != 4 || loaded.Limits.MaxConnectionAttempts != 8 || loaded.Limits.MaxCaptures != 2 || loaded.Limits.MaxDecoders != 2 || loaded.Limits.SessionIdleTimeout != time.Minute {
 		t.Fatalf("default limits = %#v", loaded.Limits)
 	}
 
@@ -149,24 +152,38 @@ devices:
 limits:
   max_operations: 12
   max_operations_per_device: 3
-  max_sessions: 6
+  max_connection_attempts: 6
   max_captures: 2
   max_decoders: 1
+  session_idle_timeout: 45s
 devices:
   lab:
     url: https://lab.invalid
 `), func(string) (string, bool) { return "", false })
-	if err != nil || loaded.Limits.MaxOperations != 12 || loaded.Limits.MaxOperationsPerDevice != 3 || loaded.Limits.MaxSessions != 6 || loaded.Limits.MaxCaptures != 2 || loaded.Limits.MaxDecoders != 1 {
+	if err != nil || loaded.Limits.MaxOperations != 12 || loaded.Limits.MaxOperationsPerDevice != 3 || loaded.Limits.MaxConnectionAttempts != 6 || loaded.Limits.MaxCaptures != 2 || loaded.Limits.MaxDecoders != 1 || loaded.Limits.SessionIdleTimeout != 45*time.Second {
 		t.Fatalf("override limits = %#v, error = %v", loaded.Limits, err)
 	}
 
 	for _, source := range []string{
-		"max_operations: 0", "max_operations_per_device: -1", "max_sessions: 1025", "unknown: 1",
+		"max_operations: 0", "max_operations_per_device: -1", "max_connection_attempts: 65",
+		"max_connection_attempts: 9\n  max_operations: 8", "session_idle_timeout: 9s",
+		"session_idle_timeout: 1h1s", "max_sessions: 8", "unknown: 1",
 	} {
 		_, err := Load(writeConfig(t, "limits:\n  "+source+"\ndevices:\n  lab:\n    url: https://lab.invalid\n"), func(string) (string, bool) { return "", false })
 		if err == nil {
 			t.Fatalf("limits %q accepted", source)
 		}
+	}
+}
+
+func TestLoadRejectsMoreThan64Devices(t *testing.T) {
+	var source strings.Builder
+	source.WriteString("devices:\n")
+	for index := range 65 {
+		fmt.Fprintf(&source, "  device-%d:\n    url: https://device-%d.invalid\n", index, index)
+	}
+	if _, err := Load(writeConfig(t, source.String()), func(string) (string, bool) { return "", false }); err == nil {
+		t.Fatal("configuration with 65 devices was accepted")
 	}
 }
 
@@ -210,6 +227,39 @@ func TestConfigExampleWakeOnLANBlockLoadsWhenUncommented(t *testing.T) {
 	target, ok := loaded.Devices[0].WakeOnLAN["server"]
 	if !ok || target.BroadcastIP != "192.0.2.255" {
 		t.Fatalf("Wake-on-LAN target = %#v", target)
+	}
+}
+
+func TestConfigExampleLimitsBlockLoadsWhenUncommented(t *testing.T) {
+	data, err := os.ReadFile("../../config.example.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(string(data), "\n")
+	inLimitsBlock := false
+	for index, line := range lines {
+		if line == "# limits:" {
+			inLimitsBlock = true
+		}
+		if !inLimitsBlock {
+			continue
+		}
+		if strings.TrimSpace(line) == "" {
+			break
+		}
+		lines[index] = strings.Replace(line, "# ", "", 1)
+	}
+	loaded, err := Load(writeConfig(t, strings.Join(lines, "\n")), func(name string) (string, bool) {
+		if name == "JETKVM_LAB_PASSWORD" {
+			return "test-password", true
+		}
+		return "", false
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Limits != jetkvm.DefaultLimits() {
+		t.Fatalf("example limits = %#v", loaded.Limits)
 	}
 }
 

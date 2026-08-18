@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"sort"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -30,10 +31,15 @@ const (
 const (
 	defaultMaxOperations          = 16
 	defaultMaxOperationsPerDevice = 4
-	defaultMaxSessions            = 8
+	defaultMaxConnectionAttempts  = 8
 	defaultMaxCaptures            = 2
 	defaultMaxDecoders            = 2
+	defaultSessionIdleTimeout     = time.Minute
 	maxAdmissionLimit             = 1024
+	maxConfiguredDevices          = 64
+	maxConnectionAttempts         = 64
+	minSessionIdleTimeout         = 10 * time.Second
+	maxSessionIdleTimeout         = time.Hour
 )
 
 // Limits bounds in-flight work. Every value must be positive and no greater
@@ -41,15 +47,17 @@ const (
 type Limits struct {
 	MaxOperations          int
 	MaxOperationsPerDevice int
-	MaxSessions            int
+	MaxConnectionAttempts  int
 	MaxCaptures            int
 	MaxDecoders            int
+	SessionIdleTimeout     time.Duration
 }
 
 func DefaultLimits() Limits {
 	return Limits{
 		MaxOperations: defaultMaxOperations, MaxOperationsPerDevice: defaultMaxOperationsPerDevice,
-		MaxSessions: defaultMaxSessions, MaxCaptures: defaultMaxCaptures, MaxDecoders: defaultMaxDecoders,
+		MaxConnectionAttempts: defaultMaxConnectionAttempts, MaxCaptures: defaultMaxCaptures,
+		MaxDecoders: defaultMaxDecoders, SessionIdleTimeout: defaultSessionIdleTimeout,
 	}
 }
 
@@ -61,8 +69,8 @@ func (limits Limits) normalized() (Limits, error) {
 	if limits.MaxOperationsPerDevice == 0 {
 		limits.MaxOperationsPerDevice = defaults.MaxOperationsPerDevice
 	}
-	if limits.MaxSessions == 0 {
-		limits.MaxSessions = defaults.MaxSessions
+	if limits.MaxConnectionAttempts == 0 {
+		limits.MaxConnectionAttempts = defaults.MaxConnectionAttempts
 	}
 	if limits.MaxCaptures == 0 {
 		limits.MaxCaptures = defaults.MaxCaptures
@@ -70,12 +78,21 @@ func (limits Limits) normalized() (Limits, error) {
 	if limits.MaxDecoders == 0 {
 		limits.MaxDecoders = defaults.MaxDecoders
 	}
-	for _, value := range []int{limits.MaxOperations, limits.MaxOperationsPerDevice, limits.MaxSessions, limits.MaxCaptures, limits.MaxDecoders} {
+	if limits.SessionIdleTimeout == 0 {
+		limits.SessionIdleTimeout = defaults.SessionIdleTimeout
+	}
+	for _, value := range []int{limits.MaxOperations, limits.MaxOperationsPerDevice, limits.MaxCaptures, limits.MaxDecoders} {
 		if value < 1 || value > maxAdmissionLimit {
 			return Limits{}, errors.New("admission limits must be between 1 and 1024")
 		}
 	}
-	if limits.MaxOperationsPerDevice > limits.MaxOperations || limits.MaxSessions > limits.MaxOperations || limits.MaxCaptures > limits.MaxSessions {
+	if limits.MaxConnectionAttempts < 1 || limits.MaxConnectionAttempts > maxConnectionAttempts {
+		return Limits{}, errors.New("connection attempt limit must be between 1 and 64")
+	}
+	if limits.SessionIdleTimeout < minSessionIdleTimeout || limits.SessionIdleTimeout > maxSessionIdleTimeout {
+		return Limits{}, errors.New("session idle timeout must be between 10 seconds and 1 hour")
+	}
+	if limits.MaxOperationsPerDevice > limits.MaxOperations || limits.MaxConnectionAttempts > limits.MaxOperations || limits.MaxCaptures > limits.MaxOperations {
 		return Limits{}, errors.New("admission limits exceed their parent capacity")
 	}
 	return limits, nil
@@ -83,12 +100,18 @@ func (limits Limits) normalized() (Limits, error) {
 
 // ValidateLimits rejects unsafe capacity combinations without changing values.
 func ValidateLimits(limits Limits) (Limits, error) {
-	for _, value := range []int{limits.MaxOperations, limits.MaxOperationsPerDevice, limits.MaxSessions, limits.MaxCaptures, limits.MaxDecoders} {
+	for _, value := range []int{limits.MaxOperations, limits.MaxOperationsPerDevice, limits.MaxCaptures, limits.MaxDecoders} {
 		if value < 1 || value > maxAdmissionLimit {
 			return Limits{}, errors.New("admission limits must be between 1 and 1024")
 		}
 	}
-	if limits.MaxOperationsPerDevice > limits.MaxOperations || limits.MaxSessions > limits.MaxOperations || limits.MaxCaptures > limits.MaxSessions {
+	if limits.MaxConnectionAttempts < 1 || limits.MaxConnectionAttempts > maxConnectionAttempts {
+		return Limits{}, errors.New("connection attempt limit must be between 1 and 64")
+	}
+	if limits.SessionIdleTimeout < minSessionIdleTimeout || limits.SessionIdleTimeout > maxSessionIdleTimeout {
+		return Limits{}, errors.New("session idle timeout must be between 10 seconds and 1 hour")
+	}
+	if limits.MaxOperationsPerDevice > limits.MaxOperations || limits.MaxConnectionAttempts > limits.MaxOperations || limits.MaxCaptures > limits.MaxOperations {
 		return Limits{}, errors.New("admission limits exceed their parent capacity")
 	}
 	return limits, nil
@@ -136,16 +159,21 @@ type SessionConnector interface {
 }
 
 type Manager struct {
-	devices    map[string]DeviceConfig
-	owners     map[string]*deviceOwner
-	decoder    Decoder
-	operations chan struct{}
-	deviceOps  map[string]chan struct{}
-	sessions   chan struct{}
-	captures   chan struct{}
-	decoders   chan struct{}
-	mutations  map[string]chan struct{}
-	closed     atomic.Bool
+	devices            map[string]DeviceConfig
+	owners             map[string]*deviceOwner
+	decoder            Decoder
+	operations         chan struct{}
+	deviceOps          map[string]chan struct{}
+	connectionAttempts chan struct{}
+	captures           chan struct{}
+	decoders           chan struct{}
+	mutations          map[string]chan struct{}
+	sessionIdleTimeout time.Duration
+	shutdownCtx        context.Context
+	shutdownCancel     context.CancelFunc
+	workMu             sync.Mutex
+	decoderWorkers     sync.WaitGroup
+	closed             atomic.Bool
 }
 
 func NewManager(devices []DeviceConfig, connector SessionConnector, options ...ManagerOption) (*Manager, error) {
@@ -194,6 +222,9 @@ func NewManager(devices []DeviceConfig, connector SessionConnector, options ...M
 	if len(manager.devices) == 0 {
 		return nil, errors.New("at least one device is required")
 	}
+	if len(manager.devices) > maxConfiguredDevices {
+		return nil, errors.New("at most 64 devices are supported")
+	}
 	for _, option := range options {
 		if option == nil {
 			return nil, errors.New("manager option is required")
@@ -207,8 +238,12 @@ func NewManager(devices []DeviceConfig, connector SessionConnector, options ...M
 			return nil, err
 		}
 	}
+	manager.shutdownCtx, manager.shutdownCancel = context.WithCancel(context.Background())
 	for name, device := range manager.devices {
-		manager.owners[name] = newDeviceOwner(device, connector)
+		manager.owners[name] = newDeviceOwnerWithSettings(device, connector, ownerSettings{
+			connectionAttempts: manager.connectionAttempts,
+			idleTimeout:        manager.sessionIdleTimeout,
+		})
 	}
 	return manager, nil
 }
@@ -223,7 +258,8 @@ func WithLimits(limits Limits) ManagerOption {
 			return err
 		}
 		manager.operations = make(chan struct{}, validated.MaxOperations)
-		manager.sessions = make(chan struct{}, validated.MaxSessions)
+		manager.connectionAttempts = make(chan struct{}, validated.MaxConnectionAttempts)
+		manager.sessionIdleTimeout = validated.SessionIdleTimeout
 		manager.captures = make(chan struct{}, validated.MaxCaptures)
 		manager.decoders = make(chan struct{}, validated.MaxDecoders)
 		for name := range manager.devices {
@@ -263,100 +299,98 @@ func (manager *Manager) Status(ctx context.Context, name string) (mcpserver.Stat
 		return mcpserver.Status{}, err
 	}
 	status := mcpserver.Status{Device: device.Name}
-	err = manager.withOperation(ctx, device, false, false, func() error {
-		return manager.withSession(ctx, device, func(operationCtx context.Context, session Session) error {
-			var pong string
-			if err := session.Call(operationCtx, methodPing, nil, &pong); err != nil {
-				return err
-			}
-			if err := statusContextError(ctx, operationCtx); err != nil {
-				return err
-			}
-			if pong != "pong" {
-				return fmt.Errorf("%w: ping result", ErrInvalidResponse)
-			}
-			status.Connected = true
+	err = manager.withOperation(ctx, device, false, false, func(operationCtx context.Context, session Session) error {
+		var pong string
+		if err := session.Call(operationCtx, methodPing, nil, &pong); err != nil {
+			return err
+		}
+		if err := statusContextError(ctx, operationCtx); err != nil {
+			return err
+		}
+		if pong != "pong" {
+			return fmt.Errorf("%w: ping result", ErrInvalidResponse)
+		}
+		status.Connected = true
 
-			var version struct {
-				Application string `json:"appVersion"`
-				System      string `json:"systemVersion"`
+		var version struct {
+			Application string `json:"appVersion"`
+			System      string `json:"systemVersion"`
+		}
+		probeErr := session.Call(operationCtx, methodLocalVersion, nil, &version)
+		if err := statusProbeResult(ctx, operationCtx, &status, probeErr, mcpserver.StatusWarningVersionUnavailable); err != nil {
+			return err
+		}
+		if probeErr == nil {
+			status.Application, status.System = version.Application, version.System
+		}
+
+		probeErr = session.Call(operationCtx, methodActiveExtension, nil, &status.Extension)
+		if err := statusProbeResult(ctx, operationCtx, &status, probeErr, mcpserver.StatusWarningActiveExtensionUnavailable); err != nil {
+			return err
+		}
+
+		var media *firmwareVirtualMediaState
+		probeErr = session.Call(operationCtx, methodVirtualMediaState, nil, &media)
+		if err := statusProbeResult(ctx, operationCtx, &status, probeErr, mcpserver.StatusWarningVirtualMediaUnavailable); err != nil {
+			return err
+		}
+		if probeErr == nil {
+			if projected, projectErr := publicVirtualMediaState(media); projectErr != nil {
+				status.Warnings = append(status.Warnings, mcpserver.StatusWarningVirtualMediaUnavailable)
+			} else {
+				status.VirtualMedia = projected
 			}
-			probeErr := session.Call(operationCtx, methodLocalVersion, nil, &version)
-			if err := statusProbeResult(ctx, operationCtx, &status, probeErr, mcpserver.StatusWarningVersionUnavailable); err != nil {
+		}
+
+		var video struct {
+			Ready  *bool `json:"ready"`
+			Width  int   `json:"width"`
+			Height int   `json:"height"`
+			FPS    int   `json:"fps"`
+		}
+		probeErr = session.Call(operationCtx, methodVideoState, nil, &video)
+		if err := statusProbeResult(ctx, operationCtx, &status, probeErr, mcpserver.StatusWarningVideoUnavailable); err != nil {
+			return err
+		}
+		if probeErr == nil {
+			status.VideoReady, status.VideoWidth, status.VideoHeight, status.VideoFPS = video.Ready, video.Width, video.Height, video.FPS
+		}
+
+		probeErr = session.Call(operationCtx, methodUSBState, nil, &status.USBState)
+		if err := statusProbeResult(ctx, operationCtx, &status, probeErr, mcpserver.StatusWarningUSBUnavailable); err != nil {
+			return err
+		}
+		if probeErr == nil {
+			attached := status.USBState != "not attached" && status.USBState != ""
+			status.USBWakeAttached = &attached
+		}
+
+		switch status.Extension {
+		case "atx-power":
+			var atx struct {
+				Power *bool `json:"power"`
+			}
+			probeErr = session.Call(operationCtx, methodATXState, nil, &atx)
+			if err := statusProbeResult(ctx, operationCtx, &status, probeErr, mcpserver.StatusWarningATXUnavailable); err != nil {
 				return err
 			}
 			if probeErr == nil {
-				status.Application, status.System = version.Application, version.System
+				status.ATXPowerOn = atx.Power
 			}
-
-			probeErr = session.Call(operationCtx, methodActiveExtension, nil, &status.Extension)
-			if err := statusProbeResult(ctx, operationCtx, &status, probeErr, mcpserver.StatusWarningActiveExtensionUnavailable); err != nil {
-				return err
+		case "dc-power":
+			var dc struct {
+				On      *bool   `json:"isOn"`
+				Voltage float64 `json:"voltage"`
 			}
-
-			var media *firmwareVirtualMediaState
-			probeErr = session.Call(operationCtx, methodVirtualMediaState, nil, &media)
-			if err := statusProbeResult(ctx, operationCtx, &status, probeErr, mcpserver.StatusWarningVirtualMediaUnavailable); err != nil {
-				return err
-			}
-			if probeErr == nil {
-				if projected, projectErr := publicVirtualMediaState(media); projectErr != nil {
-					status.Warnings = append(status.Warnings, mcpserver.StatusWarningVirtualMediaUnavailable)
-				} else {
-					status.VirtualMedia = projected
-				}
-			}
-
-			var video struct {
-				Ready  *bool `json:"ready"`
-				Width  int   `json:"width"`
-				Height int   `json:"height"`
-				FPS    int   `json:"fps"`
-			}
-			probeErr = session.Call(operationCtx, methodVideoState, nil, &video)
-			if err := statusProbeResult(ctx, operationCtx, &status, probeErr, mcpserver.StatusWarningVideoUnavailable); err != nil {
+			probeErr = session.Call(operationCtx, methodDCPowerState, nil, &dc)
+			if err := statusProbeResult(ctx, operationCtx, &status, probeErr, mcpserver.StatusWarningDCUnavailable); err != nil {
 				return err
 			}
 			if probeErr == nil {
-				status.VideoReady, status.VideoWidth, status.VideoHeight, status.VideoFPS = video.Ready, video.Width, video.Height, video.FPS
+				status.DCPowerOn, status.DCVoltage = dc.On, dc.Voltage
 			}
-
-			probeErr = session.Call(operationCtx, methodUSBState, nil, &status.USBState)
-			if err := statusProbeResult(ctx, operationCtx, &status, probeErr, mcpserver.StatusWarningUSBUnavailable); err != nil {
-				return err
-			}
-			if probeErr == nil {
-				attached := status.USBState != "not attached" && status.USBState != ""
-				status.USBWakeAttached = &attached
-			}
-
-			switch status.Extension {
-			case "atx-power":
-				var atx struct {
-					Power *bool `json:"power"`
-				}
-				probeErr = session.Call(operationCtx, methodATXState, nil, &atx)
-				if err := statusProbeResult(ctx, operationCtx, &status, probeErr, mcpserver.StatusWarningATXUnavailable); err != nil {
-					return err
-				}
-				if probeErr == nil {
-					status.ATXPowerOn = atx.Power
-				}
-			case "dc-power":
-				var dc struct {
-					On      *bool   `json:"isOn"`
-					Voltage float64 `json:"voltage"`
-				}
-				probeErr = session.Call(operationCtx, methodDCPowerState, nil, &dc)
-				if err := statusProbeResult(ctx, operationCtx, &status, probeErr, mcpserver.StatusWarningDCUnavailable); err != nil {
-					return err
-				}
-				if probeErr == nil {
-					status.DCPowerOn, status.DCVoltage = dc.On, dc.Voltage
-				}
-			}
-			return nil
-		})
+		}
+		return nil
 	})
 	if err != nil {
 		return mcpserver.Status{}, classifyReadFailure(err)
@@ -393,10 +427,8 @@ func (manager *Manager) Power(ctx context.Context, name string, action mcpserver
 	if err != nil {
 		return mcpserver.PowerResult{}, err
 	}
-	if err := manager.withOperation(ctx, device, true, false, func() error {
-		return manager.withSession(ctx, device, func(operationCtx context.Context, session Session) error {
-			return session.Call(operationCtx, method, params, nil)
-		})
+	if err := manager.withOperation(ctx, device, true, false, func(operationCtx context.Context, session Session) error {
+		return session.Call(operationCtx, method, params, nil)
 	}); err != nil {
 		return mcpserver.PowerResult{}, err
 	}
@@ -405,23 +437,20 @@ func (manager *Manager) Power(ctx context.Context, name string, action mcpserver
 
 func (manager *Manager) withSession(ctx context.Context, device DeviceConfig, operation func(context.Context, Session) error) error {
 	admission := telemetry.BeginStage(ctx, telemetry.StageAdmission)
-	if !tryAcquire(manager.sessions) {
-		err := busyNotSent()
-		finishTelemetryStage(admission, err)
-		return err
-	}
 	finishTelemetryStage(admission, nil)
-	defer release(manager.sessions)
 	return manager.owners[device.Name].Run(ctx, operation)
 }
 
 // Close stops device-owner admission, cancels active work, and waits for every
-// operation-scoped generation to finish cleanup within ctx.
+// resident generation to finish cleanup within ctx.
 func (manager *Manager) Close(ctx context.Context) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	manager.workMu.Lock()
 	manager.closed.Store(true)
+	manager.shutdownCancel()
+	manager.workMu.Unlock()
 	results := make(chan error, len(manager.owners))
 	for _, owner := range manager.owners {
 		go func(owner *deviceOwner) { results <- owner.Close(ctx) }(owner)
@@ -432,10 +461,36 @@ func (manager *Manager) Close(ctx context.Context) error {
 			closeErr = err
 		}
 	}
+	decodersDone := make(chan struct{})
+	go func() {
+		manager.decoderWorkers.Wait()
+		close(decodersDone)
+	}()
+	select {
+	case <-decodersDone:
+	case <-ctx.Done():
+		if closeErr == nil {
+			closeErr = ctx.Err()
+		}
+	}
 	return closeErr
 }
 
-func (manager *Manager) withOperation(ctx context.Context, device DeviceConfig, mutation, capture bool, operation func() error) error {
+func (manager *Manager) beginDecoder() bool {
+	manager.workMu.Lock()
+	defer manager.workMu.Unlock()
+	if manager.closed.Load() {
+		return false
+	}
+	manager.decoderWorkers.Add(1)
+	return true
+}
+
+func (manager *Manager) withOperation(ctx context.Context, device DeviceConfig, mutation, capture bool, operation func(context.Context, Session) error) error {
+	return manager.withPreparedOperation(ctx, device, mutation, capture, nil, operation)
+}
+
+func (manager *Manager) withPreparedOperation(ctx context.Context, device DeviceConfig, mutation, capture bool, prepare func() error, operation func(context.Context, Session) error) error {
 	if manager.closed.Load() {
 		return classifyOperationError(ErrSessionClosed, ToolOutcomeNotSent)
 	}
@@ -446,10 +501,10 @@ func (manager *Manager) withOperation(ctx context.Context, device DeviceConfig, 
 		release(manager.operations)
 		return busyNotSent()
 	}
-	return manager.runOperation(ctx, device, mutation, capture, operation)
+	return manager.runOperation(ctx, device, mutation, capture, prepare, operation)
 }
 
-func (manager *Manager) runOperation(ctx context.Context, device DeviceConfig, mutation, capture bool, operation func() error) error {
+func (manager *Manager) runOperation(ctx context.Context, device DeviceConfig, mutation, capture bool, prepare func() error, operation func(context.Context, Session) error) error {
 	defer release(manager.operations)
 	defer release(manager.deviceOps[device.Name])
 	if capture {
@@ -464,7 +519,12 @@ func (manager *Manager) runOperation(ctx context.Context, device DeviceConfig, m
 		}
 		defer release(manager.mutations[device.Name])
 	}
-	return operation()
+	if prepare != nil {
+		if err := prepare(); err != nil {
+			return err
+		}
+	}
+	return manager.withSession(ctx, device, operation)
 }
 
 func tryAcquire(permits chan struct{}) bool {

@@ -15,17 +15,19 @@ devices:
     #     broadcast_ip: 192.0.2.255
 
 # Optional process-wide admission limits. Omitted values use conservative
-# defaults: 16 operations, 4 operations per device, 8 live sessions, and 2
-# captures/FFmpeg decoders. Each value must be 1 through 1024; per-device and
-# session limits cannot exceed operations, captures cannot exceed sessions, and
-# while captures cannot exceed sessions. Capacity exhaustion returns a busy tool
-# error immediately rather than queueing requests.
+# defaults: 16 operations, 4 operations per device, 8 connection attempts, 2
+# captures/FFmpeg decoders, and a 60-second idle lease. Operation, capture, and
+# decoder values must be 1 through 1024. Connection attempts must be 1 through
+# 64; connection-attempt and per-device limits cannot exceed operations. The
+# idle timeout must be 10 seconds through one hour. Resident sessions do not
+# consume connection-attempt permits.
 # limits:
 #   max_operations: 16
 #   max_operations_per_device: 4
-#   max_sessions: 8
+#   max_connection_attempts: 8
 #   max_captures: 2
 #   max_decoders: 2
+#   session_idle_timeout: 60s
 
 # Optional. Leave unset for loopback Streamable HTTP without authentication.
 # http:

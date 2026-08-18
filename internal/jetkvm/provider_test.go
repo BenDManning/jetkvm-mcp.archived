@@ -33,6 +33,23 @@ func TestDeviceHTTPClientDoesNotUseEnvironmentProxy(t *testing.T) {
 	}
 }
 
+func TestConnectedSessionTreatsDisconnectedPeerAsTerminal(t *testing.T) {
+	connectedCtx, cancel := context.WithCancel(context.Background())
+	session := &connectedSession{ctx: connectedCtx, cancel: cancel}
+	session.handleConnectionState(webrtc.PeerConnectionStateConnected)
+	select {
+	case <-session.Done():
+		t.Fatal("connected peer ended the session")
+	default:
+	}
+	session.handleConnectionState(webrtc.PeerConnectionStateDisconnected)
+	select {
+	case <-session.Done():
+	case <-time.After(time.Second):
+		t.Fatal("disconnected peer did not end the session")
+	}
+}
+
 func TestWebRTCConnectorClosesIdleHTTPConnectionsAfterAuthenticationFailure(t *testing.T) {
 	closed := make(chan struct{}, 1)
 	httpServer := httptest.NewUnstartedServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {

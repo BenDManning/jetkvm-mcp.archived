@@ -1,11 +1,10 @@
 # 0002-fresh-in-process-webrtc-sessions: Fresh in-process WebRTC sessions
 
-Status: accepted
+Status: superseded
 
 Date: 2026-08-12
 
-Proposed replacement: [ADR 0008](0008-managed-per-device-webrtc-ownership.md).
-This record remains accepted until that proposal is accepted and implemented.
+Superseded by [ADR 0008](0008-managed-per-device-webrtc-ownership.md).
 
 ## Context
 

@@ -149,7 +149,7 @@ func TestCaptureScreenServerDeadlineExpiresNoFrameAndCleansWaiter(t *testing.T) 
 	if receiver.Waiting() {
 		t.Fatal("timed out capture left a video waiter")
 	}
-	if len(manager.operations) != 0 || len(manager.deviceOps["lab"]) != 0 || len(manager.sessions) != 0 || len(manager.captures) != 0 || len(manager.decoders) != 0 {
+	if len(manager.operations) != 0 || len(manager.deviceOps["lab"]) != 0 || len(manager.connectionAttempts) != 0 || len(manager.captures) != 0 || len(manager.decoders) != 0 {
 		t.Fatal("timed out capture leaked admission permits")
 	}
 }
@@ -193,7 +193,7 @@ func TestCaptureScreenServerDeadlineDuringSessionSetupUsesReadTimeout(t *testing
 	if !errors.As(err, &classified) || classified.ToolErrorCode() != "timeout" || classified.ToolErrorOutcome() != ToolOutcomeFailed {
 		t.Fatalf("error = %#v, want read timeout/failed", err)
 	}
-	if len(manager.operations) != 0 || len(manager.deviceOps["lab"]) != 0 || len(manager.sessions) != 0 || len(manager.captures) != 0 || len(manager.decoders) != 0 {
+	if len(manager.operations) != 0 || len(manager.deviceOps["lab"]) != 0 || len(manager.connectionAttempts) != 0 || len(manager.captures) != 0 || len(manager.decoders) != 0 {
 		t.Fatal("timed out session setup leaked admission permits")
 	}
 }
@@ -608,7 +608,7 @@ func TestCaptureScreenCanProceedAfterTimedOutCapture(t *testing.T) {
 	if terminal.result.Width != 1 || terminal.result.Height != 1 {
 		t.Fatalf("result = %+v, want successful later capture", terminal.result)
 	}
-	if len(manager.operations) != 0 || len(manager.deviceOps["lab"]) != 0 || len(manager.sessions) != 0 || len(manager.captures) != 0 || len(manager.decoders) != 0 {
+	if len(manager.operations) != 0 || len(manager.deviceOps["lab"]) != 0 || len(manager.connectionAttempts) != 0 || len(manager.captures) != 0 || len(manager.decoders) != 0 {
 		t.Fatal("capture sequence leaked admission permits")
 	}
 }

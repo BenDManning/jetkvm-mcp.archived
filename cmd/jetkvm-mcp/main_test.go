@@ -8,6 +8,7 @@ import (
 	"runtime/debug"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestParseArgsSelectsStdioHTTPAndDebugRPC(t *testing.T) {
@@ -57,6 +58,49 @@ func TestRunVersionDoesNotRequireConfig(t *testing.T) {
 	}
 	if strings.TrimSpace(stdout.String()) == "" || stderr.Len() != 0 {
 		t.Fatalf("stdout=%q stderr=%q", stdout.String(), stderr.String())
+	}
+}
+
+func TestShutdownBudgetIsSharedAcrossShutdownPhases(t *testing.T) {
+	budget := newShutdownBudget(50 * time.Millisecond)
+	defer budget.Close()
+	first := budget.Context()
+	time.Sleep(30 * time.Millisecond)
+	second := budget.Context()
+	if first != second {
+		t.Fatal("shutdown phases received different budget contexts")
+	}
+	select {
+	case <-second.Done():
+	case <-time.After(40 * time.Millisecond):
+		t.Fatal("second shutdown phase received a fresh timeout")
+	}
+}
+
+func TestHTTPAndManagerShutdownStartConcurrently(t *testing.T) {
+	managerStarted := make(chan struct{})
+	releaseManager := make(chan struct{})
+	httpShutdown := func(context.Context) error {
+		select {
+		case <-managerStarted:
+			return nil
+		case <-time.After(time.Second):
+			t.Fatal("HTTP shutdown started before manager shutdown")
+			return nil
+		}
+	}
+	managerShutdown := func(context.Context) error {
+		close(managerStarted)
+		<-releaseManager
+		return nil
+	}
+	go func() {
+		time.Sleep(10 * time.Millisecond)
+		close(releaseManager)
+	}()
+	httpErr, managerErr := shutdownTogether(context.Background(), httpShutdown, managerShutdown)
+	if httpErr != nil || managerErr != nil {
+		t.Fatalf("shutdown errors = (%v, %v)", httpErr, managerErr)
 	}
 }
 

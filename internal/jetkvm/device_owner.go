@@ -9,7 +9,10 @@ import (
 	"github.com/BenDManning/jetkvm-mcp/internal/telemetry"
 )
 
-const ownerCleanupTimeout = 5 * time.Second
+const (
+	ownerCleanupTimeout = 5 * time.Second
+	ownerConnectTimeout = 15 * time.Second
+)
 
 type ownerOwnership uint8
 
@@ -89,17 +92,16 @@ type ownerResult struct {
 type ownerCompletion struct {
 	evidence   ownerWorkerEvidence
 	err        error
-	connected  bool
 	panicValue any
 }
 
 type ownerWorkerState struct {
-	evidence ownerWorkerEvidence
-	cancel   context.CancelFunc
-	// reply is this worker's single reserved terminal path. It cannot fill
-	// before its one completion and is never shared with another waiter.
-	reply    chan ownerResult
-	canceled bool
+	evidence  ownerWorkerEvidence
+	ctx       context.Context
+	cancel    context.CancelFunc
+	operation func(context.Context, Session) error
+	reply     chan ownerResult
+	canceled  bool
 }
 
 type ownerRegistration struct {
@@ -109,49 +111,115 @@ type ownerRegistration struct {
 }
 
 type registerOwnerWorker struct {
-	cancel context.CancelFunc
-	reply  chan ownerRegistration
+	ctx       context.Context
+	operation func(context.Context, Session) error
+	reply     chan ownerRegistration
 }
 
 func (registerOwnerWorker) ownerCommand() {}
 
-type beginOwnerDispatch struct {
-	evidence ownerWorkerEvidence
-	ctx      context.Context
-	reply    chan bool
-}
-
-func (beginOwnerDispatch) ownerCommand() {}
-
 type cancelOwnerWorker struct {
 	evidence ownerWorkerEvidence
+	err      error
 	reply    chan bool
 }
 
 func (cancelOwnerWorker) ownerCommand() {}
 
 type completeOwnerWorker struct{ completion ownerCompletion }
-type stopDeviceOwner struct{ reply chan struct{} }
 
 func (completeOwnerWorker) ownerCommand() {}
-func (stopDeviceOwner) ownerCommand()     {}
+
+type completeOwnerAttempt struct {
+	generation uint64
+	session    ConnectedSession
+	err        error
+	cleanupErr error
+	panicValue any
+}
+
+func (completeOwnerAttempt) ownerCommand() {}
+
+type ownerGenerationEnded struct{ generation uint64 }
+
+func (ownerGenerationEnded) ownerCommand() {}
+
+type ownerIdleExpired struct{ generation uint64 }
+
+func (ownerIdleExpired) ownerCommand() {}
+
+type completeOwnerCleanup struct {
+	generation uint64
+	err        error
+}
+
+func (completeOwnerCleanup) ownerCommand() {}
+
+type stopDeviceOwner struct{ reply chan error }
+
+func (stopDeviceOwner) ownerCommand() {}
 
 type ownerCommand interface{ ownerCommand() }
+
+type ownerTimer interface{ Stop() bool }
+
+type ownerSettings struct {
+	connectionAttempts chan struct{}
+	idleTimeout        time.Duration
+	connectTimeout     time.Duration
+	afterFunc          func(time.Duration, func()) ownerTimer
+}
 
 type deviceOwner struct {
 	id        uint64
 	device    DeviceConfig
 	connector SessionConnector
+	settings  ownerSettings
 	commands  chan ownerCommand
 	done      chan struct{}
 	snapshot  atomic.Value
 }
 
+type ownerAttemptState struct {
+	generation uint64
+	cancel     context.CancelFunc
+}
+
+type ownerGenerationState struct {
+	id      uint64
+	session ConnectedSession
+	ctx     context.Context
+	cancel  context.CancelFunc
+}
+
+type ownerCleanupState struct {
+	generation uint64
+	err        error
+}
+
 var nextOwnerID atomic.Uint64
 
 func newDeviceOwner(device DeviceConfig, connector SessionConnector) *deviceOwner {
+	return newDeviceOwnerWithSettings(device, connector, ownerSettings{})
+}
+
+func newDeviceOwnerWithSettings(device DeviceConfig, connector SessionConnector, settings ownerSettings) *deviceOwner {
+	if settings.connectionAttempts == nil {
+		settings.connectionAttempts = make(chan struct{}, defaultMaxConnectionAttempts)
+	}
+	if settings.idleTimeout <= 0 {
+		settings.idleTimeout = defaultSessionIdleTimeout
+	}
+	if settings.connectTimeout <= 0 {
+		settings.connectTimeout = ownerConnectTimeout
+	}
+	if settings.afterFunc == nil {
+		settings.afterFunc = func(delay time.Duration, fire func()) ownerTimer {
+			return time.AfterFunc(delay, fire)
+		}
+	}
 	owner := &deviceOwner{
-		id: nextOwnerID.Add(1), device: device, connector: connector,
+		id: nextOwnerID.Add(1), device: device, connector: connector, settings: settings,
 		commands: make(chan ownerCommand), done: make(chan struct{}),
 	}
 	owner.snapshot.Store(ownerSnapshot{
@@ -177,33 +245,34 @@ func (owner *deviceOwner) Run(ctx context.Context, operation func(context.Contex
 	if err := ctx.Err(); err != nil {
 		return classifyOperationError(err, ToolOutcomeNotSent)
 	}
-	workerCtx, cancel := context.WithCancel(ctx)
-	registration := registerOwnerWorker{cancel: cancel, reply: make(chan ownerRegistration, 1)}
+	registration := registerOwnerWorker{ctx: ctx, operation: operation, reply: make(chan ownerRegistration, 1)}
 	select {
 	case owner.commands <- registration:
 	case <-owner.done:
-		cancel()
 		return classifyOperationError(ErrSessionClosed, ToolOutcomeNotSent)
 	case <-ctx.Done():
-		cancel()
 		return classifyOperationError(ctx.Err(), ToolOutcomeNotSent)
 	}
 	registered := <-registration.reply
 	if registered.err != nil {
-		cancel()
 		return registered.err
 	}
-	go owner.runWorker(workerCtx, registered.evidence, operation)
-
 	select {
 	case result := <-registered.reply:
 		return returnOwnerResult(result)
 	case <-ctx.Done():
-		if owner.cancelBeforeDispatch(registered.evidence) {
-			cancel()
+		cancellation := cancelOwnerWorker{
+			evidence: registered.evidence, err: ctx.Err(), reply: make(chan bool, 1),
+		}
+		select {
+		case owner.commands <- cancellation:
+			if <-cancellation.reply {
+				return classifyOperationError(ctx.Err(), ToolOutcomeNotSent)
+			}
+			return returnOwnerResult(<-registered.reply)
+		case <-owner.done:
 			return classifyOperationError(ctx.Err(), ToolOutcomeNotSent)
 		}
-		return returnOwnerResult(<-registered.reply)
 	}
 }
 
@@ -214,103 +283,19 @@ func returnOwnerResult(result ownerResult) error {
 	return result.err
 }
 
-func (owner *deviceOwner) runWorker(ctx context.Context, evidence ownerWorkerEvidence, operation func(context.Context, Session) error) {
-	connected := false
-	defer func() {
-		if panicValue := recover(); panicValue != nil {
-			owner.complete(ownerCompletion{evidence: evidence, connected: connected, panicValue: panicValue})
-		}
-	}()
-	session, err := owner.connector.Connect(ctx, owner.device)
-	if err != nil {
-		owner.complete(ownerCompletion{evidence: evidence, err: classifyConnectFailure(ctx, err)})
-		return
-	}
-	if session == nil {
-		owner.complete(ownerCompletion{
-			evidence: evidence, err: classifyOperationError(ErrInvalidResponse, ToolOutcomeNotSent),
-		})
-		return
-	}
-	connected = true
-	if !owner.beginDispatch(ctx, evidence) {
-		cleanup := telemetry.BeginStage(ctx, telemetry.StageCleanup)
-		cleanupCtx, cancel := context.WithTimeout(context.Background(), ownerCleanupTimeout)
-		_ = session.Close(cleanupCtx)
-		cancel()
-		finishTelemetryStage(cleanup, nil)
-		dispatchErr := ctx.Err()
-		if dispatchErr == nil {
-			dispatchErr = ErrSessionClosed
-		}
-		owner.complete(ownerCompletion{evidence: evidence, err: classifyOperationError(dispatchErr, ToolOutcomeNotSent), connected: true})
-		return
-	}
-	evidence.dispatch = ownerDispatchStarted
-	var result error
-	func() {
-		defer func() {
-			cleanup := telemetry.BeginStage(ctx, telemetry.StageCleanup)
-			_ = session.Close(ctx)
-			finishTelemetryStage(cleanup, nil)
-		}()
-		result = operation(ctx, session)
-	}()
-	evidence.dispatch = ownerDispatchCompleted
-	owner.complete(ownerCompletion{evidence: evidence, err: result, connected: true})
-}
-
-func classifyConnectFailure(ctx context.Context, err error) error {
-	if ctxErr := ctx.Err(); ctxErr != nil {
-		return classifyOperationError(ctxErr, ToolOutcomeNotSent)
-	}
-	var classified interface{ ToolErrorOutcome() string }
-	if errors.As(err, &classified) {
-		return err
-	}
-	return classifyOperationError(err, ToolOutcomeNotSent)
-}
-
-func (owner *deviceOwner) beginDispatch(ctx context.Context, evidence ownerWorkerEvidence) bool {
-	command := beginOwnerDispatch{evidence: evidence, ctx: ctx, reply: make(chan bool, 1)}
-	select {
-	case owner.commands <- command:
-		return <-command.reply
-	case <-owner.done:
-		return false
-	}
-}
-
-func (owner *deviceOwner) cancelBeforeDispatch(evidence ownerWorkerEvidence) bool {
-	command := cancelOwnerWorker{evidence: evidence, reply: make(chan bool, 1)}
-	select {
-	case owner.commands <- command:
-		return <-command.reply
-	case <-owner.done:
-		return false
-	}
-}
-
-func (owner *deviceOwner) complete(completion ownerCompletion) {
-	select {
-	case owner.commands <- completeOwnerWorker{completion: completion}:
-	case <-owner.done:
-	}
-}
-
 func (owner *deviceOwner) Close(ctx context.Context) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	command := stopDeviceOwner{reply: make(chan struct{}, 1)}
+	command := stopDeviceOwner{reply: make(chan error, 1)}
 	select {
 	case owner.commands <- command:
 	case <-owner.done:
 		return nil
 	}
 	select {
-	case <-command.reply:
-		return nil
+	case err := <-command.reply:
+		return err
 	case <-owner.done:
 		return nil
 	case <-ctx.Done():
@@ -321,120 +306,431 @@ func (owner *deviceOwner) Close(ctx context.Context) error {
 func (owner *deviceOwner) loop() {
 	defer close(owner.done)
 	workers := make(map[uint64]*ownerWorkerState)
+	queue := make([]uint64, 0)
 	snapshot := owner.Snapshot()
-	var nextGeneration, nextWorker uint64
+	var nextGeneration, nextWorker, activeWorker uint64
+	var attempt *ownerAttemptState
+	var generation *ownerGenerationState
+	var cleanup *ownerCleanupState
+	var idleTimer ownerTimer
 	var stopping bool
-	var stopWaiters []chan struct{}
-	publish := func() { owner.publishSnapshot(workers, stopping, snapshot) }
+	var stopWaiters []chan error
+
+	publish := func() {
+		switch {
+		case stopping:
+			snapshot.Ownership = ownerOwnershipStopped
+		case generation != nil:
+			snapshot.Ownership = ownerOwnershipActive
+		case cleanup != nil:
+			snapshot.Ownership = ownerOwnershipActive
+		default:
+			snapshot.Ownership = ownerOwnershipIdle
+		}
+		switch {
+		case attempt != nil:
+			snapshot.Transition = ownerTransitionConnecting
+		case cleanup != nil:
+			snapshot.Transition = ownerTransitionClosing
+		default:
+			snapshot.Transition = ownerTransitionNone
+		}
+		owner.snapshot.Store(snapshot)
+	}
+
+	removeQueued := func(workerID uint64) {
+		for index, queued := range queue {
+			if queued == workerID {
+				queue = append(queue[:index], queue[index+1:]...)
+				return
+			}
+		}
+	}
+	failQueued := func(result ownerResult) {
+		for _, workerID := range queue {
+			if worker := workers[workerID]; worker != nil {
+				delete(workers, workerID)
+				worker.reply <- result
+			}
+		}
+		queue = queue[:0]
+	}
+
+	startAttempt := func() error {
+		if attempt != nil || generation != nil || cleanup != nil || stopping {
+			return nil
+		}
+		if !tryAcquire(owner.settings.connectionAttempts) {
+			return busyNotSent()
+		}
+		nextGeneration++
+		attemptBase := context.Background()
+		if len(queue) != 0 {
+			if worker := workers[queue[0]]; worker != nil {
+				attemptBase = context.WithoutCancel(worker.ctx)
+			}
+		}
+		attemptCtx, cancel := context.WithTimeout(attemptBase, owner.settings.connectTimeout)
+		attempt = &ownerAttemptState{generation: nextGeneration, cancel: cancel}
+		publish()
+		go owner.runAttempt(attemptCtx, nextGeneration)
+		return nil
+	}
+
+	startNext := func() {
+		if activeWorker != 0 || generation == nil || stopping {
+			return
+		}
+		for len(queue) != 0 {
+			workerID := queue[0]
+			queue = queue[1:]
+			worker := workers[workerID]
+			if worker == nil {
+				continue
+			}
+			if err := worker.ctx.Err(); err != nil {
+				delete(workers, workerID)
+				worker.reply <- ownerResult{err: classifyOperationError(err, ToolOutcomeNotSent)}
+				continue
+			}
+			if idleTimer != nil {
+				idleTimer.Stop()
+				idleTimer = nil
+			}
+			activeWorker = workerID
+			worker.evidence.generation = generation.id
+			worker.evidence.dispatch = ownerDispatchStarted
+			operationCtx, cancel := context.WithCancel(worker.ctx)
+			worker.cancel = cancel
+			stopGenerationCancel := context.AfterFunc(generation.ctx, cancel)
+			go owner.runOperation(operationCtx, stopGenerationCancel, worker.evidence, generation.session, worker.operation)
+			return
+		}
+	}
+
+	scheduleIdle := func() {
+		if stopping || attempt != nil || generation == nil || cleanup != nil || activeWorker != 0 || len(queue) != 0 || idleTimer != nil {
+			return
+		}
+		generationID := generation.id
+		idleTimer = owner.settings.afterFunc(owner.settings.idleTimeout, func() {
+			owner.send(ownerIdleExpired{generation: generationID})
+		})
+	}
+
+	startCleanup := func(reasonGeneration *ownerGenerationState) {
+		if reasonGeneration == nil || cleanup != nil {
+			return
+		}
+		if idleTimer != nil {
+			idleTimer.Stop()
+			idleTimer = nil
+		}
+		if generation != nil && generation.id == reasonGeneration.id {
+			generation = nil
+		}
+		reasonGeneration.cancel()
+		cleanup = &ownerCleanupState{generation: reasonGeneration.id}
+		publish()
+		go owner.runCleanup(reasonGeneration)
+	}
+
+	finishIfStopped := func() bool {
+		cleanupPending := cleanup != nil && cleanup.err == nil
+		if !stopping || attempt != nil || generation != nil || cleanupPending || len(workers) != 0 {
+			return false
+		}
+		publish()
+		var stopErr error
+		if cleanup != nil {
+			stopErr = cleanup.err
+		}
+		for _, waiter := range stopWaiters {
+			waiter <- stopErr
+		}
+		return true
+	}
+
 	for command := range owner.commands {
 		switch command := command.(type) {
 		case registerOwnerWorker:
 			if stopping {
 				command.reply <- ownerRegistration{err: classifyOperationError(ErrSessionClosed, ToolOutcomeNotSent)}
-				continue
+				break
 			}
-			nextGeneration++
+			if cleanup != nil && cleanup.err != nil {
+				command.reply <- ownerRegistration{err: busyNotSent()}
+				break
+			}
 			nextWorker++
-			evidence := ownerWorkerEvidence{
-				owner: owner.id, generation: nextGeneration, worker: nextWorker, dispatch: ownerDispatchNotSent,
+			evidence := ownerWorkerEvidence{owner: owner.id, worker: nextWorker, dispatch: ownerDispatchNotSent}
+			worker := &ownerWorkerState{evidence: evidence, ctx: command.ctx, operation: command.operation, reply: make(chan ownerResult, 1)}
+			workers[nextWorker] = worker
+			queue = append(queue, nextWorker)
+			if generation == nil && attempt == nil && cleanup == nil {
+				if err := startAttempt(); err != nil {
+					removeQueued(nextWorker)
+					delete(workers, nextWorker)
+					command.reply <- ownerRegistration{err: err}
+					break
+				}
 			}
-			worker := &ownerWorkerState{evidence: evidence, cancel: command.cancel, reply: make(chan ownerResult, 1)}
-			workers[evidence.worker] = worker
-			publish()
 			command.reply <- ownerRegistration{evidence: evidence, reply: worker.reply}
-		case beginOwnerDispatch:
-			worker := matchingOwnerWorker(workers, command.evidence)
-			allowed := worker != nil && !worker.canceled && !stopping && command.ctx.Err() == nil
-			if allowed {
-				worker.evidence.dispatch = ownerDispatchStarted
-				publish()
-			}
-			command.reply <- allowed
+			startNext()
+			publish()
+
 		case cancelOwnerWorker:
-			worker := matchingOwnerWorker(workers, command.evidence)
-			canceled := worker != nil && !worker.canceled && worker.evidence.dispatch == ownerDispatchNotSent
-			if canceled {
-				worker.canceled = true
+			worker := workers[command.evidence.worker]
+			preDispatch := worker != nil && activeWorker != command.evidence.worker
+			if preDispatch {
+				removeQueued(command.evidence.worker)
+				lastAttemptWaiter := attempt != nil && len(queue) == 0 && activeWorker == 0
+				if lastAttemptWaiter {
+					worker.canceled = true
+					attempt.cancel()
+					preDispatch = false
+				} else {
+					delete(workers, command.evidence.worker)
+					worker.reply <- ownerResult{err: classifyOperationError(command.err, ToolOutcomeNotSent)}
+				}
+			} else if worker != nil && worker.cancel != nil {
 				worker.cancel()
-				publish()
 			}
-			command.reply <- canceled
+			command.reply <- preDispatch
+			publish()
+
+		case completeOwnerAttempt:
+			if attempt == nil || attempt.generation != command.generation {
+				if command.session != nil {
+					go owner.closeDetached(command.session)
+				}
+				break
+			}
+			attempt.cancel()
+			attempt = nil
+			for workerID, worker := range workers {
+				if worker.canceled {
+					delete(workers, workerID)
+					err := worker.ctx.Err()
+					if err == nil {
+						err = context.Canceled
+					}
+					worker.reply <- ownerResult{err: classifyOperationError(err, ToolOutcomeNotSent)}
+				}
+			}
+			liveQueue := queue[:0]
+			for _, workerID := range queue {
+				worker := workers[workerID]
+				if worker == nil {
+					continue
+				}
+				if err := worker.ctx.Err(); err != nil {
+					delete(workers, workerID)
+					worker.reply <- ownerResult{err: classifyOperationError(err, ToolOutcomeNotSent)}
+					continue
+				}
+				liveQueue = append(liveQueue, workerID)
+			}
+			queue = liveQueue
+			if command.err != nil || command.panicValue != nil {
+				snapshot.Health = ownerHealthDegraded
+				failQueued(ownerResult{err: command.err, panicValue: command.panicValue})
+				if command.cleanupErr != nil {
+					cleanup = &ownerCleanupState{generation: command.generation, err: command.cleanupErr}
+				}
+			} else if command.session != nil && !stopping && len(queue) != 0 {
+				generationCtx, cancel := context.WithCancel(context.Background())
+				generation = &ownerGenerationState{id: command.generation, session: command.session, ctx: generationCtx, cancel: cancel}
+				snapshot.Health = ownerHealthHealthy
+				go owner.watchGeneration(generation.id, command.session.Done())
+				startNext()
+			} else if command.session != nil {
+				generationCtx, cancel := context.WithCancel(context.Background())
+				orphan := &ownerGenerationState{id: command.generation, session: command.session, ctx: generationCtx, cancel: cancel}
+				cleanup = &ownerCleanupState{generation: orphan.id}
+				go owner.runCleanup(orphan)
+			}
+			publish()
+
 		case completeOwnerWorker:
 			completion := command.completion
-			worker := matchingOwnerWorker(workers, completion.evidence)
-			if worker == nil {
-				continue
+			worker := workers[completion.evidence.worker]
+			if worker == nil || activeWorker != completion.evidence.worker || worker.evidence.owner != completion.evidence.owner || worker.evidence.generation != completion.evidence.generation {
+				break
 			}
+			activeWorker = 0
 			delete(workers, completion.evidence.worker)
-			if !worker.canceled {
-				if completion.err == nil && completion.panicValue == nil {
-					snapshot.Observations.Completed++
-				} else {
-					snapshot.Observations.Failed++
+			if completion.err == nil && completion.panicValue == nil {
+				snapshot.Observations.Completed++
+			} else {
+				snapshot.Observations.Failed++
+			}
+			snapshot.Freshness = ownerFreshnessCurrent
+			snapshot.Provenance = ownerProvenanceOperation
+			worker.reply <- ownerResult{err: completion.err, panicValue: completion.panicValue}
+			startNext()
+			scheduleIdle()
+			publish()
+
+		case ownerGenerationEnded:
+			if generation != nil && generation.id == command.generation {
+				startCleanup(generation)
+			}
+
+		case ownerIdleExpired:
+			idleTimer = nil
+			if generation != nil && generation.id == command.generation && activeWorker == 0 && len(queue) == 0 {
+				startCleanup(generation)
+			}
+
+		case completeOwnerCleanup:
+			if cleanup == nil || cleanup.generation != command.generation {
+				break
+			}
+			if command.err != nil {
+				cleanup.err = command.err
+				snapshot.Health = ownerHealthDegraded
+				failQueued(ownerResult{err: busyNotSent()})
+			} else {
+				cleanup = nil
+				snapshot.Health = ownerHealthUnavailable
+				if !stopping && len(queue) != 0 {
+					if err := startAttempt(); err != nil {
+						failQueued(ownerResult{err: err})
+					}
 				}
-				snapshot.Freshness = ownerFreshnessCurrent
-				snapshot.Provenance = ownerProvenanceOperation
-				if completion.connected {
-					snapshot.Health = ownerHealthHealthy
-				} else if completion.err != nil {
-					snapshot.Health = ownerHealthDegraded
-				}
-				worker.reply <- ownerResult{err: completion.err, panicValue: completion.panicValue}
 			}
 			publish()
+
 		case stopDeviceOwner:
 			if !stopping {
 				stopping = true
-				for _, worker := range workers {
-					worker.cancel()
+				if idleTimer != nil {
+					idleTimer.Stop()
+					idleTimer = nil
 				}
-				publish()
+				if attempt != nil {
+					attempt.cancel()
+				}
+				if attempt != nil {
+					for _, workerID := range queue {
+						if worker := workers[workerID]; worker != nil {
+							worker.canceled = true
+						}
+					}
+					queue = queue[:0]
+				} else {
+					failQueued(ownerResult{err: classifyOperationError(ErrSessionClosed, ToolOutcomeNotSent)})
+				}
+				if active := workers[activeWorker]; active != nil && active.cancel != nil {
+					active.cancel()
+				}
+				if generation != nil {
+					startCleanup(generation)
+				}
 			}
 			stopWaiters = append(stopWaiters, command.reply)
-		}
-		if stopping && len(workers) == 0 {
 			publish()
-			for _, waiter := range stopWaiters {
-				waiter <- struct{}{}
-			}
+		}
+		if finishIfStopped() {
 			return
 		}
 	}
 }
 
-func matchingOwnerWorker(workers map[uint64]*ownerWorkerState, evidence ownerWorkerEvidence) *ownerWorkerState {
-	worker := workers[evidence.worker]
-	if worker == nil || worker.evidence.owner != evidence.owner || worker.evidence.generation != evidence.generation {
-		return nil
+func (owner *deviceOwner) runAttempt(ctx context.Context, generation uint64) {
+	var session ConnectedSession
+	var err error
+	completion := completeOwnerAttempt{generation: generation}
+	defer func() {
+		release(owner.settings.connectionAttempts)
+		if panicValue := recover(); panicValue != nil {
+			completion.panicValue = panicValue
+			if session != nil {
+				completion.cleanupErr = owner.closeDetached(session)
+			}
+		} else {
+			completion.session = session
+			completion.err = classifyConnectFailure(ctx, err)
+		}
+		owner.send(completion)
+	}()
+	session, err = owner.connector.Connect(ctx, owner.device)
+	if err == nil && session == nil {
+		err = ErrInvalidResponse
 	}
-	return worker
+	if err == nil {
+		var pong string
+		err = session.Call(ctx, methodPing, nil, &pong)
+		if err == nil && pong != "pong" {
+			err = ErrInvalidResponse
+		}
+	}
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		err = ctxErr
+	}
+	if err != nil && session != nil {
+		completion.cleanupErr = owner.closeDetached(session)
+		session = nil
+	}
 }
 
-func (owner *deviceOwner) publishSnapshot(workers map[uint64]*ownerWorkerState, stopping bool, snapshot ownerSnapshot) {
-	active, connecting := 0, false
-	for _, worker := range workers {
-		if worker.canceled {
-			continue
+func (owner *deviceOwner) runOperation(ctx context.Context, stopGenerationCancel func() bool, evidence ownerWorkerEvidence, session Session, operation func(context.Context, Session) error) {
+	defer stopGenerationCancel()
+	completion := ownerCompletion{evidence: evidence}
+	defer func() {
+		completion.evidence.dispatch = ownerDispatchCompleted
+		if panicValue := recover(); panicValue != nil {
+			completion.panicValue = panicValue
 		}
-		active++
-		connecting = connecting || worker.evidence.dispatch == ownerDispatchNotSent
+		owner.send(completeOwnerWorker{completion: completion})
+	}()
+	completion.err = operation(ctx, session)
+}
+
+func (owner *deviceOwner) watchGeneration(generation uint64, done <-chan struct{}) {
+	if done == nil {
+		return
 	}
-	if stopping {
-		snapshot.Ownership = ownerOwnershipStopped
-		if len(workers) == 0 {
-			snapshot.Transition = ownerTransitionNone
-		} else {
-			snapshot.Transition = ownerTransitionClosing
-		}
-	} else if active == 0 {
-		snapshot.Ownership = ownerOwnershipIdle
-		snapshot.Transition = ownerTransitionNone
-	} else {
-		snapshot.Ownership = ownerOwnershipActive
-		snapshot.Transition = ownerTransitionNone
-		if connecting {
-			snapshot.Transition = ownerTransitionConnecting
-		}
+	select {
+	case <-done:
+		owner.send(ownerGenerationEnded{generation: generation})
+	case <-owner.done:
 	}
-	owner.snapshot.Store(snapshot)
+}
+
+func (owner *deviceOwner) runCleanup(generation *ownerGenerationState) {
+	generation.cancel()
+	err := owner.closeDetached(generation.session)
+	owner.send(completeOwnerCleanup{generation: generation.id, err: err})
+}
+
+func (owner *deviceOwner) closeDetached(session ConnectedSession) error {
+	cleanup := telemetry.BeginStage(context.Background(), telemetry.StageCleanup)
+	ctx, cancel := context.WithTimeout(context.Background(), ownerCleanupTimeout)
+	err := session.Close(ctx)
+	cancel()
+	finishTelemetryStage(cleanup, err)
+	return err
+}
+
+func (owner *deviceOwner) send(command ownerCommand) {
+	select {
+	case owner.commands <- command:
+	case <-owner.done:
+	}
+}
+
+func classifyConnectFailure(ctx context.Context, err error) error {
+	if err == nil {
+		return nil
+	}
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return classifyOperationError(ctxErr, ToolOutcomeNotSent)
+	}
+	var classified interface{ ToolErrorOutcome() string }
+	if errors.As(err, &classified) {
+		return err
+	}
+	return classifyOperationError(err, ToolOutcomeNotSent)
 }

@@ -184,7 +184,7 @@ Consequence classes are cumulative:
 | Surface | Classification and control |
 |---|---|
 | `devices` map key | Becomes the runtime `device` identifier. Names are private deployment metadata, not credentials. |
-| `limits`, `max_operations`, `max_operations_per_device`, `max_sessions`, `max_captures`, `max_decoders` | Trusted local capacity bounds, not caller identity or a policy grant. They are strict positive integers with safe hierarchy checks; exhaustion returns a non-retryable `busy`/`not_sent` result before provider dispatch and never creates a request queue. |
+| `limits`, `max_operations`, `max_operations_per_device`, `max_connection_attempts`, `max_captures`, `max_decoders`, `session_idle_timeout` | Trusted local capacity and idle-ownership bounds, not caller identity or a policy grant. Integer limits are strict positive values with safe range and hierarchy checks; the idle duration is 10 seconds through one hour. Capacity rejection is non-retryable `busy`/`not_sent`; already-admitted same-device work and shared connection waiters may wait cancellably. Obsolete `max_sessions` is rejected. |
 | `url` | Trusted administrator-selected HTTP(S) appliance endpoint. Inline user information, query, and fragment components are rejected without echoing their values; a path prefix is retained. Redirects and environment proxies are disabled. |
 | `password_env`, `bearer_token_env` | Names of environment variables, not secret values. Missing/invalid names can appear in diagnostics; resolved values cannot. |
 | Resolved device password and HTTP bearer | Credentials held in process memory. The password is sent only in JetKVM login JSON; the bearer is compared to incoming HTTP credentials. Neither is a log/result field. |

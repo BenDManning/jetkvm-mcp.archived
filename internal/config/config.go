@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/BenDManning/jetkvm-mcp/internal/httporigin"
 	"github.com/BenDManning/jetkvm-mcp/internal/identifier"
@@ -36,11 +37,12 @@ type fileConfig struct {
 }
 
 type fileLimits struct {
-	MaxOperations          *int `yaml:"max_operations,omitempty"`
-	MaxOperationsPerDevice *int `yaml:"max_operations_per_device,omitempty"`
-	MaxSessions            *int `yaml:"max_sessions,omitempty"`
-	MaxCaptures            *int `yaml:"max_captures,omitempty"`
-	MaxDecoders            *int `yaml:"max_decoders,omitempty"`
+	MaxOperations          *int           `yaml:"max_operations,omitempty"`
+	MaxOperationsPerDevice *int           `yaml:"max_operations_per_device,omitempty"`
+	MaxConnectionAttempts  *int           `yaml:"max_connection_attempts,omitempty"`
+	MaxCaptures            *int           `yaml:"max_captures,omitempty"`
+	MaxDecoders            *int           `yaml:"max_decoders,omitempty"`
+	SessionIdleTimeout     *time.Duration `yaml:"session_idle_timeout,omitempty"`
 }
 
 type fileDevice struct {
@@ -93,6 +95,9 @@ func Load(path string, lookup LookupEnvironment) (Runtime, error) {
 	if len(source.Devices) == 0 {
 		return Runtime{}, errors.New("at least one device is required")
 	}
+	if len(source.Devices) > 64 {
+		return Runtime{}, errors.New("at most 64 devices are supported")
+	}
 	limits := jetkvm.DefaultLimits()
 	if source.Limits.MaxOperations != nil {
 		limits.MaxOperations = *source.Limits.MaxOperations
@@ -100,14 +105,17 @@ func Load(path string, lookup LookupEnvironment) (Runtime, error) {
 	if source.Limits.MaxOperationsPerDevice != nil {
 		limits.MaxOperationsPerDevice = *source.Limits.MaxOperationsPerDevice
 	}
-	if source.Limits.MaxSessions != nil {
-		limits.MaxSessions = *source.Limits.MaxSessions
+	if source.Limits.MaxConnectionAttempts != nil {
+		limits.MaxConnectionAttempts = *source.Limits.MaxConnectionAttempts
 	}
 	if source.Limits.MaxCaptures != nil {
 		limits.MaxCaptures = *source.Limits.MaxCaptures
 	}
 	if source.Limits.MaxDecoders != nil {
 		limits.MaxDecoders = *source.Limits.MaxDecoders
+	}
+	if source.Limits.SessionIdleTimeout != nil {
+		limits.SessionIdleTimeout = *source.Limits.SessionIdleTimeout
 	}
 	if _, err := jetkvm.ValidateLimits(limits); err != nil {
 		return Runtime{}, errors.New("invalid admission limits")

@@ -44,10 +44,8 @@ func (manager *Manager) DebugRPC(ctx context.Context, name, method string, param
 	}
 	var result json.RawMessage
 	_, reviewed := debugRPCReadOnlyMethods[method]
-	err = manager.withOperation(ctx, device, !reviewed, false, func() error {
-		return manager.withSession(ctx, device, func(operationCtx context.Context, session Session) error {
-			return session.Call(operationCtx, method, object, &result)
-		})
+	err = manager.withOperation(ctx, device, !reviewed, false, func(operationCtx context.Context, session Session) error {
+		return session.Call(operationCtx, method, object, &result)
 	})
 	if err != nil {
 		return nil, err

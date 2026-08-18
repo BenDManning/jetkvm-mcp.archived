@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"reflect"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -102,6 +103,7 @@ type testConnectedSession struct {
 	Session
 	done      chan struct{}
 	closeFunc func(context.Context)
+	validated atomic.Bool
 }
 
 func testConnected(session Session) *testConnectedSession {
@@ -109,6 +111,16 @@ func testConnected(session Session) *testConnectedSession {
 }
 
 func (session *testConnectedSession) Done() <-chan struct{} { return session.done }
+
+func (session *testConnectedSession) Call(ctx context.Context, method string, params any, result any) error {
+	if method == methodPing && session.validated.CompareAndSwap(false, true) {
+		if pong, ok := result.(*string); ok {
+			*pong = "pong"
+		}
+		return nil
+	}
+	return session.Session.Call(ctx, method, params, result)
+}
 
 func (session *testConnectedSession) Close(ctx context.Context) error {
 	if session.closeFunc != nil {
@@ -503,6 +515,20 @@ func TestNewManagerRejectsDiscardedDeviceURLComponents(t *testing.T) {
 		if err == nil || !strings.Contains(err.Error(), "query or fragment") {
 			t.Fatalf("url=%q error=%v", rawURL, err)
 		}
+	}
+}
+
+func TestNewManagerRejectsMoreThan64Devices(t *testing.T) {
+	base, err := url.Parse("https://jetkvm.invalid")
+	if err != nil {
+		t.Fatal(err)
+	}
+	devices := make([]DeviceConfig, 65)
+	for index := range devices {
+		devices[index] = DeviceConfig{Name: fmt.Sprintf("device-%d", index), BaseURL: *base}
+	}
+	if _, err := NewManager(devices, &fakeProvider{session: &fakeSession{}}); err == nil {
+		t.Fatal("manager accepted 65 devices")
 	}
 }
 
