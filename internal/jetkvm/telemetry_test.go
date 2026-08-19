@@ -559,7 +559,7 @@ func TestOperationTelemetryStageMatrix(t *testing.T) {
 	if _, err := manager.captureScreen(ctx, "missing", mcpserver.CaptureRequest{}, time.Second); err == nil {
 		t.Fatal("fixture capture unexpectedly succeeded")
 	}
-	if _, err := discardIncompleteUpload(ctx, telemetryCleanupSession{}, "PRIVATE-filename"); err != nil {
+	if _, err := discardExistingUploadArtifacts(ctx, telemetryCleanupSession{}, "PRIVATE-filename"); err != nil {
 		t.Fatal(err)
 	}
 	operation.Record(telemetry.StageTool, telemetry.CodeSuccess, telemetry.OutcomeSucceeded)

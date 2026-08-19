@@ -184,9 +184,9 @@ func (manager *Manager) uploadLocalMedia(ctx context.Context, session Session, d
 	mutated := false
 	err := func() error {
 		var err error
-		mutated, err = discardIncompleteUpload(ctx, session, filename)
+		mutated, err = discardExistingUploadArtifacts(ctx, session, filename)
 		if err != nil {
-			return err
+			return mutationSequenceError(err, mutated)
 		}
 		var started firmwareUploadStart
 		if err := session.Call(ctx, "startStorageFileUpload", map[string]any{"filename": filename, "size": info.Size()}, &started); err != nil {
@@ -232,23 +232,27 @@ func (manager *Manager) uploadLocalMedia(ctx context.Context, session Session, d
 	}, nil
 }
 
-func discardIncompleteUpload(ctx context.Context, session Session, filename string) (_ bool, returnErr error) {
+func discardExistingUploadArtifacts(ctx context.Context, session Session, filename string) (mutated bool, returnErr error) {
 	cleanupStage := telemetry.BeginStage(ctx, telemetry.StageCleanup)
 	defer func() { finishTelemetryStage(cleanupStage, returnErr) }()
 	var storage firmwareStorageFiles
 	if err := session.Call(ctx, "listStorageFiles", nil, &storage); err != nil {
 		return false, classifyOperationError(err, ToolOutcomeNotSent)
 	}
-	incomplete := filename + ".incomplete"
+	present := make(map[string]bool, len(storage.Files))
 	for _, file := range storage.Files {
-		if file.Filename == incomplete {
-			if err := session.Call(ctx, "deleteStorageFile", map[string]any{"filename": incomplete}, nil); err != nil {
-				return false, err
-			}
-			return true, nil
-		}
+		present[file.Filename] = true
 	}
-	return false, nil
+	for _, artifact := range []string{filename + ".incomplete", filename} {
+		if !present[artifact] {
+			continue
+		}
+		if err := session.Call(ctx, "deleteStorageFile", map[string]any{"filename": artifact}, nil); err != nil {
+			return mutated, err
+		}
+		mutated = true
+	}
+	return mutated, nil
 }
 
 func abortStartedUpload(operationCtx context.Context, session Session, uploadID, filename string) {
