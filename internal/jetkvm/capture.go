@@ -46,7 +46,7 @@ func (manager *Manager) captureScreen(ctx context.Context, name string, request 
 	defer cancel()
 	stopShutdownCancel := context.AfterFunc(manager.shutdownCtx, cancel)
 	defer stopShutdownCancel()
-	device, err := manager.device(name)
+	device, err := manager.resolveDevice(ctx, name)
 	if err != nil {
 		return mcpserver.CaptureResult{}, err
 	}

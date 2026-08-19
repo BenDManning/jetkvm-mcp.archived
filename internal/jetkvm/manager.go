@@ -160,7 +160,9 @@ type SessionConnector interface {
 
 type Manager struct {
 	devices            map[string]DeviceConfig
+	deviceRefs         map[string]telemetry.DeviceRef
 	owners             map[string]*deviceOwner
+	recorder           *telemetry.Recorder
 	decoder            Decoder
 	operations         chan struct{}
 	deviceOps          map[string]chan struct{}
@@ -190,6 +192,7 @@ func NewManager(devices []DeviceConfig, connector SessionConnector, options ...M
 	}
 	manager := &Manager{
 		devices:         make(map[string]DeviceConfig, len(devices)),
+		deviceRefs:      make(map[string]telemetry.DeviceRef, len(devices)),
 		owners:          make(map[string]*deviceOwner, len(devices)),
 		deviceOps:       make(map[string]chan struct{}, len(devices)),
 		deviceAdmission: make(map[string]*deviceAdmission, len(devices)),
@@ -242,6 +245,17 @@ func NewManager(devices []DeviceConfig, connector SessionConnector, options ...M
 			return nil, err
 		}
 	}
+	if manager.recorder != nil {
+		for name := range manager.devices {
+			deviceRef, err := telemetry.NewDeviceRef()
+			if err != nil {
+				manager.recorder = nil
+				clear(manager.deviceRefs)
+				break
+			}
+			manager.deviceRefs[name] = deviceRef
+		}
+	}
 	if manager.operations == nil {
 		if err := WithLimits(DefaultLimits())(manager); err != nil {
 			return nil, err
@@ -254,9 +268,23 @@ func NewManager(devices []DeviceConfig, connector SessionConnector, options ...M
 			idleTimeout:        manager.sessionIdleTimeout,
 			profile:            manager.capabilityProfile,
 			afterFunc:          manager.ownerAfterFunc,
+			recorder:           manager.recorder,
+			deviceRef:          manager.deviceRefs[name],
 		})
 	}
 	return manager, nil
+}
+
+// WithTelemetry correlates operations with managed-session lifecycle events.
+// Recording remains bounded and never changes operation results.
+func WithTelemetry(recorder *telemetry.Recorder) ManagerOption {
+	return func(manager *Manager) error {
+		if recorder == nil {
+			return errors.New("telemetry recorder is required")
+		}
+		manager.recorder = recorder
+		return nil
+	}
 }
 
 func withOwnerAfterFunc(afterFunc func(time.Duration, func()) ownerTimer) ManagerOption {
@@ -324,7 +352,7 @@ func (manager *Manager) ListDevices(context.Context) (mcpserver.DeviceList, erro
 }
 
 func (manager *Manager) ReleaseSession(ctx context.Context, name string) (mcpserver.SessionReleaseResult, error) {
-	device, err := manager.runLifecycleOperation(ctx, name, func(owner *deviceOwner) error { return owner.Release() })
+	device, err := manager.runLifecycleOperation(ctx, name, func(owner *deviceOwner) error { return owner.ReleaseContext(ctx) })
 	if err != nil {
 		return mcpserver.SessionReleaseResult{}, err
 	}
@@ -332,7 +360,7 @@ func (manager *Manager) ReleaseSession(ctx context.Context, name string) (mcpser
 }
 
 func (manager *Manager) TakeOverSession(ctx context.Context, name string) (mcpserver.SessionTakeoverResult, error) {
-	device, err := manager.runLifecycleOperation(ctx, name, func(owner *deviceOwner) error { return owner.TakeOver() })
+	device, err := manager.runLifecycleOperation(ctx, name, func(owner *deviceOwner) error { return owner.TakeOverContext(ctx) })
 	if err != nil {
 		return mcpserver.SessionTakeoverResult{}, err
 	}
@@ -343,7 +371,7 @@ func (manager *Manager) runLifecycleOperation(ctx context.Context, name string, 
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	device, err := manager.device(name)
+	device, err := manager.resolveDevice(ctx, name)
 	if err != nil {
 		return DeviceConfig{}, err
 	}
@@ -379,7 +407,7 @@ func (manager *Manager) runLifecycleOperation(ctx context.Context, name string, 
 }
 
 func (manager *Manager) Status(ctx context.Context, name string) (mcpserver.Status, error) {
-	device, err := manager.device(name)
+	device, err := manager.resolveDevice(ctx, name)
 	if err != nil {
 		return mcpserver.Status{}, err
 	}
@@ -518,7 +546,7 @@ func statusContextError(callerCtx, operationCtx context.Context) error {
 }
 
 func (manager *Manager) Power(ctx context.Context, name string, action mcpserver.PowerAction, targetName string) (mcpserver.PowerResult, error) {
-	device, err := manager.device(name)
+	device, err := manager.resolveDevice(ctx, name)
 	if err != nil {
 		return mcpserver.PowerResult{}, err
 	}
@@ -606,6 +634,7 @@ func (manager *Manager) withHIDOperation(ctx context.Context, device DeviceConfi
 }
 
 func (manager *Manager) withScheduledOperation(ctx context.Context, device DeviceConfig, capture bool, class ownerOperationClass, prepare func() error, operation func(context.Context, Session) error) error {
+	telemetry.BindDevice(ctx, manager.deviceRefs[device.Name])
 	admission := manager.deviceAdmission[device.Name]
 	admission.mu.Lock()
 	if manager.closed.Load() {
@@ -675,6 +704,14 @@ func (manager *Manager) device(name string) (DeviceConfig, error) {
 		return DeviceConfig{}, classifyOperationError(fmt.Errorf("%w: %s", ErrUnknownDevice, strings.TrimSpace(name)), ToolOutcomeNotSent)
 	}
 	return device, nil
+}
+
+func (manager *Manager) resolveDevice(ctx context.Context, name string) (DeviceConfig, error) {
+	device, err := manager.device(name)
+	if err == nil {
+		telemetry.BindDevice(ctx, manager.deviceRefs[device.Name])
+	}
+	return device, err
 }
 
 func powerRequest(device DeviceConfig, action mcpserver.PowerAction, targetName string) (string, any, error) {

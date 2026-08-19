@@ -314,7 +314,7 @@ func TestRunStdioOperationTelemetryKeepsStdoutProtocolOnly(t *testing.T) {
 			t.Fatalf("stderr JSON line %q: %v", line, err)
 		}
 		parsedTime, err := time.Parse(time.RFC3339Nano, event.Time)
-		if err != nil || !strings.HasSuffix(event.Time, "Z") || time.Since(parsedTime) > time.Minute || event.Schema != "jetkvm.operation.v2" || event.ServerVersion == "" || !strings.HasPrefix(event.ProcessInstanceID, "proc_") || !strings.HasPrefix(event.CorrelationID, "op_") || event.Transport != "stdio" {
+		if err != nil || !strings.HasSuffix(event.Time, "Z") || time.Since(parsedTime) > time.Minute || event.Schema != "jetkvm.operation.v3" || event.ServerVersion == "" || !strings.HasPrefix(event.ProcessInstanceID, "proc_") || !strings.HasPrefix(event.CorrelationID, "op_") || event.Transport != "stdio" {
 			t.Fatalf("event = %#v, time error = %v", event, err)
 		}
 		if processID == "" {

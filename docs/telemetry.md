@@ -1,6 +1,6 @@
-# Structured operation telemetry
+# Structured operation and session telemetry
 
-JetKVM MCP emits bounded JSON Lines operation telemetry to the process stderr
+JetKVM MCP emits bounded JSON Lines operation and managed-session telemetry to the process stderr
 stream. MCP protocol responses remain on stdout for stdio deployments. The
 telemetry path is diagnostic only: a full queue, writer failure, or flush timeout
 never changes an operation result or retry classification.
@@ -21,12 +21,13 @@ separate 30-day retention contract.
 
 ## Schema
 
-Every retained line uses `jetkvm.operation.v2`. Operation and stage events have
-exactly these fields:
+Operation and stage events use `jetkvm.operation.v3` and have these base fields,
+plus the conditional process-local references described under managed-session
+telemetry:
 
 | Field | Values |
 | --- | --- |
-| `schema` | `jetkvm.operation.v2` |
+| `schema` | `jetkvm.operation.v3` |
 | `time` | UTC RFC 3339 timestamp |
 | `process_instance_id` | random process-local opaque `proc_` identifier |
 | `server_version` | public version reported by `jetkvm-mcp --version` |
@@ -95,11 +96,10 @@ These fixture-only tests validate instrumentation and privacy behavior. They do
 not measure real JetKVM latency, qualify hardware compatibility, or authorize
 production load or soak testing.
 
-## Proposed managed-session telemetry
+## Managed-session telemetry
 
-This section specifies the telemetry target for proposed
-[ADR 0008](adr/0008-managed-per-device-webrtc-ownership.md). It is not emitted
-by the current implementation.
+This section specifies the implemented telemetry contract for
+[ADR 0008](adr/0008-managed-per-device-webrtc-ownership.md).
 
 Operation telemetry advances to `jetkvm.operation.v3`. It retains the v2 fields
 and meanings and conditionally adds:
@@ -145,10 +145,17 @@ point is conclusive:
 | `cleanup_timeout` | a detached cleanup deadline expired before all local resources joined |
 | `shutdown_closed` | shutdown closed and joined the generation inside the shared shutdown budget |
 
-An already released idempotent release has no generation and therefore emits
-only its operation event. Missing, dropped, or out-of-order telemetry never
-proves ownership, release, cleanup, or non-execution. State snapshots and tool
-results remain authoritative inside their respective boundaries.
+A release with no generation, including an already released idempotent release,
+therefore emits only its operation event. Missing, dropped, or out-of-order
+telemetry never proves ownership, release, cleanup, or non-execution. State
+snapshots and tool results remain authoritative inside their respective
+boundaries.
+
+If failed setup cannot finish bounded cleanup, no generation or `session_ref`
+exists. Its `connection_attempt_completed` event therefore uses
+`code: ownership_uncertain` and `outcome: failed`; generation-scoped
+`cleanup_timeout` and `ownership_uncertain` events are not invented without a
+session reference.
 
 The existing payload and identity prohibitions continue to apply. In
 particular, session telemetry contains no configured alias, durable device

@@ -14,9 +14,13 @@ type telemetryClassifiedError interface {
 }
 
 func finishTelemetryStage(stage *telemetry.StageSpan, err error) {
+	code, outcome := telemetryResult(err)
+	stage.Record(code, outcome)
+}
+
+func telemetryResult(err error) (string, string) {
 	if err == nil {
-		stage.Record(telemetry.CodeSuccess, telemetry.OutcomeSucceeded)
-		return
+		return telemetry.CodeSuccess, telemetry.OutcomeSucceeded
 	}
 	code, outcome := "operation_failed", telemetry.OutcomeFailed
 	var classified telemetryClassifiedError
@@ -28,5 +32,5 @@ func finishTelemetryStage(stage *telemetry.StageSpan, err error) {
 	} else if errors.Is(err, context.DeadlineExceeded) {
 		code = "timeout"
 	}
-	stage.Record(code, outcome)
+	return code, outcome
 }

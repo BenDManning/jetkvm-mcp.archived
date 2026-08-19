@@ -29,7 +29,7 @@ func TestRecorderEmitsBoundedSchemaAndCorrelation(t *testing.T) {
 	if err := decoder.Decode(&event); err != nil {
 		t.Fatalf("decode event: %v", err)
 	}
-	if len(event) != 11 || event["schema"] != "jetkvm.operation.v2" || event["server_version"] != "1.2.3" || event["transport"] != "stdio" || event["operation"] != "status" || event["stage"] != "rpc" || event["code"] != "success" || event["outcome"] != "succeeded" {
+	if len(event) != 11 || event["schema"] != "jetkvm.operation.v3" || event["server_version"] != "1.2.3" || event["transport"] != "stdio" || event["operation"] != "status" || event["stage"] != "rpc" || event["code"] != "success" || event["outcome"] != "succeeded" {
 		t.Fatalf("event = %#v", event)
 	}
 	eventTime, ok := event["time"].(string)
@@ -55,6 +55,102 @@ func TestRecorderEmitsBoundedSchemaAndCorrelation(t *testing.T) {
 	}
 	if err := decoder.Decode(new(any)); !errors.Is(err, io.EOF) {
 		t.Fatalf("recorder emitted data after shutdown summary: %v", err)
+	}
+}
+
+func TestOperationReferencesAppearOnlyAfterBinding(t *testing.T) {
+	var output bytes.Buffer
+	recorder := New(&output, "test")
+	ctx, operation := recorder.Start(context.Background(), TransportStdio, OperationStatus)
+	operation.Record(StageAdmission, CodeSuccess, OutcomeSucceeded)
+	BindDevice(ctx, DeviceRef("dev_00112233445566778899aabb"))
+	operation.Record(StageConnect, CodeSuccess, OutcomeSucceeded)
+	BindSession(ctx, SessionRef("ses_aabbccddeeff001122334455"))
+	operation.Record(StageTool, CodeSuccess, OutcomeSucceeded)
+	if err := recorder.Close(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	decoder := json.NewDecoder(&output)
+	var before, deviceBound, sessionBound map[string]any
+	for _, target := range []*map[string]any{&before, &deviceBound, &sessionBound} {
+		if err := decoder.Decode(target); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, exists := before["device_ref"]; exists {
+		t.Fatalf("pre-resolution event has device_ref: %#v", before)
+	}
+	if _, exists := before["session_ref"]; exists {
+		t.Fatalf("pre-generation event has session_ref: %#v", before)
+	}
+	if deviceBound["device_ref"] != "dev_00112233445566778899aabb" {
+		t.Fatalf("device-bound event = %#v", deviceBound)
+	}
+	if _, exists := deviceBound["session_ref"]; exists {
+		t.Fatalf("pre-generation event has session_ref: %#v", deviceBound)
+	}
+	if sessionBound["device_ref"] != "dev_00112233445566778899aabb" || sessionBound["session_ref"] != "ses_aabbccddeeff001122334455" {
+		t.Fatalf("session-bound event = %#v", sessionBound)
+	}
+}
+
+func TestRecorderEmitsClosedSessionSchema(t *testing.T) {
+	var output bytes.Buffer
+	recorder := New(&output, "test")
+	deviceRef := DeviceRef("dev_00112233445566778899aabb")
+	sessionRef := SessionRef("ses_aabbccddeeff001122334455")
+	recorder.RecordSession(deviceRef, "", SessionConnectionAttemptCompleted, "device_unavailable", OutcomeFailed, 70*time.Second)
+	recorder.RecordSession(deviceRef, sessionRef, SessionGenerationActive, CodeSuccess, OutcomeSucceeded, -time.Second)
+	recorder.RecordSession(deviceRef, sessionRef, SessionEvent("not_closed"), CodeSuccess, OutcomeSucceeded, 0)
+	if err := recorder.Close(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	decoder := json.NewDecoder(&output)
+	var failedAttempt, active map[string]any
+	if err := decoder.Decode(&failedAttempt); err != nil {
+		t.Fatal(err)
+	}
+	if err := decoder.Decode(&active); err != nil {
+		t.Fatal(err)
+	}
+	if len(failedAttempt) != 9 || failedAttempt["schema"] != "jetkvm.session.v1" || failedAttempt["event"] != "connection_attempt_completed" || failedAttempt["duration_ms"] != float64(60_000) || failedAttempt["outcome"] != OutcomeFailed {
+		t.Fatalf("failed attempt = %#v", failedAttempt)
+	}
+	if _, exists := failedAttempt["session_ref"]; exists {
+		t.Fatalf("failed attempt invented session_ref: %#v", failedAttempt)
+	}
+	if len(active) != 10 || active["event"] != "generation_active" || active["session_ref"] != string(sessionRef) || active["duration_ms"] != float64(0) {
+		t.Fatalf("active event = %#v", active)
+	}
+	if err := decoder.Decode(new(any)); !errors.Is(err, io.EOF) {
+		t.Fatalf("invalid session event was retained: %v", err)
+	}
+}
+
+func TestOpaqueReferencesAreRandomAndScoped(t *testing.T) {
+	firstDevice, err := NewDeviceRef()
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondDevice, err := NewDeviceRef()
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstSession, err := NewSessionRef()
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondSession, err := NewSessionRef()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !regexp.MustCompile(`^dev_[0-9a-f]{24}$`).MatchString(string(firstDevice)) || firstDevice == secondDevice {
+		t.Fatalf("device refs = %q, %q", firstDevice, secondDevice)
+	}
+	if !regexp.MustCompile(`^ses_[0-9a-f]{24}$`).MatchString(string(firstSession)) || firstSession == secondSession {
+		t.Fatalf("session refs = %q, %q", firstSession, secondSession)
 	}
 }
 
@@ -139,6 +235,45 @@ func TestRecorderSlowWriterDoesNotDelayOperation(t *testing.T) {
 	}
 	if err := recorder.Close(context.Background()); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestRecorderSessionPressureIsNonblockingAndCounted(t *testing.T) {
+	writer := &blockingWriter{started: make(chan struct{}), release: make(chan struct{})}
+	recorder := New(writer, "test")
+	_, span := recorder.Start(context.Background(), TransportStdio, OperationStatus)
+	span.Record(StageAdmission, CodeSuccess, OutcomeSucceeded)
+	<-writer.started
+	deviceRef := DeviceRef("dev_00112233445566778899aabb")
+	sessionRef := SessionRef("ses_aabbccddeeff001122334455")
+	recorded := make(chan struct{})
+	go func() {
+		for range cap(recorder.events) + 1 {
+			recorder.RecordSession(deviceRef, sessionRef, SessionGenerationReused, CodeSuccess, OutcomeSucceeded, 0)
+		}
+		close(recorded)
+	}()
+	select {
+	case <-recorded:
+	case <-time.After(25 * time.Millisecond):
+		close(writer.release)
+		<-recorded
+		t.Fatal("session telemetry pressure blocked its producer")
+	}
+	close(writer.release)
+	if err := recorder.Close(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	decoder := json.NewDecoder(bytes.NewReader(writer.output.Bytes()))
+	var summary shutdownEvent
+	for decoder.More() {
+		if err := decoder.Decode(&summary); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if summary.Code != "telemetry_summary" || summary.DroppedEvents == 0 || summary.Outcome != OutcomeFailed {
+		t.Fatalf("shutdown summary = %#v", summary)
 	}
 }
 

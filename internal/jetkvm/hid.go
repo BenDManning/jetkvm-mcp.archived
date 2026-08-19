@@ -44,7 +44,7 @@ var punctuationUsages = map[byte]keyReport{
 }
 
 func (manager *Manager) Keyboard(ctx context.Context, name string, request mcpserver.KeyboardRequest) (mcpserver.KeyboardResult, error) {
-	device, err := manager.device(name)
+	device, err := manager.resolveDevice(ctx, name)
 	if err != nil {
 		return mcpserver.KeyboardResult{}, err
 	}
@@ -72,7 +72,7 @@ func (manager *Manager) Keyboard(ctx context.Context, name string, request mcpse
 }
 
 func (manager *Manager) Mouse(ctx context.Context, name string, request mcpserver.MouseRequest) (mcpserver.MouseResult, error) {
-	device, err := manager.device(name)
+	device, err := manager.resolveDevice(ctx, name)
 	if err != nil {
 		return mcpserver.MouseResult{}, err
 	}

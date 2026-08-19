@@ -11,7 +11,10 @@ import (
 	"time"
 )
 
-const schemaVersion = "jetkvm.operation.v2"
+const (
+	operationSchemaVersion = "jetkvm.operation.v3"
+	sessionSchemaVersion   = "jetkvm.session.v1"
+)
 
 const (
 	TransportStdio = "stdio"
@@ -54,6 +57,24 @@ const (
 
 type correlationKey struct{}
 
+type DeviceRef string
+
+type SessionRef string
+
+type SessionEvent string
+
+const (
+	SessionConnectionAttemptCompleted SessionEvent = "connection_attempt_completed"
+	SessionGenerationActive           SessionEvent = "generation_active"
+	SessionGenerationReused           SessionEvent = "generation_reused"
+	SessionIdleReleased               SessionEvent = "idle_released"
+	SessionExplicitlyReleased         SessionEvent = "explicitly_released"
+	SessionTakenOver                  SessionEvent = "session_taken_over"
+	SessionOwnershipUncertain         SessionEvent = "ownership_uncertain"
+	SessionCleanupTimeout             SessionEvent = "cleanup_timeout"
+	SessionShutdownClosed             SessionEvent = "shutdown_closed"
+)
+
 type Recorder struct {
 	writer            io.Writer
 	serverVersion     string
@@ -78,6 +99,9 @@ type Span struct {
 	transport     string
 	operation     string
 	started       time.Time
+	mu            sync.RWMutex
+	deviceRef     DeviceRef
+	sessionRef    SessionRef
 }
 
 type StageSpan struct {
@@ -95,6 +119,21 @@ type event struct {
 	Transport         string `json:"transport"`
 	Operation         string `json:"operation"`
 	Stage             string `json:"stage"`
+	DurationMS        int64  `json:"duration_ms"`
+	Code              string `json:"code"`
+	Outcome           string `json:"outcome"`
+	DeviceRef         string `json:"device_ref,omitempty"`
+	SessionRef        string `json:"session_ref,omitempty"`
+}
+
+type sessionEvent struct {
+	Schema            string `json:"schema"`
+	Time              string `json:"time"`
+	ProcessInstanceID string `json:"process_instance_id"`
+	ServerVersion     string `json:"server_version"`
+	DeviceRef         string `json:"device_ref"`
+	SessionRef        string `json:"session_ref,omitempty"`
+	Event             string `json:"event"`
 	DurationMS        int64  `json:"duration_ms"`
 	Code              string `json:"code"`
 	Outcome           string `json:"outcome"`
@@ -144,6 +183,32 @@ func CorrelationID(ctx context.Context) string {
 	return span.correlationID
 }
 
+func BindDevice(ctx context.Context, ref DeviceRef) {
+	if ctx == nil {
+		return
+	}
+	span, _ := ctx.Value(correlationKey{}).(*Span)
+	if span == nil || !validReference(string(ref), "dev_") {
+		return
+	}
+	span.mu.Lock()
+	span.deviceRef = ref
+	span.mu.Unlock()
+}
+
+func BindSession(ctx context.Context, ref SessionRef) {
+	if ctx == nil {
+		return
+	}
+	span, _ := ctx.Value(correlationKey{}).(*Span)
+	if span == nil || !validReference(string(ref), "ses_") {
+		return
+	}
+	span.mu.Lock()
+	span.sessionRef = ref
+	span.mu.Unlock()
+}
+
 func BeginStage(ctx context.Context, stage string) *StageSpan {
 	span, _ := ctx.Value(correlationKey{}).(*Span)
 	return &StageSpan{operation: span, stage: stage, started: time.Now()}
@@ -177,11 +242,15 @@ func (span *Span) record(stage, code, outcome string, elapsed time.Duration) {
 	if duration > 60_000 {
 		duration = 60_000
 	}
+	span.mu.RLock()
+	deviceRef, sessionRef := span.deviceRef, span.sessionRef
+	span.mu.RUnlock()
 	value := event{
-		Schema: schemaVersion, Time: time.Now().UTC().Format(time.RFC3339Nano),
+		Schema: operationSchemaVersion, Time: time.Now().UTC().Format(time.RFC3339Nano),
 		ProcessInstanceID: span.recorder.processInstanceID, ServerVersion: span.recorder.serverVersion,
 		CorrelationID: span.correlationID, Transport: span.transport,
 		Operation: span.operation, Stage: stage, DurationMS: duration, Code: code, Outcome: outcome,
+		DeviceRef: string(deviceRef), SessionRef: string(sessionRef),
 	}
 	line, err := json.Marshal(value)
 	if err != nil || span.recorder.closed.Load() {
@@ -209,6 +278,39 @@ func (span *Span) record(stage, code, outcome string, elapsed time.Duration) {
 	}
 }
 
+func (recorder *Recorder) RecordSession(deviceRef DeviceRef, sessionRef SessionRef, eventName SessionEvent, code, outcome string, elapsed time.Duration) {
+	missingSessionRefAllowed := eventName == SessionConnectionAttemptCompleted && outcome != OutcomeSucceeded
+	if recorder == nil || recorder.writer == nil || recorder.closed.Load() ||
+		!validReference(string(deviceRef), "dev_") ||
+		(sessionRef == "" && !missingSessionRefAllowed) ||
+		(sessionRef != "" && !validReference(string(sessionRef), "ses_")) ||
+		!validSessionEvent(eventName) || !validCode(code) || !validOutcome(outcome) {
+		return
+	}
+	duration := elapsed.Milliseconds()
+	if duration < 0 {
+		duration = 0
+	}
+	if duration > 60_000 {
+		duration = 60_000
+	}
+	value := sessionEvent{
+		Schema: sessionSchemaVersion, Time: time.Now().UTC().Format(time.RFC3339Nano),
+		ProcessInstanceID: recorder.processInstanceID, ServerVersion: recorder.serverVersion,
+		DeviceRef: string(deviceRef), SessionRef: string(sessionRef), Event: string(eventName),
+		DurationMS: duration, Code: code, Outcome: outcome,
+	}
+	line, err := json.Marshal(value)
+	if err != nil {
+		return
+	}
+	select {
+	case recorder.events <- queuedEvent{line: append(line, '\n')}:
+	default:
+		recorder.droppedEvents.Add(1)
+	}
+}
+
 func validTransport(value string) bool {
 	return value == TransportStdio || value == TransportHTTP
 }
@@ -233,7 +335,18 @@ func validStage(value string) bool {
 
 func validCode(value string) bool {
 	switch value {
-	case CodeSuccess, "operation_failed", "canceled", "timeout", "invalid_input", "busy", "authentication_failed", "device_unavailable", "video_unavailable", "no_signal", "protocol_error", "telemetry_summary", "telemetry_writer_failure":
+	case CodeSuccess, "operation_failed", "canceled", "timeout", "invalid_input", "busy", "authentication_failed", "device_unavailable", "video_unavailable", "no_signal", "protocol_error", "session_released", "session_taken_over", "ownership_uncertain", "telemetry_summary", "telemetry_writer_failure":
+		return true
+	default:
+		return false
+	}
+}
+
+func validSessionEvent(value SessionEvent) bool {
+	switch value {
+	case SessionConnectionAttemptCompleted, SessionGenerationActive, SessionGenerationReused,
+		SessionIdleReleased, SessionExplicitlyReleased, SessionTakenOver,
+		SessionOwnershipUncertain, SessionCleanupTimeout, SessionShutdownClosed:
 		return true
 	default:
 		return false
@@ -368,7 +481,7 @@ func (recorder *Recorder) writerFailureLine(correlationID string) []byte {
 
 func (recorder *Recorder) shutdownEvent(correlationID, code, outcome string) event {
 	return event{
-		Schema: schemaVersion, Time: time.Now().UTC().Format(time.RFC3339Nano),
+		Schema: operationSchemaVersion, Time: time.Now().UTC().Format(time.RFC3339Nano),
 		ProcessInstanceID: recorder.processInstanceID, ServerVersion: recorder.serverVersion,
 		CorrelationID: correlationID, Transport: recorder.transport,
 		Operation: OperationLifecycle, Stage: StageShutdown,
@@ -399,4 +512,28 @@ func newRandomID(prefix string) (string, bool) {
 		return prefix + hex.EncodeToString(raw[:]), true
 	}
 	return "", false
+}
+
+func NewDeviceRef() (DeviceRef, error) {
+	value, ok := newRandomID("dev_")
+	if !ok {
+		return "", io.ErrUnexpectedEOF
+	}
+	return DeviceRef(value), nil
+}
+
+func NewSessionRef() (SessionRef, error) {
+	value, ok := newRandomID("ses_")
+	if !ok {
+		return "", io.ErrUnexpectedEOF
+	}
+	return SessionRef(value), nil
+}
+
+func validReference(value, prefix string) bool {
+	if len(value) != len(prefix)+24 || value[:len(prefix)] != prefix {
+		return false
+	}
+	_, err := hex.DecodeString(value[len(prefix):])
+	return err == nil
 }

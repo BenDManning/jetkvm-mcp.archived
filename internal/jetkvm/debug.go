@@ -25,7 +25,7 @@ func (manager *Manager) DebugRPC(ctx context.Context, name, method string, param
 	if _, reviewed := debugRPCReadOnlyMethods[method]; !reviewed && !unsafeAcknowledged {
 		return nil, fmt.Errorf("%w: unreviewed RPC method requires unsafe acknowledgement", ErrUnsupportedInput)
 	}
-	device, err := manager.device(name)
+	device, err := manager.resolveDevice(ctx, name)
 	if err != nil {
 		return nil, err
 	}

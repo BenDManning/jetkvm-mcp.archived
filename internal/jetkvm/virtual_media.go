@@ -54,7 +54,7 @@ type preparedLocalMedia struct {
 }
 
 func (manager *Manager) VirtualMedia(ctx context.Context, name string, request mcpserver.VirtualMediaRequest) (mcpserver.VirtualMediaResult, error) {
-	device, err := manager.device(name)
+	device, err := manager.resolveDevice(ctx, name)
 	if err != nil {
 		return mcpserver.VirtualMediaResult{}, err
 	}

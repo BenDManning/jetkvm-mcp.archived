@@ -131,7 +131,7 @@ func TestToolTelemetryCorrelatesSuccessFailureTimeoutCancelAndBusy(t *testing.T)
 			if err := decoder.Decode(&event); err != nil {
 				t.Fatal(err)
 			}
-			if event.Schema != "jetkvm.operation.v2" || event.CorrelationID == "" || event.Transport != telemetry.TransportStdio || event.Operation != test.operation || event.Stage != telemetry.StageTool || event.DurationMS < 0 || event.Code != test.code || event.Outcome != test.outcome {
+			if event.Schema != "jetkvm.operation.v3" || event.CorrelationID == "" || event.Transport != telemetry.TransportStdio || event.Operation != test.operation || event.Stage != telemetry.StageTool || event.DurationMS < 0 || event.Code != test.code || event.Outcome != test.outcome {
 				t.Fatalf("event = %#v", event)
 			}
 			var summary struct {
@@ -198,7 +198,7 @@ func TestHTTPToolTelemetryUsesHTTPTransport(t *testing.T) {
 			t.Fatal(err)
 		}
 		parsedTime, err := time.Parse(time.RFC3339Nano, event.Time)
-		if err != nil || !strings.HasSuffix(event.Time, "Z") || time.Since(parsedTime) > time.Minute || event.Schema != "jetkvm.operation.v2" || event.ServerVersion != "test" || !strings.HasPrefix(event.ProcessInstanceID, "proc_") || !strings.HasPrefix(event.CorrelationID, "op_") || event.Transport != telemetry.TransportHTTP {
+		if err != nil || !strings.HasSuffix(event.Time, "Z") || time.Since(parsedTime) > time.Minute || event.Schema != "jetkvm.operation.v3" || event.ServerVersion != "test" || !strings.HasPrefix(event.ProcessInstanceID, "proc_") || !strings.HasPrefix(event.CorrelationID, "op_") || event.Transport != telemetry.TransportHTTP {
 			t.Fatalf("event = %#v, time error = %v", event, err)
 		}
 		if processID == "" {

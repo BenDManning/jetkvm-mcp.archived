@@ -115,16 +115,17 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		return err
 	}
 	if options.kind == commandDebugRPC {
-		manager, err := jetkvm.NewManager(loaded.Devices, connector, jetkvm.WithLimits(loaded.Limits))
+		recorder := telemetry.New(stderr, reportedVersion())
+		manager, err := jetkvm.NewManager(loaded.Devices, connector, jetkvm.WithLimits(loaded.Limits), jetkvm.WithTelemetry(recorder))
 		if err != nil {
+			_ = recorder.Close(context.Background())
 			return err
 		}
-		defer func() { _ = manager.Close(context.Background()) }()
-		recorder := telemetry.New(stderr, reportedVersion())
 		operationCtx, span := recorder.Start(ctx, telemetry.TransportStdio, telemetry.OperationDebugRPC)
 		result, err := manager.DebugRPC(operationCtx, options.debugDevice, options.debugMethod, options.debugParams, options.debugUnsafeAcknowledged)
 		code, outcome := commandTelemetryResult(err)
 		span.Record(telemetry.StageTool, code, outcome)
+		_ = manager.Close(context.Background())
 		finishTelemetry(recorder, telemetry.TransportStdio, err)
 		if err != nil {
 			return err
@@ -138,15 +139,16 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	if err != nil {
 		return err
 	}
-	manager, err := jetkvm.NewManager(loaded.Devices, connector, jetkvm.WithDecoder(decoder), jetkvm.WithLimits(loaded.Limits))
-	if err != nil {
-		return err
-	}
 	transport := telemetry.TransportStdio
 	if options.httpAddress != "" {
 		transport = telemetry.TransportHTTP
 	}
 	recorder := telemetry.New(stderr, reportedVersion())
+	manager, err := jetkvm.NewManager(loaded.Devices, connector, jetkvm.WithDecoder(decoder), jetkvm.WithLimits(loaded.Limits), jetkvm.WithTelemetry(recorder))
+	if err != nil {
+		_ = recorder.Close(context.Background())
+		return err
+	}
 	server := mcpserver.NewWithTelemetry(manager, reportedVersion(), recorder, transport)
 	shutdown := newShutdownBudget(5 * time.Second)
 	defer shutdown.Close()
