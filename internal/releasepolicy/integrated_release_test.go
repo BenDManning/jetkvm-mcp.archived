@@ -1,6 +1,9 @@
 package releasepolicy_test
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -32,6 +35,8 @@ func TestIntegratedReleaseWorkflowHasOneLeastPrivilegePublicationPath(t *testing
 		Permissions map[string]string `yaml:"permissions"`
 		Jobs        map[string]struct {
 			Permissions map[string]string `yaml:"permissions"`
+			If          string            `yaml:"if"`
+			Needs       any               `yaml:"needs"`
 		} `yaml:"jobs"`
 	}
 	if err := yaml.Unmarshal(data, &workflow); err != nil {
@@ -55,8 +60,22 @@ func TestIntegratedReleaseWorkflowHasOneLeastPrivilegePublicationPath(t *testing
 			t.Errorf("%s permissions = %#v", name, job.Permissions)
 		}
 	}
-	if prepare := workflow.Jobs["prepare"].Permissions; !reflect.DeepEqual(prepare, map[string]string{"checks": "read", "contents": "read"}) {
-		t.Errorf("prepare permissions = %#v", prepare)
+	prepare := workflow.Jobs["prepare"]
+	if !reflect.DeepEqual(prepare.Permissions, map[string]string{"contents": "read"}) {
+		t.Errorf("prepare permissions = %#v", prepare.Permissions)
+	}
+	if prepare.Needs != nil {
+		t.Errorf("prepare inherits the push-only admission dependency: %#v", prepare.Needs)
+	}
+	publishAdmission, ok := workflow.Jobs["verify-publish-commit"]
+	if !ok {
+		t.Fatal("verify-publish-commit job is missing")
+	}
+	if publishAdmission.If != "github.event_name == 'push'" {
+		t.Errorf("verify-publish-commit condition = %q", publishAdmission.If)
+	}
+	if !reflect.DeepEqual(publishAdmission.Permissions, map[string]string{"checks": "read", "contents": "read"}) {
+		t.Errorf("verify-publish-commit permissions = %#v", publishAdmission.Permissions)
 	}
 	rehearse, ok := workflow.Jobs["rehearse"]
 	if !ok {
@@ -80,6 +99,9 @@ func TestIntegratedReleaseWorkflowHasOneLeastPrivilegePublicationPath(t *testing
 		"packages":     "write",
 	}) {
 		t.Errorf("publish permissions = %#v", publish.Permissions)
+	}
+	if !reflect.DeepEqual(publish.Needs, []any{"prepare", "verify-publish-commit", "stage-native", "stage-container"}) {
+		t.Errorf("publish dependencies = %#v", publish.Needs)
 	}
 
 	for _, expected := range []string{
@@ -113,12 +135,151 @@ func TestIntegratedReleaseWorkflowHasOneLeastPrivilegePublicationPath(t *testing
 	}
 }
 
+func TestDependencyPolicyRecordsORASLicense(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("..", "..", "docs", "dependency-policy.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "ORAS is licensed under Apache License 2.0") {
+		t.Error("dependency policy does not identify the ORAS license")
+	}
+}
+
+func TestReleasePreparationRendersCompleteMutationFreePublicationInputs(t *testing.T) {
+	root := filepath.Clean(filepath.Join("..", ".."))
+	temporary := t.TempDir()
+	nativeDir := filepath.Join(temporary, "native")
+	containerDir := filepath.Join(temporary, "container")
+	outputDir := filepath.Join(temporary, "output")
+	for _, directory := range []string{nativeDir, containerDir, outputDir} {
+		if err := os.MkdirAll(directory, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeReleasePreparationFixture(t, nativeDir, containerDir)
+	ledger := filepath.Join(temporary, "ledger.json")
+	writeTestFile(t, ledger, `{"entries":[{"id":"rehearsal-fixture","evidenceClass":"release_rehearsal","result":"pass","authorizationReference":"not-applicable","approvedUTCWindow":"not-applicable","observedOn":"2026-08-19","jetkvm":{"model":"not-observed","firmwareVersion":"not-observed"},"server":{"sourceRef":"0123456789abcdef","version":"v0.0.0-rehearsal.0123456789ab"},"runtime":{"os":"not-observed","architecture":"not-observed"},"ffmpeg":{"identity":"not-observed"},"mcp":{"transport":"not-observed","client":"not-observed"},"attachedHost":{"fixture":"not-observed","os":"not-observed","architecture":"not-observed"},"checks":["publication preparation"],"limitations":["Synthetic non-publishing fixture; no physical qualification."]}]}`)
+	tagNotes := filepath.Join(temporary, "tag-notes.json")
+	writeTestFile(t, tagNotes, `{"summary":"Integrated release rehearsal.","compatibilityAndMigration":[],"securityRelevantFixes":[],"knownLimitations":["Non-publishing rehearsal."],"supersededVersions":[],"retractedVersions":[]}`)
+
+	command := exec.Command("bash", "-c", `source "$1"; prepare_release_materials "$2" "$3" "$4" "$5" "$6" release_rehearsal`, "bash", filepath.Join(root, "scripts", "release-publication-materials.sh"), nativeDir, containerDir, ledger, tagNotes, outputDir)
+	command.Env = append(os.Environ(),
+		"GITHUB_REPOSITORY=BenDManning/jetkvm-mcp",
+		"GITHUB_SHA=0123456789abcdef",
+		"RELEASE_REF=refs/heads/main",
+		"RELEASE_TAG=v0.0.0-rehearsal.0123456789ab",
+		"RELEASE_WORKFLOW=BenDManning/jetkvm-mcp/.github/workflows/release.yml",
+	)
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("prepare release materials: %v\n%s", err, output)
+	}
+
+	record, err := os.ReadFile(filepath.Join(containerDir, "release-record.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, expected := range []string{`"tag": "v0.0.0-rehearsal.0123456789ab"`, `"commit": "0123456789abcdef"`, `"physical_qualification": "rehearsal-fixture"`, `"published": false`} {
+		if !strings.Contains(string(record), expected) {
+			t.Errorf("release record does not contain %s\n%s", expected, record)
+		}
+	}
+	notes, err := os.ReadFile(filepath.Join(outputDir, "release-notes.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, expected := range []string{"Integrated release rehearsal.", "rehearsal-fixture", "## Artifact digests", "## Verification"} {
+		if !strings.Contains(string(notes), expected) {
+			t.Errorf("release notes do not contain %q", expected)
+		}
+	}
+	assets, err := os.ReadFile(filepath.Join(outputDir, "release-assets.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assetLines := strings.Fields(string(assets))
+	if len(assetLines) != 18 {
+		t.Errorf("release asset count = %d, want 18\n%s", len(assetLines), assets)
+	}
+	for _, expected := range []string{"checksums.txt", "linux-amd64.spdx.json", "release-record.json", "sbom-linux-arm64.sigstore.json"} {
+		if !strings.Contains(string(assets), expected) {
+			t.Errorf("release assets do not contain %q", expected)
+		}
+	}
+}
+
+func TestReleasePreparationRejectsMismatchedQualification(t *testing.T) {
+	root := filepath.Clean(filepath.Join("..", ".."))
+	temporary := t.TempDir()
+	nativeDir := filepath.Join(temporary, "native")
+	containerDir := filepath.Join(temporary, "container")
+	outputDir := filepath.Join(temporary, "output")
+	for _, directory := range []string{nativeDir, containerDir, outputDir} {
+		if err := os.MkdirAll(directory, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeReleasePreparationFixture(t, nativeDir, containerDir)
+	ledger := filepath.Join(temporary, "ledger.json")
+	writeTestFile(t, ledger, `{"entries":[{"id":"wrong-candidate","evidenceClass":"release_rehearsal","result":"pass","server":{"sourceRef":"different-commit","version":"v0.0.0-rehearsal.0123456789ab"}}]}`)
+	tagNotes := filepath.Join(temporary, "tag-notes.json")
+	writeTestFile(t, tagNotes, `{"summary":"Integrated release rehearsal.","compatibilityAndMigration":[],"securityRelevantFixes":[],"knownLimitations":[],"supersededVersions":[],"retractedVersions":[]}`)
+
+	command := exec.Command("bash", "-c", `source "$1"; prepare_release_materials "$2" "$3" "$4" "$5" "$6" release_rehearsal`, "bash", filepath.Join(root, "scripts", "release-publication-materials.sh"), nativeDir, containerDir, ledger, tagNotes, outputDir)
+	command.Env = append(os.Environ(),
+		"GITHUB_REPOSITORY=BenDManning/jetkvm-mcp",
+		"GITHUB_SHA=0123456789abcdef",
+		"RELEASE_REF=refs/heads/main",
+		"RELEASE_TAG=v0.0.0-rehearsal.0123456789ab",
+		"RELEASE_WORKFLOW=BenDManning/jetkvm-mcp/.github/workflows/release.yml",
+	)
+	output, err := command.CombinedOutput()
+	if err == nil {
+		t.Fatalf("mismatched qualification unexpectedly passed\n%s", output)
+	}
+	if !strings.Contains(string(output), "exactly one matching passing qualification is required") {
+		t.Fatalf("unexpected mismatch error:\n%s", output)
+	}
+}
+
+func writeReleasePreparationFixture(t *testing.T, nativeDir, containerDir string) {
+	t.Helper()
+	for _, name := range []string{
+		"jetkvm-mcp_linux_amd64.tar.gz", "jetkvm-mcp_linux_arm64.tar.gz",
+		"jetkvm-mcp_linux_amd64.tar.gz.spdx.json", "jetkvm-mcp_linux_arm64.tar.gz.spdx.json",
+		"checksums.txt", "checksums.txt.sigstore.json", "provenance.sigstore.json",
+	} {
+		writeTestFile(t, filepath.Join(nativeDir, name), "fixture\n")
+	}
+	manifest := "{\"schemaVersion\":2}\n"
+	digest := sha256.Sum256([]byte(manifest))
+	writeTestFile(t, filepath.Join(containerDir, "image-manifest.json"), manifest)
+	writeTestFile(t, filepath.Join(containerDir, "manifest-digests.json"), fmt.Sprintf(`{"manifest_digest":"sha256:%s"}`, hex.EncodeToString(digest[:])))
+	for _, name := range []string{
+		"image-manifest-linux-amd64.json", "image-manifest-linux-arm64.json",
+		"linux-amd64.spdx.json", "linux-arm64.spdx.json", "image-manifest.sigstore.json",
+		"provenance.sigstore.json", "sbom-linux-amd64.sigstore.json", "sbom-linux-arm64.sigstore.json",
+	} {
+		writeTestFile(t, filepath.Join(containerDir, name), "fixture\n")
+	}
+}
+
+func writeTestFile(t *testing.T, path, contents string) {
+	t.Helper()
+	if err := os.WriteFile(path, []byte(contents), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestPublicationCoordinatorConsumesVersionBeforePublishingAndMovesLatestLast(t *testing.T) {
 	data, err := os.ReadFile(filepath.Join("..", "..", "scripts", "publish-release.sh"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	text := string(data)
+	materials, err := os.ReadFile(filepath.Join("..", "..", "scripts", "release-publication-materials.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(data) + "\n" + string(materials)
 	ordered := []string{
 		`gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${release_tag}"`,
 		`oras manifest fetch "$image:$release_tag"`,

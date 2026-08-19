@@ -15,12 +15,43 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  verify-publish-commit:
+    name: Verify publish commit
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      checks: read
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Admit only a protected release tag at a verified commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          [[ ${GITHUB_REF_PROTECTED} == true ]]
+          [[ ${GITHUB_ACTOR} == BenDManning ]]
+          [[ ${GITHUB_RUN_ATTEMPT} == 1 ]]
+          [[ ${GITHUB_REF} =~ ^refs/tags/v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
+          [[ $(git cat-file -t "${GITHUB_REF}") == tag ]]
+          [[ $(git rev-parse "${GITHUB_REF}^{}") == "${GITHUB_SHA}" ]]
+          git merge-base --is-ancestor "${GITHUB_SHA}" refs/remotes/origin/main
+          checks=$(gh api --method GET "repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/check-runs" -f per_page=100)
+          for required in 'Go quality' 'Minimum Go' 'MCP protocol' 'Container'; do
+            jq -e --arg required "$required" '
+              any(.check_runs[]; .name == $required and .conclusion == "success")
+            ' <<<"$checks" >/dev/null
+          done
+
   prepare:
     name: Prepare release identity
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
-      checks: read
       contents: read
     outputs:
       release_mode: ${{ steps.identity.outputs.release_mode }}
@@ -53,19 +84,6 @@ jobs:
               release_trigger=workflow_dispatch
               ;;
             push)
-              [[ ${GITHUB_REF_PROTECTED} == true ]]
-              [[ ${GITHUB_ACTOR} == BenDManning ]]
-              [[ ${GITHUB_RUN_ATTEMPT} == 1 ]]
-              [[ ${GITHUB_REF} =~ ^refs/tags/v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
-              [[ $(git cat-file -t "${GITHUB_REF}") == tag ]]
-              [[ $(git rev-parse "${GITHUB_REF}^{}") == "${GITHUB_SHA}" ]]
-              git merge-base --is-ancestor "${GITHUB_SHA}" refs/remotes/origin/main
-              checks=$(gh api --method GET "repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/check-runs" -f per_page=100)
-              for required in 'Go quality' 'Minimum Go' 'MCP protocol' 'Container'; do
-                jq -e --arg required "$required" '
-                  any(.check_runs[]; .name == $required and .conclusion == "success")
-                ' <<<"$checks" >/dev/null
-              done
               release_mode=publish
               release_ref=${GITHUB_REF}
               release_tag=${GITHUB_REF#refs/tags/}
@@ -210,8 +228,8 @@ jobs:
 
   publish:
     name: Publish all release subjects
-    if: needs.prepare.outputs.release_mode == 'publish'
-    needs: [prepare, stage-native, stage-container]
+    if: needs.prepare.outputs.release_mode == 'publish' && needs.verify-publish-commit.result == 'success'
+    needs: [prepare, verify-publish-commit, stage-native, stage-container]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:

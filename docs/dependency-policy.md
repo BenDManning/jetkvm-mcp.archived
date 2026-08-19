@@ -22,9 +22,10 @@ as trusted changes.
   selected line; the digest fixes fetched bytes.
 - The tag-only publisher downloads ORAS from the canonical
   `oras-project/oras` GitHub Release at the exact version and SHA-256 recorded in
-  the finalization action. That action is the ORAS version/checksum authority;
-  updates review the upstream release, license, advisories, archive checksum,
-  OCI-layout copy behavior, authentication, resolve, and tag semantics together.
+  the finalization action. ORAS is licensed under Apache License 2.0. That action
+  is the ORAS version/checksum authority; updates review the upstream release,
+  license, advisories, archive checksum, OCI-layout copy behavior,
+  authentication, resolve, and tag semantics together.
 - Debian `ca-certificates` and `ffmpeg` remain distribution-selected packages.
   Their exact resolved versions are release evidence recorded from the built
   image and its SBOM, not reproducible package pins. The repository makes no

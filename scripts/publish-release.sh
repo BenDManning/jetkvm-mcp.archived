@@ -4,6 +4,8 @@ set -euo pipefail
 script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 # shellcheck source=release-publication-state.sh
 source "$script_dir/release-publication-state.sh"
+# shellcheck source=release-publication-materials.sh
+source "$script_dir/release-publication-materials.sh"
 
 if [[ $# -ne 2 ]]; then
   echo "usage: scripts/publish-release.sh NATIVE_DIR CONTAINER_DIR" >&2
@@ -95,195 +97,80 @@ done
 
 scripts/verify-release-publication-state.sh
 
-if [[ $RELEASE_MODE == rehearse ]]; then
-  [[ $RELEASE_REF == refs/heads/main && $RELEASE_TRIGGER == workflow_dispatch ]]
-  echo "verified complete integrated release rehearsal for $GITHUB_SHA"
-  exit 0
-fi
-
 release_tag=$RELEASE_TAG
-[[ $RELEASE_REF == "refs/tags/$release_tag" ]]
-[[ $RELEASE_TRIGGER == push ]]
-[[ ${GITHUB_REF_PROTECTED:-false} == true ]]
-[[ ${GITHUB_ACTOR:-} == BenDManning ]]
-[[ $release_tag =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
-[[ $(git cat-file -t "$RELEASE_REF") == tag ]]
-[[ $(git rev-parse "$RELEASE_REF^{}") == "$GITHUB_SHA" ]]
-: "${ORAS_PATH:?ORAS_PATH is required for publication}"
-
-oras() {
-  "$ORAS_PATH" "$@"
-}
-
 image=ghcr.io/bendmanning/jetkvm-mcp
-
 temporary_dir=$(mktemp -d)
 cleanup() {
   rm -r -- "$temporary_dir"
 }
 trap cleanup EXIT
 
-qualification="$temporary_dir/physical-qualification.json"
-jq -ce --arg commit "$GITHUB_SHA" --arg version "$release_tag" '
-  [.entries[] |
-    select(
-      .evidenceClass == "physical_qualification" and
-      .result == "pass" and
-      .server.sourceRef == $commit and
-      .server.version == $version
-    )] |
-  if length != 1 then
-    error("exactly one passing physical qualification is required for this release")
-  else
-    .[0]
-  end |
-  select(
-    (.id | type == "string" and length > 0) and
-    (.authorizationReference | type == "string" and length > 0) and
-    (.approvedUTCWindow | type == "string" and length > 0) and
-    (.observedOn | type == "string" and length > 0) and
-    (.jetkvm.model | type == "string" and length > 0) and
-    (.jetkvm.firmwareVersion | type == "string" and length > 0) and
-    (.runtime.os | type == "string" and length > 0) and
-    (.runtime.architecture | type == "string" and length > 0) and
-    (.ffmpeg.identity | type == "string" and length > 0) and
-    (.mcp.transport | type == "string" and length > 0) and
-    (.mcp.client | type == "string" and length > 0) and
-    (.attachedHost.fixture | type == "string" and length > 0) and
-    (.attachedHost.os | type == "string" and length > 0) and
-    (.attachedHost.architecture | type == "string" and length > 0) and
-    (.checks | type == "array" and length > 0 and all(.[]; type == "string" and length > 0)) and
-    (.limitations | type == "array" and length > 0 and all(.[]; type == "string" and length > 0))
-  )
-' docs/compatibility/jetkvm-ledger.json > "$qualification"
-qualification_id=$(jq -er '.id' "$qualification")
+qualification_ledger=docs/compatibility/jetkvm-ledger.json
+tag_notes_source="$temporary_dir/tag-release-notes-source.json"
+evidence_class=physical_qualification
+if [[ $RELEASE_MODE == rehearse ]]; then
+  [[ $RELEASE_REF == refs/heads/main && $RELEASE_TRIGGER == workflow_dispatch ]]
+  qualification_ledger="$temporary_dir/rehearsal-qualification-ledger.json"
+  evidence_class=release_rehearsal
+  jq -n \
+    --arg commit "$GITHUB_SHA" \
+    --arg version "$release_tag" \
+    --arg observed_on "$(git show -s --format=%cs "$GITHUB_SHA")" \
+    '{entries: [{
+      id: ("release-rehearsal-" + ($commit[0:12])),
+      evidenceClass: "release_rehearsal",
+      result: "pass",
+      authorizationReference: "not-applicable-nonpublishing-rehearsal",
+      approvedUTCWindow: "not-applicable-nonpublishing-rehearsal",
+      observedOn: $observed_on,
+      jetkvm: {model: "not-observed", firmwareVersion: "not-observed"},
+      server: {sourceRef: $commit, version: $version},
+      runtime: {os: "not-observed", architecture: "not-observed"},
+      ffmpeg: {identity: "not-observed"},
+      mcp: {transport: "not-observed", client: "not-observed"},
+      attachedHost: {fixture: "not-observed", os: "not-observed", architecture: "not-observed"},
+      checks: ["mutation-free release material preparation"],
+      limitations: ["Synthetic workflow fixture only; no hardware access or physical qualification occurred."]
+    }]}' > "$qualification_ledger"
+  jq -n '{
+    summary: "Non-publishing integrated release rehearsal.",
+    compatibilityAndMigration: [],
+    securityRelevantFixes: [],
+    knownLimitations: ["Synthetic release notes; no release was published."],
+    supersededVersions: [],
+    retractedVersions: []
+  }' > "$tag_notes_source"
+else
+  [[ $RELEASE_REF == "refs/tags/$release_tag" ]]
+  [[ $RELEASE_TRIGGER == push ]]
+  [[ ${GITHUB_REF_PROTECTED:-false} == true ]]
+  [[ ${GITHUB_ACTOR:-} == BenDManning ]]
+  [[ $release_tag =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
+  [[ $(git cat-file -t "$RELEASE_REF") == tag ]]
+  [[ $(git rev-parse "$RELEASE_REF^{}") == "$GITHUB_SHA" ]]
+  git for-each-ref --format='%(contents)' "$RELEASE_REF" > "$tag_notes_source"
+fi
 
-annotation=$(git for-each-ref --format='%(contents)' "$RELEASE_REF")
-tag_notes="$temporary_dir/tag-release-notes.json"
-printf '%s' "$annotation" | jq -e '
-  (.summary | type == "string" and length > 0) and
-  ([
-    .compatibilityAndMigration,
-    .securityRelevantFixes,
-    .knownLimitations,
-    .supersededVersions,
-    .retractedVersions
-  ] | all(.[]; type == "array" and all(.[]; type == "string" and length > 0)))
-' >/dev/null
-printf '%s' "$annotation" | jq -c . > "$tag_notes"
+prepare_release_materials \
+  "$native_dir" \
+  "$container_dir" \
+  "$qualification_ledger" \
+  "$tag_notes_source" \
+  "$temporary_dir/materials" \
+  "$evidence_class"
 
-jq -n \
-  --arg tag "$release_tag" \
-  --arg ref "$RELEASE_REF" \
-  --arg commit "$GITHUB_SHA" \
-  --arg workflow "$RELEASE_WORKFLOW" \
-  --arg image "$image@$manifest_digest" \
-  --arg qualification "$qualification_id" \
-  '{
-    tag: $tag,
-    ref: $ref,
-    commit: $commit,
-    workflow: $workflow,
-    container: $image,
-    physical_qualification: $qualification,
-    immutable: true,
-    published: true,
-    latest_after: "complete_stable_publication"
-  }' > "$container_dir/release-record.json"
+notes="$temporary_dir/materials/release-notes.md"
+mapfile -t assets < "$temporary_dir/materials/release-assets.txt"
 
-notes="$temporary_dir/release-notes.md"
-{
-  jq -r '
-    def section($heading; $items):
-      "## " + $heading + "\n\n" +
-      (if ($items | length) == 0 then "- None." else ($items | map("- " + .) | join("\n")) end) + "\n";
-    "## Changes\n\n" + .summary + "\n\n" +
-    section("Compatibility and migration"; .compatibilityAndMigration) + "\n" +
-    section("Security-relevant fixes"; .securityRelevantFixes) + "\n" +
-    section("Known limitations"; .knownLimitations) + "\n" +
-    section("Superseded versions"; .supersededVersions) + "\n" +
-    section("Retracted versions"; .retractedVersions)
-  ' "$tag_notes"
-  jq -r '
-    "\n## Physical qualification\n\n" +
-    "- Evidence: `" + .id + "`\n" +
-    "- Authorization: `" + .authorizationReference + "` during `" + .approvedUTCWindow + "`\n" +
-    "- Qualification date: `" + .observedOn + "`\n" +
-    "- JetKVM: `" + .jetkvm.model + "`, firmware `" + .jetkvm.firmwareVersion + "`\n" +
-    "- Server: `" + .server.version + "` at `" + .server.sourceRef + "`\n" +
-    "- Runtime: `" + .runtime.os + "/" + .runtime.architecture + "`\n" +
-    "- FFmpeg: `" + .ffmpeg.identity + "`\n" +
-    "- MCP: `" + .mcp.transport + "` with `" + .mcp.client + "`\n" +
-    "- Attached-host fixture: `" + .attachedHost.fixture + "`, `" + .attachedHost.os + "/" + .attachedHost.architecture + "`\n" +
-    "- Completed checks: " + (.checks | join(", ")) + "\n" +
-    "- Qualification limits:\n" + (.limitations | map("  - " + .) | join("\n"))
-  ' "$qualification"
-  printf '\n## Artifact digests\n\n'
-  while read -r digest subject; do
-    printf -- '- `%s`: `%s`\n' "$subject" "sha256:$digest"
-  done < "$native_dir/checksums.txt"
-  printf -- '- `%s`: `%s`\n\n' "$image@$manifest_digest" "$manifest_digest"
-  cat <<EOF
-## Supported release surface
+if [[ $RELEASE_MODE == rehearse ]]; then
+  echo "verified complete integrated release rehearsal for $GITHUB_SHA"
+  exit 0
+fi
 
-- MCP revision: \`2026-07-28\`
-- Source minimum: Go 1.25.13; release toolchain: Go 1.26.6
-- Native: Linux amd64 and arm64
-- Container: Linux amd64 and arm64, with FFmpeg, running as UID/GID 10001
-- Hardware compatibility: only the exact combination in `$qualification_id`; no broader model or firmware claim
-
-## Verification
-
-Release identity:
-
-- Protected tag: \`$RELEASE_REF\`
-- Commit: \`$GITHUB_SHA\`
-- Workflow: \`$RELEASE_WORKFLOW\`
-- Container: \`$image@$manifest_digest\`
-
-Verify downloaded native subjects with \`checksums.txt\`, then constrain Sigstore verification to:
-
-\`\`\`sh
-repo=$GITHUB_REPOSITORY
-workflow=$RELEASE_WORKFLOW
-release_ref=$RELEASE_REF
-release_commit=$GITHUB_SHA
-sha256sum --check --strict checksums.txt
-cosign verify-blob --bundle checksums.txt.sigstore.json --certificate-identity "https://github.com/\${workflow}@\${release_ref}" --certificate-oidc-issuer https://token.actions.githubusercontent.com --certificate-github-workflow-repository "\$repo" --certificate-github-workflow-ref "\$release_ref" --certificate-github-workflow-sha "\$release_commit" checksums.txt
-gh attestation verify SUBJECT --repo "\$repo" --bundle provenance.sigstore.json --cert-identity "https://github.com/\${workflow}@\${release_ref}" --source-ref "\$release_ref" --source-digest "\$release_commit" --deny-self-hosted-runners
-\`\`\`
-
-Pull the immutable container and verify its downloaded manifest evidence with:
-
-\`\`\`sh
-docker pull $image@$manifest_digest
-cosign verify-blob --bundle image-manifest.sigstore.json --certificate-identity "https://github.com/\${workflow}@\${release_ref}" --certificate-oidc-issuer https://token.actions.githubusercontent.com --certificate-github-workflow-repository "\$repo" --certificate-github-workflow-ref "\$release_ref" --certificate-github-workflow-sha "\$release_commit" image-manifest.json
-gh attestation verify image-manifest.json --repo "\$repo" --bundle provenance.sigstore.json --cert-identity "https://github.com/\${workflow}@\${release_ref}" --source-ref "\$release_ref" --source-digest "\$release_commit" --deny-self-hosted-runners
-\`\`\`
-EOF
-} > "$notes"
-
-assets=(
-  "$native_dir"/*.tar.gz
-  "$native_dir"/*.spdx.json
-  "$native_dir/checksums.txt"
-  "$native_dir/checksums.txt.sigstore.json"
-  "$native_dir/provenance.sigstore.json"
-  "$container_dir/image-manifest.json"
-  "$container_dir/image-manifest-linux-amd64.json"
-  "$container_dir/image-manifest-linux-arm64.json"
-  "$container_dir/linux-amd64.spdx.json"
-  "$container_dir/linux-arm64.spdx.json"
-  "$container_dir/manifest-digests.json"
-  "$container_dir/release-record.json"
-  "$container_dir/image-manifest.sigstore.json"
-  "$container_dir/provenance.sigstore.json"
-  "$container_dir/sbom-linux-amd64.sigstore.json"
-  "$container_dir/sbom-linux-arm64.sigstore.json"
-)
-for asset in "${assets[@]}"; do
-  [[ -f $asset ]] || { echo "missing release asset: $asset" >&2; exit 1; }
-done
+: "${ORAS_PATH:?ORAS_PATH is required for publication}"
+oras() {
+  "$ORAS_PATH" "$@"
+}
 
 record_reconciliation() {
   local phase=$1
