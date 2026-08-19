@@ -27,7 +27,6 @@ import (
 
 const (
 	updateToolManifestEnvironment = "JETKVM_UPDATE_TOOL_MANIFEST"
-	toolManifestCount             = 19
 )
 
 var toolManifestFixturePath = filepath.Join("testdata", "tool-manifest.json")
@@ -166,7 +165,7 @@ func TestToolManifestContract(t *testing.T) {
 		t.Run(path.name, func(t *testing.T) {
 			session, discovery, cleanup := path.connect(t)
 			defer cleanup()
-			got := captureToolManifest(t, ctx, session, discovery, path.connectError, toolManifestCount)
+			got := captureToolManifest(t, ctx, session, discovery, path.connectError)
 			if canonical == nil {
 				canonical = got
 			} else if !bytes.Equal(got, canonical) {
@@ -186,7 +185,7 @@ func TestToolManifestFixtureUpdate(t *testing.T) {
 	ctx := context.Background()
 	session, discovery, cleanup := connectManifestInMemory(t)
 	defer cleanup()
-	manifest := captureToolManifest(t, ctx, session, discovery, connectManifestFailingInMemory, toolManifestCount)
+	manifest := captureToolManifest(t, ctx, session, discovery, connectManifestFailingInMemory)
 	if err := os.WriteFile(toolManifestFixturePath, append(manifest, '\n'), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -196,7 +195,7 @@ func TestToolManifestFixtureRejectsUnreviewedMutation(t *testing.T) {
 	fixture := readToolManifestFixture(t)
 	session, discovery, cleanup := connectManifestMutatedInMemory(t)
 	defer cleanup()
-	mutated := captureToolManifest(t, context.Background(), session, discovery, connectManifestFailingInMemory, toolManifestCount)
+	mutated := captureToolManifest(t, context.Background(), session, discovery, connectManifestFailingInMemory)
 	if manifestMatchesFixture(mutated, fixture) {
 		t.Fatal("temporary runtime tool mutation did not fail the manifest gate")
 	}
@@ -248,7 +247,7 @@ func TestManifestClientAdvertisesNoDeprecatedCapabilities(t *testing.T) {
 	}
 }
 
-func captureToolManifest(t *testing.T, ctx context.Context, session *mcp.ClientSession, discovery *observedDiscovery, connectError func(*testing.T) (*mcp.ClientSession, func()), expectedToolCount int) []byte {
+func captureToolManifest(t *testing.T, ctx context.Context, session *mcp.ClientSession, discovery *observedDiscovery, connectError func(*testing.T) (*mcp.ClientSession, func())) []byte {
 	t.Helper()
 	initialized := session.InitializeResult()
 	if initialized == nil || initialized.Capabilities == nil || initialized.ServerInfo == nil {
@@ -260,9 +259,6 @@ func captureToolManifest(t *testing.T, ctx context.Context, session *mcp.ClientS
 	}
 	if listed.NextCursor != "" {
 		t.Fatalf("tools/list unexpectedly paginated with cursor %q", listed.NextCursor)
-	}
-	if got, want := len(listed.Tools), expectedToolCount; got != want {
-		t.Fatalf("tool count = %d, want %d", got, want)
 	}
 	if !sort.SliceIsSorted(listed.Tools, func(i, j int) bool { return listed.Tools[i].Name < listed.Tools[j].Name }) {
 		t.Fatal("tools/list is not sorted by stable tool name")

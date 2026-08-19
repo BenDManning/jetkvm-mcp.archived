@@ -107,9 +107,9 @@ media rows pass only when every mount is observed, every unmount is observed,
 the source digests remain unchanged, and all synthetic appliance storage is
 removed. Best-effort cleanup without an observed final state is a failure.
 
-## Proposed managed-session supplement
+## Managed-session supplement
 
-This supplement becomes mandatory for a release candidate implementing proposed
+This supplement is mandatory for a release candidate implementing
 [ADR 0008](adr/0008-managed-per-device-webrtc-ownership.md). It is not authority
 to access hardware and does not alter the stop rule above.
 
@@ -162,6 +162,11 @@ only for repeated read/capture evidence that fits its existing inputs and
 sanitized report. Browser handoff, mutation, network interruption, and shutdown
 remain fixture-runbook steps. An automated helper may orchestrate bounded MCP
 call sequences but cannot supply physical observation or authorization.
+The repository's source-run `jetkvm-mcp-fixture-runner` accepts sequential
+batches of bounded MCP calls for this purpose. Keep its plan private. A
+consequential plan also requires its explicit owner-authorization
+acknowledgement flag, which records operator intent but is not authorization.
+Run browser checkpoints and record observations outside the helper.
 
 Retain the exact build, model, firmware, runtime, FFmpeg identity, capability
 profile, prompt observations, sanitized marker observations, operation

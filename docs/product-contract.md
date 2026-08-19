@@ -35,6 +35,10 @@ The separately maintained `jetkvm-mcp-validate` command is source-run,
 read-only qualification tooling. Its documented flags, exit behavior, and
 sanitized JSON report are compatibility surfaces, but it is not included in
 the binary archives or container and has no packaged-artifact guarantee.
+The source-run `jetkvm-mcp-fixture-runner` is a bounded runbook helper with the
+same packaging boundary. It executes only an operator-supplied prescribed plan,
+does not supply physical authority or observation, and emits value-free call
+outcomes rather than MCP results.
 
 ### CLI streams and exit status
 
@@ -174,13 +178,13 @@ configured device. Resident ordinary ownership, the replacement configuration
 grammar, explicit lifecycle tools, and sticky ownership branches described below
 are current executable behavior.
 
-The proposal makes connection acquisition consequential and distinct from
+The implementation makes connection acquisition consequential and distinct from
 authority to dispatch or reconcile work. An ordinary operation may lazily
 acquire only from `idle`. The sticky `taken_over`, `uncertain`, and `released`
 states reject ordinary demand until an explicit lifecycle operation succeeds.
 No lifecycle operation permits replay of a possibly sent mutation.
 
-The target adds two one-purpose lifecycle tools:
+The managed-session surface adds two one-purpose lifecycle tools:
 
 - `jetkvm_release_session`, accepting only `device`, returning only `device`
   and `status: released`, closed-world, non-destructive to appliance/host state,
@@ -222,8 +226,8 @@ dispatched mutation. ICE `Disconnected`, `Failed`, or `Closed`, data-channel
 closure, and terminal signaling loss end the generation; v1 has no
 recovery grace, automatic reconnect from sticky states, or mutation replay.
 
-The proposal intentionally breaks accepted configuration by rejecting
-`max_sessions` rather than ignoring or aliasing it. The replacement
+The managed-session implementation intentionally breaks accepted configuration
+by rejecting `max_sessions` rather than ignoring or aliasing it. The replacement
 `max_connection_attempts` bounds only authentication/signaling attempts; every
 configured device may remain resident. This requires an accepted issue,
 before-and-after migration documentation, and the Semantic Versioning treatment
@@ -405,7 +409,8 @@ requires the next release carrying it to use the major version `v1.0.0` or
 later under this contract's pre-1.0 SemVer rules.
 
 Each `jetkvm_capture_screen` operation has a server-owned 30-second maximum,
-including fresh video-session setup, fresh-frame wait, and local PNG decode.
+including lazy managed-generation acquisition when needed, fresh post-admission
+frame wait, and local PNG decode.
 This bound applies even when a caller provides no deadline; an earlier caller
 cancellation or deadline takes precedence. Expiry is returned through the
 normal read-error timeout result.

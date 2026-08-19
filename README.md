@@ -294,16 +294,21 @@ Ordinary work lazily establishes one video-capable resident session per device.
 Setup readiness requires an open RPC channel and a successful ping; it does not
 require HDMI signal or a video frame. Concurrent callers share one bounded
 connection attempt, and a healthy resident generation consumes no connection-
-attempt permit. Until precise scheduling is qualified, all work admitted for
-one device is serialized on that session. Admitted callers wait cancellably;
-capacity exhaustion itself returns non-retryable `busy`/`not_sent` immediately.
-The idle lease starts only after no work needs the generation, then closes it
-with bounded cleanup.
+attempt permit. The initial capability profile permits one firmware RPC to
+overlap one frame acquisition and permits bounded upload overlap with reads or
+capture; these relationships have deterministic fixture coverage but no current
+physical qualification. Admitted callers wait cancellably; capacity exhaustion
+itself returns non-retryable `busy`/`not_sent` immediately. The idle lease starts
+only after no work needs the generation, then closes it with bounded cleanup.
 
 `max_sessions` is obsolete and rejected. Migrate by replacing it with
 `max_connection_attempts` and choosing `session_idle_timeout`; the replacement
 bounds setup pressure, not resident sessions, so the old numeric value has no
-equivalent live-session meaning.
+equivalent live-session meaning. Configurations may contain at most 64 devices.
+`max_captures` remains bounded by `max_operations` but no longer has a session-
+capacity relationship; copied encoded frames release their generation lease
+before separately admitted decoding. These incompatible changes must appear in
+the v1 release notes.
 
 Validate the complete strict configuration without starting FFmpeg, a listener,
 or a device/network session:
@@ -543,13 +548,49 @@ mouse, virtual-media mutation, power, wake, or raw-RPC operations.
 go run ./cmd/jetkvm-mcp-validate \
   --binary /path/to/jetkvm-mcp \
   --config /path/to/config.yaml \
-  --device configured-device-name
+  --device configured-device-name \
+  --repeat 20
 ```
 
 Output is a single sanitized JSON pass/fail record. It excludes configuration
 paths, device names, server logs, status values, error details, and image data.
-The capture call has a dedicated 30-second deadline, and its PNG buffer is
-cleared after full in-memory decoding.
+`--repeat` defaults to 1 and is bounded from 1 through 100. Each repetition
+performs status, virtual-media status, and capture; read calls have 10-second
+deadlines, capture has a 30-second deadline, and the total runner deadline is
+derived from the bounded repetition count. The PNG and its JSON compatibility
+metadata must agree, and the PNG buffer is cleared after full in-memory decoding.
+
+### Fixture runbook call helper
+
+The source-run `jetkvm-mcp-fixture-runner` executes an operator-prescribed JSON
+plan through MCP stdio. Batches run sequentially; calls inside one batch run
+concurrently, which supports the runbook's status/capture and upload-overlap
+checkpoints. A plan is limited to 256 calls, eight calls per batch, a 1–60
+second deadline per call, and 1 MiB. The runner stops after a failing batch and
+emits only call ordinals, reviewed tool names, and allowlisted stable
+code/outcome values. It never emits arguments, tool results, images, child
+diagnostics, or free-form errors.
+
+```json
+{"batches":[{"calls":[
+  {"tool":"jetkvm_get_status","arguments":{"device":"lab"},"timeout_seconds":30},
+  {"tool":"jetkvm_capture_screen","arguments":{"device":"lab"},"timeout_seconds":30}
+]}]}
+```
+
+```sh
+go run ./cmd/jetkvm-mcp-fixture-runner \
+  --binary /path/to/jetkvm-mcp \
+  --config /path/to/config.yaml \
+  --plan /path/to/private-fixture-plan.json
+```
+
+The plan and its arguments are private run-sheet data. Any tool not declared by
+the server as closed-world read-only requires
+`--acknowledge-owner-authorized-fixture`; that flag records an operator choice
+but supplies no authorization. Use it only inside the separately approved
+physical-qualification window. Browser observations, recovery decisions,
+mutation approval, and cleanup confirmation remain manual runbook duties.
 
 ### Physical qualification
 

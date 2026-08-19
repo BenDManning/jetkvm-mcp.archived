@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"image"
 	"image/color"
 	"image/png"
@@ -20,14 +21,20 @@ func TestParseArgsRequiresExplicitInputs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.binary != "/opt/jetkvm-mcp" || got.config != "/run/config.yaml" || got.device != "lab" {
+	if got.binary != "/opt/jetkvm-mcp" || got.config != "/run/config.yaml" || got.device != "lab" || got.repeat != 1 {
 		t.Fatalf("options = %#v", got)
+	}
+	repeated, err := parseArgs([]string{"--binary", "/opt/jetkvm-mcp", "--config", "/run/config.yaml", "--device", "lab", "--repeat", "100"})
+	if err != nil || repeated.repeat != 100 {
+		t.Fatalf("repeated options = %#v, error = %v", repeated, err)
 	}
 	for _, args := range [][]string{
 		{"--config", "config.yaml", "--device", "lab"},
 		{"--binary", "jetkvm-mcp", "--device", "lab"},
 		{"--binary", "jetkvm-mcp", "--config", "config.yaml"},
 		{"--binary", "jetkvm-mcp", "--config", "config.yaml", "--device", "lab", "extra"},
+		{"--binary", "jetkvm-mcp", "--config", "config.yaml", "--device", "lab", "--repeat", "0"},
+		{"--binary", "jetkvm-mcp", "--config", "config.yaml", "--device", "lab", "--repeat", "101"},
 	} {
 		if _, err := parseArgs(args); err == nil {
 			t.Fatalf("parseArgs(%q) succeeded", args)
@@ -163,7 +170,7 @@ func (session *discoveryRejectingSession) CallTool(_ context.Context, params *mc
 
 func TestValidateSessionRejectsMissingAliasBeforeDeviceCalls(t *testing.T) {
 	session := new(discoveryRejectingSession)
-	report := validateSession(context.Background(), session, "lab")
+	report := validateSession(context.Background(), session, "lab", 1)
 	if report.Result != "fail" || report.Failed != "devices" || !reflect.DeepEqual(report.Checks, []string{"tools_list"}) {
 		t.Fatalf("report = %#v", report)
 	}
@@ -216,12 +223,20 @@ func (session *readOnlyValidationSession) CallTool(_ context.Context, params *mc
 			"device": "lab", "operation": "status", "mounted": false, "status": "observed",
 		}}, nil
 	case captureTool:
+		metadata := map[string]any{
+			"device": "lab", "capturedAt": "2026-08-14T00:00:00Z", "mimeType": "image/png",
+			"width": float64(1), "height": float64(1), "sizeBytes": float64(len(session.png)),
+		}
+		encoded, err := json.Marshal(metadata)
+		if err != nil {
+			session.t.Fatal(err)
+		}
 		return &mcp.CallToolResult{
-			Content: []mcp.Content{&mcp.ImageContent{MIMEType: "image/png", Data: append([]byte(nil), session.png...)}},
-			StructuredContent: map[string]any{
-				"device": "lab", "capturedAt": "2026-08-14T00:00:00Z", "mimeType": "image/png",
-				"width": float64(1), "height": float64(1), "sizeBytes": float64(len(session.png)),
+			Content: []mcp.Content{
+				&mcp.ImageContent{MIMEType: "image/png", Data: append([]byte(nil), session.png...)},
+				&mcp.TextContent{Text: string(encoded)},
 			},
+			StructuredContent: metadata,
 		}, nil
 	default:
 		session.t.Fatalf("validator called unexpected tool %q", params.Name)
@@ -231,17 +246,20 @@ func (session *readOnlyValidationSession) CallTool(_ context.Context, params *mc
 
 func TestValidateSessionCallsOnlyHardcodedReadOnlyToolsIncludingMediaStatus(t *testing.T) {
 	session := newReadOnlyValidationSession(t)
-	report := validateSession(context.Background(), session, "lab")
+	report := validateSession(context.Background(), session, "lab", 2)
 	if report.Result != "pass" {
 		t.Fatalf("report = %#v", report)
 	}
-	wantCalls := []string{deviceListTool, statusTool, mediaStatusTool, captureTool}
+	wantCalls := []string{deviceListTool, statusTool, mediaStatusTool, captureTool, statusTool, mediaStatusTool, captureTool}
 	if !reflect.DeepEqual(session.calls, wantCalls) {
 		t.Fatalf("tool calls = %v, want %v", session.calls, wantCalls)
 	}
 	wantChecks := []string{"tools_list", "devices", "status", "media_status", "capture"}
 	if !reflect.DeepEqual(report.Checks, wantChecks) {
 		t.Fatalf("checks = %v, want %v", report.Checks, wantChecks)
+	}
+	if report.Repetitions != 2 {
+		t.Fatalf("repetitions = %d, want 2", report.Repetitions)
 	}
 }
 
@@ -303,7 +321,10 @@ func TestDecodeCaptureFullyDecodesPNG(t *testing.T) {
 	}
 	decodedBytes := append([]byte(nil), encoded.Bytes()...)
 	metadata, err := decodeCapture(&mcp.CallToolResult{
-		Content:           []mcp.Content{&mcp.ImageContent{MIMEType: "image/png", Data: decodedBytes}},
+		Content: []mcp.Content{
+			&mcp.ImageContent{MIMEType: "image/png", Data: decodedBytes},
+			&mcp.TextContent{Text: fmt.Sprintf(`{"capturedAt":"2026-08-10T03:00:00Z","device":"lab","height":3,"mimeType":"image/png","sizeBytes":%d,"width":2}`, encoded.Len())},
+		},
 		StructuredContent: map[string]any{"device": "lab", "capturedAt": "2026-08-10T03:00:00Z", "mimeType": "image/png", "width": float64(2), "height": float64(3), "sizeBytes": float64(encoded.Len())},
 	}, "lab")
 	if err != nil {
@@ -319,18 +340,27 @@ func TestDecodeCaptureFullyDecodesPNG(t *testing.T) {
 	validPNG := append([]byte(nil), encoded.Bytes()...)
 	truncated := append([]byte(nil), validPNG[:len(validPNG)-4]...)
 	if _, err := decodeCapture(&mcp.CallToolResult{
-		Content:           []mcp.Content{&mcp.ImageContent{MIMEType: "image/png", Data: truncated}},
+		Content: []mcp.Content{
+			&mcp.ImageContent{MIMEType: "image/png", Data: truncated},
+			&mcp.TextContent{Text: fmt.Sprintf(`{"capturedAt":"2026-08-10T03:00:00Z","device":"lab","height":3,"mimeType":"image/png","sizeBytes":%d,"width":2}`, len(truncated))},
+		},
 		StructuredContent: map[string]any{"device": "lab", "capturedAt": "2026-08-10T03:00:00Z", "mimeType": "image/png", "width": float64(2), "height": float64(3), "sizeBytes": float64(len(truncated))},
 	}, "lab"); err == nil {
 		t.Fatal("accepted a truncated PNG")
 	}
 	for _, result := range []*mcp.CallToolResult{
 		{
-			Content:           []mcp.Content{&mcp.ImageContent{MIMEType: "image/png", Data: append([]byte(nil), validPNG...)}},
+			Content: []mcp.Content{
+				&mcp.ImageContent{MIMEType: "image/png", Data: append([]byte(nil), validPNG...)},
+				&mcp.TextContent{Text: `{}`},
+			},
 			StructuredContent: map[string]any{"device": "lab", "capturedAt": "2026-08-10T03:00:00Z", "mimeType": "image/png", "width": float64(2), "height": float64(3), "sizeBytes": float64(len(validPNG)), "future": "private"},
 		},
 		{
-			Content:           []mcp.Content{&mcp.TextContent{Text: "private"}, &mcp.ImageContent{MIMEType: "image/png", Data: append([]byte(nil), validPNG...)}},
+			Content: []mcp.Content{
+				&mcp.TextContent{Text: "private"},
+				&mcp.ImageContent{MIMEType: "image/png", Data: append([]byte(nil), validPNG...)},
+			},
 			StructuredContent: map[string]any{"device": "lab", "capturedAt": "2026-08-10T03:00:00Z", "mimeType": "image/png", "width": float64(2), "height": float64(3), "sizeBytes": float64(len(validPNG))},
 		},
 	} {
@@ -341,7 +371,7 @@ func TestDecodeCaptureFullyDecodesPNG(t *testing.T) {
 }
 
 func TestReportContainsOnlySanitizedMetadata(t *testing.T) {
-	report := validationReport{Result: "pass", Checks: []string{"tools_list", "status", "capture"}, Capture: &captureMetadata{Width: 2, Height: 3, SizeBytes: 80}}
+	report := validationReport{Result: "pass", Checks: []string{"tools_list", "status", "capture"}, Repetitions: 100, Capture: &captureMetadata{Width: 2, Height: 3, SizeBytes: 80}}
 	data, err := json.Marshal(report)
 	if err != nil {
 		t.Fatal(err)

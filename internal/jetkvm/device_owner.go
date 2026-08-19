@@ -550,7 +550,7 @@ func (owner *deviceOwner) loop() {
 			operationCtx, cancel := context.WithCancel(worker.ctx)
 			worker.cancel = cancel
 			stopGenerationCancel := context.AfterFunc(generation.ctx, cancel)
-			go owner.runOperation(operationCtx, stopGenerationCancel, worker.evidence, generation.session, generation.scheduler, worker.class, worker.operation)
+			go owner.runOperation(operationCtx, generation.ctx.Done(), stopGenerationCancel, worker.evidence, generation.session, generation.scheduler, worker.class, worker.operation)
 		}
 	}
 
@@ -1104,7 +1104,7 @@ func (owner *deviceOwner) runValidation(generation *ownerGenerationState) {
 	}
 }
 
-func (owner *deviceOwner) runOperation(ctx context.Context, stopGenerationCancel func() bool, evidence ownerWorkerEvidence, session Session, scheduler *generationScheduler, class ownerOperationClass, operation func(context.Context, Session) error) {
+func (owner *deviceOwner) runOperation(ctx context.Context, generationDone <-chan struct{}, stopGenerationCancel func() bool, evidence ownerWorkerEvidence, session Session, scheduler *generationScheduler, class ownerOperationClass, operation func(context.Context, Session) error) {
 	defer stopGenerationCancel()
 	completion := ownerCompletion{evidence: evidence}
 	defer func() {
@@ -1115,10 +1115,10 @@ func (owner *deviceOwner) runOperation(ctx context.Context, stopGenerationCancel
 		owner.send(completeOwnerWorker{completion: completion})
 	}()
 	completion.err = scheduler.run(ctx, class, session, operation)
-	completion.err = classifyTerminalCompletion(session, class, completion.err)
+	completion.err = classifyTerminalCompletion(session, generationDone, class, completion.err)
 }
 
-func classifyTerminalCompletion(session Session, class ownerOperationClass, err error) error {
+func classifyTerminalCompletion(session Session, generationDone <-chan struct{}, class ownerOperationClass, err error) error {
 	if err == nil {
 		return nil
 	}
@@ -1126,9 +1126,18 @@ func classifyTerminalCompletion(session Session, class ownerOperationClass, err 
 	if !ok || connected.Done() == nil {
 		return err
 	}
+	terminal := false
 	select {
 	case <-connected.Done():
+		terminal = true
 	default:
+	}
+	select {
+	case <-generationDone:
+		terminal = true
+	default:
+	}
+	if !terminal {
 		return err
 	}
 	var classified *OperationError

@@ -396,6 +396,8 @@ later firmware-specific improvement without weakening unconditional safety.
 
 - Managed-session connector: [`provider.go`](../../internal/jetkvm/provider.go)
 - Current Manager and admission: [`manager.go`](../../internal/jetkvm/manager.go)
+- Repeated mixed/concurrent acceptance fixture:
+  [`managed_session_acceptance_test.go`](../../internal/jetkvm/managed_session_acceptance_test.go)
 - RPC dispatch phases: [`rpc_session.go`](../../internal/jetkvm/rpc_session.go)
 - Video capture ownership: [`video_receiver.go`](../../internal/jetkvm/video_receiver.go)
 - Protocol provenance: [`protocol-sources.md`](../protocol-sources.md)
@@ -404,8 +406,12 @@ later firmware-specific improvement without weakening unconditional safety.
 - Physical qualification: [`physical-qualification.md`](../physical-qualification.md)
 - Domain vocabulary: [`CONTEXT.md`](../../CONTEXT.md)
 
-The implementation and qualification evidence named above do not yet satisfy
-this proposed decision.
+The managed owner, lifecycle tools, configuration migration, bounded fixture
+adapters, public-contract gates, telemetry, validator, and runbook helper now
+provide the non-hardware implementation evidence for this decision. They do
+not qualify any physical model, firmware, concurrency relationship, browser
+handoff, or cleanup behavior; that remains the separately owner-authorized
+physical runbook gate.
 
 ## Revisit trigger
 

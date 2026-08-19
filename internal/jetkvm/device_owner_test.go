@@ -625,8 +625,10 @@ func TestManagerShutdownCancelsWorkersAndStopsFurtherDispatch(t *testing.T) {
 		t.Fatal(err)
 	}
 	<-connector.closed
-	if err := <-callDone; !errors.Is(err, context.Canceled) {
-		t.Fatalf("shutdown operation error = %v", err)
+	if err := <-callDone; !errors.Is(err, ErrOwnershipUncertain) {
+		t.Fatalf("shutdown operation error = %v, want ownership uncertainty", err)
+	} else {
+		assertToolOutcome(t, err, ToolOutcomeFailed)
 	}
 	if _, err := manager.DebugRPC(context.Background(), "lab", methodPing, nil, false); !errors.Is(err, ErrSessionClosed) {
 		t.Fatalf("post-shutdown error = %v, want session closed", err)

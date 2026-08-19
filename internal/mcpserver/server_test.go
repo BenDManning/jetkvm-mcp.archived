@@ -68,10 +68,6 @@ func TestServerPublishesExplicitPowerTools(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, want := len(listed.Tools), toolManifestCount; got != want {
-		t.Fatalf("tool count = %d, want %d", got, want)
-	}
-
 	tools := make(map[string]*mcp.Tool, len(listed.Tools))
 	for _, tool := range listed.Tools {
 		tools[tool.Name] = tool

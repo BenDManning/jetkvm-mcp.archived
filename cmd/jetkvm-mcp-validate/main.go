@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"reflect"
 	"strings"
 	"syscall"
 	"time"
@@ -28,12 +29,15 @@ const (
 	captureTool     = "jetkvm_capture_screen"
 	mediaStatusTool = "jetkvm_get_virtual_media_status"
 	captureTimeout  = 30 * time.Second
+	readTimeout     = 10 * time.Second
+	maxRepetitions  = 100
 )
 
 type options struct {
 	binary string
 	config string
 	device string
+	repeat int
 }
 
 type captureMetadata struct {
@@ -43,10 +47,11 @@ type captureMetadata struct {
 }
 
 type validationReport struct {
-	Result  string           `json:"result"`
-	Checks  []string         `json:"checks,omitempty"`
-	Failed  string           `json:"failed,omitempty"`
-	Capture *captureMetadata `json:"capture,omitempty"`
+	Result      string           `json:"result"`
+	Checks      []string         `json:"checks,omitempty"`
+	Failed      string           `json:"failed,omitempty"`
+	Repetitions int              `json:"repetitions"`
+	Capture     *captureMetadata `json:"capture,omitempty"`
 }
 
 type toolCaller interface {
@@ -67,7 +72,7 @@ func main() {
 		emit(validationReport{Result: "fail", Failed: "arguments"})
 		os.Exit(2)
 	}
-	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	ctx, cancel := context.WithTimeout(ctx, validationTimeout(opts.repeat))
 	defer cancel()
 	report := runValidation(ctx, opts)
 	emit(report)
@@ -88,13 +93,18 @@ func parseArgs(args []string) (options, error) {
 	binary := flags.String("binary", "", "path to the jetkvm-mcp binary")
 	config := flags.String("config", "", "path to its configuration")
 	device := flags.String("device", "", "configured device name")
+	repeat := flags.Int("repeat", 1, "number of bounded status, media-status, and capture repetitions (1-100)")
 	if err := flags.Parse(args); err != nil || flags.NArg() != 0 {
 		return options{}, errors.New("invalid arguments")
 	}
-	if strings.TrimSpace(*binary) == "" || strings.TrimSpace(*config) == "" || strings.TrimSpace(*device) == "" {
+	if strings.TrimSpace(*binary) == "" || strings.TrimSpace(*config) == "" || strings.TrimSpace(*device) == "" || *repeat < 1 || *repeat > maxRepetitions {
 		return options{}, errors.New("binary, config, and device are required")
 	}
-	return options{binary: *binary, config: *config, device: *device}, nil
+	return options{binary: *binary, config: *config, device: *device, repeat: *repeat}, nil
+}
+
+func validationTimeout(repetitions int) time.Duration {
+	return 30*time.Second + time.Duration(repetitions)*(2*readTimeout+captureTimeout)
 }
 
 func runValidation(ctx context.Context, opts options) validationReport {
@@ -108,13 +118,14 @@ func runValidation(ctx context.Context, opts options) validationReport {
 		return validationReport{Result: "fail", Failed: "connect"}
 	}
 	defer session.Close()
-	return validateSession(ctx, session, opts.device)
+	return validateSession(ctx, session, opts.device, opts.repeat)
 }
 
-func validateSession(ctx context.Context, session validationSession, device string) validationReport {
+func validateSession(ctx context.Context, session validationSession, device string, repetitions int) validationReport {
 	checks := make([]string, 0, 5)
+	completed := 0
 	fail := func(stage string) validationReport {
-		return validationReport{Result: "fail", Checks: checks, Failed: stage}
+		return validationReport{Result: "fail", Checks: checks, Failed: stage, Repetitions: completed}
 	}
 
 	listed, err := session.ListTools(ctx, nil)
@@ -127,38 +138,52 @@ func validateSession(ctx context.Context, session validationSession, device stri
 	}
 	checks = append(checks, "devices")
 
-	status, err := session.CallTool(ctx, &mcp.CallToolParams{Name: statusTool, Arguments: map[string]any{"device": device}})
-	if err != nil || status.IsError {
-		return fail("status")
-	}
-	statusObject, ok := status.StructuredContent.(map[string]any)
-	if !ok || validateStatus(statusObject, device) != nil {
-		return fail("status")
-	}
-	checks = append(checks, "status")
+	var metadata captureMetadata
+	for repetition := 0; repetition < repetitions; repetition++ {
+		statusCtx, cancelStatus := context.WithTimeout(ctx, readTimeout)
+		status, err := session.CallTool(statusCtx, &mcp.CallToolParams{Name: statusTool, Arguments: map[string]any{"device": device}})
+		cancelStatus()
+		if err != nil || status.IsError {
+			return fail("status")
+		}
+		statusObject, ok := status.StructuredContent.(map[string]any)
+		if !ok || validateStatus(statusObject, device) != nil {
+			return fail("status")
+		}
+		if repetition == 0 {
+			checks = append(checks, "status")
+		}
 
-	mediaStatus, err := session.CallTool(ctx, &mcp.CallToolParams{Name: mediaStatusTool, Arguments: map[string]any{"device": device}})
-	if err != nil || mediaStatus.IsError {
-		return fail("media_status")
-	}
-	mediaStatusObject, ok := mediaStatus.StructuredContent.(map[string]any)
-	if !ok || validateVirtualMediaStatus(mediaStatusObject, device) != nil {
-		return fail("media_status")
-	}
-	checks = append(checks, "media_status")
+		mediaCtx, cancelMedia := context.WithTimeout(ctx, readTimeout)
+		mediaStatus, err := session.CallTool(mediaCtx, &mcp.CallToolParams{Name: mediaStatusTool, Arguments: map[string]any{"device": device}})
+		cancelMedia()
+		if err != nil || mediaStatus.IsError {
+			return fail("media_status")
+		}
+		mediaStatusObject, ok := mediaStatus.StructuredContent.(map[string]any)
+		if !ok || validateVirtualMediaStatus(mediaStatusObject, device) != nil {
+			return fail("media_status")
+		}
+		if repetition == 0 {
+			checks = append(checks, "media_status")
+		}
 
-	captureCtx, cancelCapture := context.WithTimeout(ctx, captureTimeout)
-	defer cancelCapture()
-	capture, err := session.CallTool(captureCtx, &mcp.CallToolParams{Name: captureTool, Arguments: map[string]any{"device": device}})
-	if err != nil || capture.IsError {
-		return fail("capture")
+		captureCtx, cancelCapture := context.WithTimeout(ctx, captureTimeout)
+		capture, err := session.CallTool(captureCtx, &mcp.CallToolParams{Name: captureTool, Arguments: map[string]any{"device": device}})
+		cancelCapture()
+		if err != nil || capture.IsError {
+			return fail("capture")
+		}
+		metadata, err = decodeCapture(capture, device)
+		if err != nil {
+			return fail("capture")
+		}
+		if repetition == 0 {
+			checks = append(checks, "capture")
+		}
+		completed++
 	}
-	metadata, err := decodeCapture(capture, device)
-	if err != nil {
-		return fail("capture")
-	}
-	checks = append(checks, "capture")
-	return validationReport{Result: "pass", Checks: checks, Capture: &metadata}
+	return validationReport{Result: "pass", Checks: checks, Repetitions: repetitions, Capture: &metadata}
 }
 
 func validateReadOnlyTools(tools []*mcp.Tool) error {
@@ -383,12 +408,20 @@ func decodeCapture(result *mcp.CallToolResult, device string) (captureMetadata, 
 		return captureMetadata{}, errors.New("invalid capture dimensions")
 	}
 
-	if len(result.Content) != 1 {
+	if len(result.Content) != 2 {
 		return captureMetadata{}, errors.New("invalid capture content count")
 	}
 	imageContent, ok := result.Content[0].(*mcp.ImageContent)
 	if !ok || imageContent.MIMEType != "image/png" {
 		return captureMetadata{}, errors.New("invalid image content")
+	}
+	textContent, ok := result.Content[1].(*mcp.TextContent)
+	if !ok {
+		return captureMetadata{}, errors.New("invalid capture metadata content")
+	}
+	var fallback map[string]any
+	if err := json.Unmarshal([]byte(textContent.Text), &fallback); err != nil || !reflect.DeepEqual(fallback, object) {
+		return captureMetadata{}, errors.New("capture metadata content mismatch")
 	}
 	pngData := imageContent.Data
 	if len(pngData) != size {

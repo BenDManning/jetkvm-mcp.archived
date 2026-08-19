@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+
+	"github.com/BenDManning/jetkvm-mcp/internal/toolresult"
 )
 
 const toolErrorVersion = "1"
@@ -98,16 +100,11 @@ func toolFailure(err error, mutation bool) error {
 }
 
 func validToolErrorCode(code toolErrorCode) bool {
-	switch code {
-	case toolErrorOperationFailed, toolErrorCanceled, toolErrorTimeout, "invalid_input", "busy", "authentication_failed", "device_unavailable", "video_unavailable", "no_signal", "protocol_error", "session_released", "session_taken_over", "ownership_uncertain":
-		return true
-	default:
-		return false
-	}
+	return toolresult.ValidCode(string(code))
 }
 
 func validToolOutcome(outcome toolOutcome) bool {
-	return outcome == toolOutcomeFailed || outcome == toolOutcomeUnknown || outcome == "not_sent"
+	return toolresult.ValidOutcome(string(outcome))
 }
 
 func toolErrorMessage(code toolErrorCode) string {
