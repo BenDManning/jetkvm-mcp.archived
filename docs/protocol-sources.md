@@ -43,6 +43,30 @@ product contract and ADR 0005.
 
 The inspected firmware can resume `filename.incomplete` using only its current byte count. Because that does not prove the remote prefix belongs to the currently opened local file, this client deliberately discards stale partials and requires a fresh offset-zero upload.
 
+### Historical application 0.5.8 URL-mount review
+
+Issue #137 prompted a focused review of official JetKVM application tag
+`release/0.5.8` at commit
+`df5dbea4310a03031ce72aa7222bfb68b0480fc6`. Its browser sends
+`mountWithHTTP` with exactly `url` and `mode`, matching this client, and the RPC
+handler declares those same parameters. The handler obtains the remote size by
+range request, changes mass-storage mode, and records HTTP virtual-media state
+before starting NBD and attaching `/dev/nbd0`. Errors after that state change do
+not roll it back.
+
+The separately authorized physical observation on application 0.5.8 / system
+0.2.8 reached the media origin for both the size probe and an NBD-sized range,
+then returned an unknown mount outcome and required explicit unmount to recover
+partial state. The second request can arise only from the NBD backend after NBD
+startup, when firmware attaches `/dev/nbd0` to USB mass storage and the gadget
+reads its first block. That attachment is the handler's last fallible step, so
+the returned RPC error rules out the HTTP size response, requested mode, and RPC
+contract and localizes the failure to the firmware's NBD-to-USB attachment. The
+retained evidence includes neither the raw firmware error nor an exact model,
+so it cannot identify the lower-level attachment cause. It establishes no
+broader 0.5.8 compatibility or incompatibility claim and supplies no
+evidence-backed client protocol change.
+
 ## Model Context Protocol
 
 - Specification generation: <https://modelcontextprotocol.io/specification/2026-07-28>

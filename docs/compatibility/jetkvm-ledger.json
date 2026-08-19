@@ -78,6 +78,29 @@
         "The retained evidence did not record an exact model or firmware version, so it is not a positive compatibility claim.",
         "The run did not validate virtual-media status, HID, power, wake, media mutation, raw RPC, releases, or deployments."
       ]
+    },
+    {
+      "id": "mutation-hardware-http-mount-2026-08-19",
+      "evidenceClass": "mutation_hardware",
+      "jetkvm": {
+        "firmwareVersion": "application 0.5.8 / system 0.2.8",
+        "sourceRef": "not_attributed"
+      },
+      "server": {
+        "version": "devel+010af7430d5e",
+        "sourceRef": "010af7430d5efa70158c62d08228a7b230327438"
+      },
+      "observedOn": "2026-08-19",
+      "environmentClass": "non_production_physical",
+      "checks": [
+        "virtual_media_http_mount"
+      ],
+      "result": "observed_failure",
+      "limitations": [
+        "One owner-authorized expendable fixture observed this failure; the exact device model and attached-host identity were not retained.",
+        "The appliance completed sanitized byte-range fetches, but URL mounting returned an unknown outcome; explicit unmount recovered the partial media state.",
+        "Local upload and mount passed in the same window. This entry does not establish the cause, a model or firmware support claim, or failure on other combinations."
+      ]
     }
   ]
 }

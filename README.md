@@ -327,6 +327,16 @@ URL mounting is deny-by-default per device. `media_url_allowed_origins` must lis
 
 The configured origin is an authorization boundary, not proof of the appliance's final network destination. The JetKVM firmware performs the fetch; this process does not resolve or pin DNS, inspect or prevent firmware redirects, classify the resolved address, or enforce appliance routing. DNS names and loopback, private, link-local, or other IP literals work only when their exact origin is deliberately configured. Keep the appliance network segmented and restrict media-fetch egress to the intended service.
 
+URL mounting is not physically qualified on any JetKVM model or firmware. In
+one owner-authorized expendable-fixture run, application 0.5.8 / system 0.2.8
+fetched valid byte ranges but returned an unknown mount outcome; explicit
+unmount recovered partial state, while local upload and mount passed. Source
+review and the observed request sequence localize the failure to firmware's
+NBD-to-USB attachment, but the raw attachment error and exact model were not
+retained. Do not generalize this observation to all 0.5.8 devices. An unknown
+URL-mount result remains non-retryable: inspect status and recover state
+independently before any separately authorized later mutation.
+
 JetKVM firmware exposes partial-upload resumption by byte count but provides no prefix hash. To prevent a replaced local file from being combined with stale appliance data, `jetkvm-mcp` serializes virtual-media operations per device, deletes a matching `.incomplete` artifact before upload, and accepts only a fresh offset-zero upload. It hashes the confined source before upload, hashes the exact bytes consumed by the upload, and reopens and hashes the configured path before mounting or reporting completion. Interrupted, ambiguous, or locally changed uploads are cleaned up rather than resumed.
 
 `insecure_skip_verify: true` is available for explicitly configured local appliances but should be avoided when the device has a trusted certificate.

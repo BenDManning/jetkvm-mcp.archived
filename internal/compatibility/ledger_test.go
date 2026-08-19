@@ -98,6 +98,13 @@ func TestJetKVMCompatibilityLedgerIsSanitizedAndSourceGrounded(t *testing.T) {
 			environmentClass:      "non_production_physical",
 			result:                "pass",
 		},
+		"mutation_hardware": {
+			checks:                allowedSet("virtual_media_http_mount"),
+			jetKVMSource:          "not_attributed",
+			jetKVMFirmwareVersion: "application 0.5.8 / system 0.2.8",
+			environmentClass:      "non_production_physical",
+			result:                "observed_failure",
+		},
 	}
 	for _, entry := range got.Entries {
 		if entry.ID == "" || ids[entry.ID] {
@@ -138,6 +145,9 @@ func TestJetKVMCompatibilityLedgerIsSanitizedAndSourceGrounded(t *testing.T) {
 				t.Fatalf("entry %q contains an empty limitation", entry.ID)
 			}
 		}
+	}
+	if !ids["mutation-hardware-http-mount-2026-08-19"] {
+		t.Fatal("ledger lacks the retained HTTP virtual-media mount failure")
 	}
 }
 
