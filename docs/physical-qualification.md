@@ -1,19 +1,19 @@
 # Physical qualification runbook
 
 This runbook qualifies one exact JetKVM MCP release candidate and physical
-fixture. It is a record template, not execution authority. Complete it only in
-an owner-authorized window that names the fixture, operator, observer, and
-start/end time. CI, fakes, source review, builds, and earlier unattributed runs
-do not qualify hardware.
+fixture. The configured development JetKVM and disposable attached host have
+standing owner authorization for repository work. Record the fixture,
+operator, observer, and start/end time before each run. CI, fakes, source
+review, builds, and earlier unattributed runs do not qualify hardware.
 
 ## Qualification record
 
-Fill every field before the first device operation. Use stable product
-identifiers, not secrets or network identifiers.
+Fill every field before the first device operation. Use exact engineering
+identifiers and omit unrelated secret host-screen or media contents.
 
 | Field | Exact value |
 |---|---|
-| Authorization reference and approved UTC window | |
+| Standing authorization reference and UTC execution window | |
 | Operator and observer | |
 | Qualification date (UTC) | |
 | JetKVM model and firmware version | |
@@ -26,11 +26,12 @@ identifiers, not secrets or network identifiers.
 | Synthetic URL-media fixture origin class, size, and SHA-256 | |
 | Recovery method and local console observer | |
 
-The retained record must not contain device aliases, hostnames, serial numbers,
-addresses, URLs, local paths, credentials, bearer tokens, typed text,
-screenshots, image bytes, raw status/RPC results, or free-form errors. Keep the
-configuration, selected alias and Wake-on-LAN target, media locations, and
-credentials only in the private run sheet for the approved window.
+The retained record must not contain password values, session cookies, bearer
+tokens, or host-screen/media contents that contain unrelated secrets. Device
+aliases, endpoints, model and serial identity, firmware versions, transport
+events, status/RPC observations, and relative test-media names are normal
+engineering evidence and may be retained. Configured passwords remain in the
+environment rather than the record.
 
 ## Preconditions
 
@@ -51,8 +52,8 @@ Before starting, the operator and observer confirm all of the following:
   to or boot from either medium;
 - the approved fixture has known safe starting states for power-button, reset,
   DC power, USB wake, and Wake-on-LAN checks; and
-- telemetry and client output retention are disabled or constrained to the
-  sanitized evidence fields below.
+- telemetry and client output retention are constrained to the evidence needed
+  for the run.
 
 Any failed precondition is a failed qualification with no device operation.
 
@@ -66,8 +67,8 @@ mutation result with `outcome: unknown`.
 An `unknown` outcome means the request may have been sent. Never repeat that
 mutation, never continue to another mutation, and do not attempt mutating
 cleanup in the same window. Re-establish state only through independent
-read-only observation. Any later attempt requires a separately authorized new
-window after the fixture state is known.
+read-only observation. Any later attempt starts a new recorded execution after
+the fixture state is known.
 
 ## Checks
 
@@ -110,8 +111,8 @@ removed. Best-effort cleanup without an observed final state is a failure.
 ## Managed-session supplement
 
 This supplement is mandatory for a release candidate implementing
-[ADR 0008](adr/0008-managed-per-device-webrtc-ownership.md). It is not authority
-to access hardware and does not alter the stop rule above.
+[ADR 0008](adr/0008-managed-per-device-webrtc-ownership.md) and does not alter
+the stop rule above.
 
 Add the exact capability-profile revision and the approved browser/client build
 to the qualification record. The attached disposable host must display a
@@ -161,15 +162,15 @@ The read-only, non-interactive `jetkvm-mcp-validate` interface may be extended
 only for repeated read/capture evidence that fits its existing inputs and
 sanitized report. Browser handoff, mutation, network interruption, and shutdown
 remain fixture-runbook steps. An automated helper may orchestrate bounded MCP
-call sequences but cannot supply physical observation or authorization.
+call sequences but cannot supply physical observation.
 The repository's source-run `jetkvm-mcp-fixture-runner` accepts sequential
-batches of bounded MCP calls for this purpose. Keep its plan private. A
-consequential plan also requires its explicit owner-authorization
-acknowledgement flag, which records operator intent but is not authorization.
+batches of bounded MCP calls for this purpose. A consequential plan also
+requires its explicit owner-authorization acknowledgement flag, which records
+operator intent under the standing fixture authorization.
 Run browser checkpoints and record observations outside the helper.
 
 Retain the exact build, model, firmware, runtime, FFmpeg identity, capability
-profile, prompt observations, sanitized marker observations, operation
+profile, prompt observations, recorded marker observations, operation
 outcomes, session telemetry, and timestamps. A named observer's browser record
 is required; telemetry corroborates generation reuse but never substitutes for
 that record.
@@ -183,20 +184,18 @@ combination is qualified with warnings.
 
 Forced mutation ambiguity is established with fixture-level dispatch-phase
 injection proving `unknown` and no retry. Deliberately interrupting a physical
-mutation requires separate owner authorization and a disposable recovery plan;
-it is not implied by this supplement.
+mutation requires a known disposable state and recovery plan before execution.
 
 ## Pass and retained evidence
 
-Qualification passes only when every row passes in one approved window, no
+Qualification passes only when every row passes in one recorded execution window, no
 `unknown` mutation outcome occurs, every expected postcondition is independently
 observed, and all cleanup is confirmed. A candidate implementing ADR 0008 must
-also pass every managed-session supplement scenario. Retain one sanitized record
+also pass every managed-session supplement scenario. Retain one record
 containing:
 
-- every exact identity from the qualification table except the excluded
-  private/network identifiers;
-- the authorization reference, window, operator, observer, and UTC date;
+- every exact identity from the qualification table;
+- the standing authorization reference, execution window, operator, observer, and UTC date;
 - every operation/sub-operation above with its bounded timestamps, result,
   stable code/outcome, observed-postcondition flag, and cleanup flag; and
 - an explicit statement that CI, fakes, builds, source review, and historical

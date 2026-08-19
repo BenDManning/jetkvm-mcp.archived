@@ -48,7 +48,7 @@ type evidencePolicy struct {
 	result                string
 }
 
-func TestJetKVMCompatibilityLedgerIsSanitizedAndSourceGrounded(t *testing.T) {
+func TestJetKVMCompatibilityLedgerIsBoundedAndSourceGrounded(t *testing.T) {
 	path := filepath.Join("..", "..", "docs", "compatibility", "jetkvm-ledger.json")
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -95,6 +95,16 @@ func TestJetKVMCompatibilityLedgerIsSanitizedAndSourceGrounded(t *testing.T) {
 			checks:                allowedSet("mcp_discovery", "status", "capture"),
 			jetKVMSource:          "not_attributed",
 			jetKVMFirmwareVersion: "not_retained",
+			environmentClass:      "non_production_physical",
+			result:                "pass",
+		},
+		"managed_session_hardware": {
+			checks: allowedSet(
+				"takeover_text_event_before_terminal_close",
+				"in_flight_capture_reports_session_taken_over",
+			),
+			jetKVMSourceMustBeSHA: true,
+			jetKVMFirmwareVersion: "0.5.8",
 			environmentClass:      "non_production_physical",
 			result:                "pass",
 		},

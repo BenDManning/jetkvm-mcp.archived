@@ -102,6 +102,7 @@ func TestWebRTCConnectorClosesIdleHTTPConnectionsAfterAuthenticationFailure(t *t
 type webRTCConnectorFixture struct {
 	connector             *WebRTCConnector
 	device                DeviceConfig
+	rpcChannel            chan *webrtc.DataChannel
 	loginCalls            atomic.Int32
 	pingCalls             atomic.Int32
 	deviceCalls           atomic.Int32
@@ -111,7 +112,7 @@ type webRTCConnectorFixture struct {
 
 func newWebRTCConnectorFixture(t *testing.T) *webRTCConnectorFixture {
 	t.Helper()
-	fixture := new(webRTCConnectorFixture)
+	fixture := &webRTCConnectorFixture{rpcChannel: make(chan *webrtc.DataChannel, 1)}
 	remotePeer, err := webrtc.NewPeerConnection(webrtc.Configuration{})
 	if err != nil {
 		t.Fatal(err)
@@ -122,6 +123,7 @@ func newWebRTCConnectorFixture(t *testing.T) *webRTCConnectorFixture {
 		if channel.Label() != "rpc" {
 			return
 		}
+		channel.OnOpen(func() { fixture.rpcChannel <- channel })
 		channel.OnMessage(func(message webrtc.DataChannelMessage) {
 			var request struct {
 				JSONRPC string `json:"jsonrpc"`
@@ -237,6 +239,47 @@ func newWebRTCConnectorFixture(t *testing.T) *webRTCConnectorFixture {
 	fixture.connector = NewWebRTCConnector(WebRTCConnectorOptions{ConnectTimeout: 10 * time.Second, RequestTimeout: time.Second})
 	fixture.device = DeviceConfig{Name: "lab", BaseURL: *base, Password: "correct"}
 	return fixture
+}
+
+func TestWebRTCConnectedSessionRecognizesFirmwareTakeoverEvent(t *testing.T) {
+	fixture := newWebRTCConnectorFixture(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	connected, err := fixture.connector.Connect(ctx, fixture.device)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer connected.Close(context.Background())
+
+	observed, ok := connected.(interface {
+		TakeoverDetected() <-chan struct{}
+		RecognizedTakeover() bool
+	})
+	if !ok {
+		t.Fatal("connected session does not expose takeover observation")
+	}
+	var remoteChannel *webrtc.DataChannel
+	select {
+	case remoteChannel = <-fixture.rpcChannel:
+	case <-ctx.Done():
+		t.Fatal("firmware-side RPC channel did not open")
+	}
+	if err := remoteChannel.SendText(`{"jsonrpc":"2.0","method":"otherSessionConnected"}`); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-observed.TakeoverDetected():
+	case <-ctx.Done():
+		t.Fatal("firmware takeover event was not delivered")
+	}
+	if !observed.RecognizedTakeover() {
+		t.Fatal("firmware takeover event was not latched")
+	}
+	select {
+	case <-connected.Done():
+	case <-ctx.Done():
+		t.Fatal("recognized takeover did not terminate the displaced session")
+	}
 }
 
 func TestWebRTCConnectorAuthenticatesSignalsAndPreservesRPC(t *testing.T) {

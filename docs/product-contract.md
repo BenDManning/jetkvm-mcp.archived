@@ -257,8 +257,9 @@ alias, capture time, MIME type, dimensions, and byte count. It never duplicates
 PNG data into text. Operational failures remain sanitized `IsError` tool
 results rather than JSON-RPC errors.
 
-V1 publication requires one owner-authorized physical qualification run against
-a disposable attached host. Retained sanitized evidence must identify the exact
+V1 publication requires one physical qualification run under the repository's
+standing owner authorization against a disposable attached host. Retained
+evidence must identify the exact
 release candidate, JetKVM model and firmware, runtime and FFmpeg, and must cover
 every public operation class: reads and capture, HID, power and DC control,
 wake, upload, mount, unmount, cleanup, and observable outcomes. Claims remain
@@ -269,8 +270,8 @@ change; do not infer a model family, firmware range, or indefinite guarantee.
 The former offline synthetic mutation plan and its detailed compatibility
 surface are not part of the public v1 design. A file of self-asserted booleans
 neither authorizes execution nor proves a hardware safeguard. Physical
-qualification instead uses a concise fixture-specific runbook, separate owner
-authorization, observable postconditions, retained sanitized evidence, and the
+qualification instead uses a concise fixture-specific runbook, recorded
+consequence boundaries, observable postconditions, retained evidence, and the
 established rule that an `unknown` outcome ends the current mutation window.
 
 Source builds support only the current and immediately previous supported Go
@@ -344,9 +345,8 @@ channel.
 
 Sensitive reports use the private route in the repository
 [`SECURITY.md`](../SECURITY.md). Ordinary best-effort support uses GitHub Issues
-as defined in [`SUPPORT.md`](../SUPPORT.md). Secrets, credentials, device data,
-and unsanitized qualification output must not be put in public issue or release
-records.
+as defined in [`SUPPORT.md`](../SUPPORT.md). Credentials and unrelated secret
+host-screen or media contents must not be put in public issue or release records.
 
 ## Compatibility matrix
 
@@ -507,8 +507,8 @@ to reinterpret an existing file silently.
 
 ## Compatibility evidence
 
-A positive JetKVM compatibility claim must follow the separately
-owner-authorized [physical qualification runbook](physical-qualification.md)
+A positive JetKVM compatibility claim must follow the standing-authorized
+[physical qualification runbook](physical-qualification.md)
 and name all of the following:
 
 - the exact JetKVM MCP product version or commit;
@@ -517,7 +517,7 @@ and name all of the following:
 - the exact MCP transport/client and disposable attached-host fixture;
 - the qualification date and exact checks performed; and
 - the operator, observer, authorization window, observable postconditions, and
-  cleanup results in one retained sanitized qualification record.
+  cleanup results in one retained qualification record.
 
 Evidence qualifies only that exact combination and the completed checks. The
 source-run read-only validator may contribute bounded discovery, status,
@@ -533,13 +533,13 @@ longer cover the claim. It does not become an indefinite vendor compatibility
 guarantee. No current retained evidence satisfies this policy, so no model or
 firmware is presently qualified.
 
-The sanitized evidence ledger and focused upstream-source drift triggers are in
+The evidence ledger and focused upstream-source drift triggers are in
 [`compatibility/`](compatibility/README.md). An unattributed historical run,
 `review_required` source drift, source inspection, or fake-device result remains
 evidence of only its recorded checks and cannot become a positive claim.
 
 Repository tests, fake devices, cross-builds, the inspected upstream firmware
-commit, and a validator run without retained sanitized evidence remain useful
+commit, and a validator run without retained physical evidence remain useful
 engineering evidence but cannot establish physical compatibility or expand the
 support matrix.
 

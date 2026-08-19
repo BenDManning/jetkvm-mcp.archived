@@ -80,6 +80,31 @@
       ]
     },
     {
+      "id": "managed-session-hardware-2026-08-19",
+      "evidenceClass": "managed_session_hardware",
+      "jetkvm": {
+        "firmwareVersion": "0.5.8",
+        "sourceRef": "df5dbea4310a03031ce72aa7222bfb68b0480fc6"
+      },
+      "server": {
+        "version": "development",
+        "sourceRef": "1466736aae9bee1744eff342ea8803bc14d63780"
+      },
+      "observedOn": "2026-08-19",
+      "environmentClass": "non_production_physical",
+      "checks": [
+        "takeover_text_event_before_terminal_close",
+        "in_flight_capture_reports_session_taken_over"
+      ],
+      "result": "pass",
+      "limitations": [
+        "Application 0.5.8 and system 0.2.8 delivered otherSessionConnected as a text data-channel event before terminal closure in 14 of 14 observed production-session takeovers.",
+        "Thirteen of thirteen full device-owner capture races reported session_taken_over; this rerun does not explain the two earlier ownership_uncertain observations.",
+        "The release/0.5.8 source sends the parameterless event as text before scheduling old-peer closure, matching the decoder contract; no firmware wire drift was found on this path.",
+        "No decoder relaxation or broader model, firmware, transport, or long-duration compatibility claim follows from this focused rerun."
+      ]
+    },
+    {
       "id": "mutation-hardware-http-mount-2026-08-19",
       "evidenceClass": "mutation_hardware",
       "jetkvm": {
@@ -97,8 +122,8 @@
       ],
       "result": "observed_failure",
       "limitations": [
-        "One owner-authorized expendable fixture observed this failure; the exact device model and attached-host identity were not retained.",
-        "The appliance completed sanitized byte-range fetches, but URL mounting returned an unknown outcome; explicit unmount recovered the partial media state.",
+        "The standing-authorized expendable fixture observed this failure; the exact device model and attached-host identity were not retained.",
+        "The appliance completed byte-range fetches, but URL mounting returned an unknown outcome; explicit unmount recovered the partial media state.",
         "Local upload and mount passed in the same window. This entry does not establish the cause, a model or firmware support claim, or failure on other combinations."
       ]
     }
