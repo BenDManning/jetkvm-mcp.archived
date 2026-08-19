@@ -61,6 +61,20 @@ func TestCITargetsProduceNonOverlappingEvidence(t *testing.T) {
 	}
 }
 
+func TestVerifyTargetBuildsOnlyDeclaredNativeTargets(t *testing.T) {
+	root := filepath.Clean(filepath.Join("..", ".."))
+	output := dryRun(t, root, "verify")
+
+	for _, target := range []string{"GOOS=linux GOARCH=amd64", "GOOS=linux GOARCH=arm64"} {
+		if !strings.Contains(output, target) {
+			t.Errorf("verify output does not build declared target %q\n%s", target, output)
+		}
+	}
+	if strings.Contains(output, "GOOS=darwin") {
+		t.Errorf("verify output builds unsupported Darwin targets\n%s", output)
+	}
+}
+
 func TestContainerTargetBuildsAndSmokesEachFinalImageOnce(t *testing.T) {
 	root := filepath.Clean(filepath.Join("..", ".."))
 	output := dryRun(t, root, "container-verify", "CONTAINER_CREATED=1970-01-01T00:00:00Z", "CONTAINER_SBOM_DIR=/tmp/ci-container-sbom")

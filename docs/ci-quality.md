@@ -104,7 +104,7 @@ same compiler before running `make ci-minimum`.
 - `make ci-quality`: the complete non-overlapping current-Go quality lane,
   including the native release snapshot instead of duplicate raw Linux
   cross-builds.
-- `make verify`: tests, vet, and the Linux plus engineering-only Darwin
+- `make verify`: tests, vet, and the declared Linux amd64 and arm64 native
   cross-builds used by complete local validation.
 - `make protocol-gates`: build and run the pinned MCP conformance/Inspector
   harness. `MCP_GATE_SERVER` and `MCP_GATE_DIR` may redirect temporary outputs.
