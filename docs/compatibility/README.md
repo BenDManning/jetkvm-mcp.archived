@@ -16,7 +16,7 @@ An entry contains an exact JetKVM source reference when source was inspected, an
 
 Credential values, session cookies, bearer tokens, and host-screen or media contents do not belong in this ledger. Device names, endpoints, firmware identity, and transport/event observations are not secret. A `pass` qualifies only the listed checks for the recorded combination. It never means that mocks or source inspection establish physical compatibility.
 
-## Observed HTTP mount limitation
+## Observed HTTP mount and unmount limitations
 
 On 2026-08-19, the standing-authorized expendable fixture running JetKVM
 application 0.5.8 / system 0.2.8 fetched byte ranges from the approved media
@@ -37,6 +37,28 @@ than the HTTP response, requested mode, or RPC contract. The raw firmware error
 was not retained, so the lower-level attachment cause remains unknown and no
 evidence-backed client repair is available. Keep treating an unknown mount
 result as non-retryable and re-establish state independently.
+
+On 2026-08-20, a second standing-authorized run on application 0.5.8 / system
+0.2.8 and an attached `MS-S1 MAX` host successfully mounted URL media. The host
+read a 4096-byte prefix matching the synthetic source, after which unmount
+returned `timeout` / `unknown`. Independent host observation found `/dev/sr0`
+absent, but media-status calls then timed out while `ping` continued to pass.
+An authorized appliance reboot restored unmounted status. Deleting the exact
+synthetic upload also returned an unknown protocol result; a separate storage
+listing established that it was absent and that unrelated files remained.
+There was no read-only path to recover or inspect firmware's locked internal
+media state. Before the separately authorized reboot, independent evidence
+established only that the host had detached the medium and the appliance still
+answered `ping`; the internal state remained unknown.
+
+Five mount/unmount runs with no explicit host read passed. A bounded loop with
+one verified host read reproduced the timeout and wedged status. In the 0.5.8
+source, unmount holds the virtual-media state lock while calling the NBD client
+disconnect, and media status requires the same lock. A blocked disconnect thus
+explains the independently observed detach, missing acknowledgement, responsive
+`ping`, wedged status, and reboot recovery. A longer client timeout, inferred
+success, retry, or automatic appliance reboot would violate the existing
+unknown-outcome contract rather than repair the firmware behavior.
 
 ## Focused source drift
 

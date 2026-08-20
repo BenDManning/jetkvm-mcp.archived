@@ -76,6 +76,26 @@ so it cannot identify the lower-level attachment cause. It establishes no
 broader 0.5.8 compatibility or incompatibility claim and supplies no
 evidence-backed client protocol change.
 
+Issue #142 retained a distinct application 0.5.8 / system 0.2.8 observation:
+URL mount succeeded and an attached `MS-S1 MAX` host read the expected synthetic
+bytes, but unmount then returned `timeout` / `unknown`. The host independently
+observed `/dev/sr0` detach while media status remained timed out and `ping`
+remained responsive until an authorized appliance reboot. The exact release
+source holds `virtualMediaStateMutex` across `NBDDevice.Close`; media status
+takes the same lock, and the Linux close path synchronously calls the NBD client
+disconnect before closing its descriptors. A minimized physical loop reproduced
+the failure after host I/O, while five no-explicit-read iterations passed.
+
+This localizes the wedged status to the firmware NBD close path without proving
+that every 0.5.8 device or read will fail. No client timeout can turn the absent
+RPC acknowledgement into success, and an automatic retry or appliance reboot
+would violate the mutation-outcome contract. Recovery remains an independently
+observed, separately authorized operation rather than a protocol workaround.
+Once this lock is wedged, no observed read-only RPC can recover or inspect the
+internal media state. Host detach plus a responsive `ping` bounded the external
+state before reboot, but did not convert the internal state or prior outcome
+from unknown.
+
 ## Model Context Protocol
 
 - Specification generation: <https://modelcontextprotocol.io/specification/2026-07-28>

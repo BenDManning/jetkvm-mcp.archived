@@ -109,7 +109,13 @@ func TestJetKVMCompatibilityLedgerIsBoundedAndSourceGrounded(t *testing.T) {
 			result:                "pass",
 		},
 		"mutation_hardware": {
-			checks:                allowedSet("virtual_media_http_mount"),
+			checks: allowedSet(
+				"virtual_media_http_mount",
+				"virtual_media_http_unmount_after_read",
+				"virtual_media_status_after_unmount_timeout",
+				"appliance_reboot_recovery",
+				"synthetic_storage_cleanup",
+			),
 			jetKVMSource:          "not_attributed",
 			jetKVMFirmwareVersion: "application 0.5.8 / system 0.2.8",
 			environmentClass:      "non_production_physical",
@@ -158,6 +164,9 @@ func TestJetKVMCompatibilityLedgerIsBoundedAndSourceGrounded(t *testing.T) {
 	}
 	if !ids["mutation-hardware-http-mount-2026-08-19"] {
 		t.Fatal("ledger lacks the retained HTTP virtual-media mount failure")
+	}
+	if !ids["mutation-hardware-http-unmount-2026-08-20"] {
+		t.Fatal("ledger lacks the retained HTTP virtual-media unmount failure")
 	}
 }
 

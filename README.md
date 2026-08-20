@@ -337,6 +337,20 @@ retained. Do not generalize this observation to all 0.5.8 devices. An unknown
 URL-mount result remains non-retryable: inspect status and recover state
 independently before any separately authorized later mutation.
 
+A later run on the same firmware successfully mounted URL media and exposed
+the exact synthetic bytes to an attached `MS-S1 MAX` host, but unmounting after
+host I/O returned `timeout` / `unknown`. The host independently observed the
+virtual CD-ROM detach while subsequent media-status calls timed out and `ping`
+remained responsive. Application 0.5.8 holds its media-state lock while closing
+the NBD device, so a blocked close also blocks media status. An authorized
+appliance reboot restored status; a separate storage listing confirmed the
+synthetic upload cleanup. No read-only path could recover or inspect the locked
+internal media state: before reboot, independent evidence established only host
+detach and appliance liveness. Do not retry the unmount, infer success from
+physical detach, extend the timeout as a substitute for an acknowledgement, or
+automate an appliance reboot. This is another narrow negative observation, not
+a firmware-wide claim or a client-side protocol repair.
+
 JetKVM firmware exposes partial-upload resumption by byte count but provides no prefix hash. To prevent a replaced local file from being combined with stale appliance data, `jetkvm-mcp` serializes virtual-media operations per device, deletes a matching `.incomplete` artifact before upload, and accepts only a fresh offset-zero upload. It hashes the confined source before upload, hashes the exact bytes consumed by the upload, and reopens and hashes the configured path before mounting or reporting completion. Interrupted, ambiguous, or locally changed uploads are cleaned up rather than resumed.
 
 `insecure_skip_verify: true` is available for explicitly configured local appliances but should be avoided when the device has a trusted certificate.

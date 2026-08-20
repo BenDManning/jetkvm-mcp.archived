@@ -126,6 +126,33 @@
         "The appliance completed byte-range fetches, but URL mounting returned an unknown outcome; explicit unmount recovered the partial media state.",
         "Local upload and mount passed in the same window. This entry does not establish the cause, a model or firmware support claim, or failure on other combinations."
       ]
+    },
+    {
+      "id": "mutation-hardware-http-unmount-2026-08-20",
+      "evidenceClass": "mutation_hardware",
+      "jetkvm": {
+        "firmwareVersion": "application 0.5.8 / system 0.2.8",
+        "sourceRef": "not_attributed"
+      },
+      "server": {
+        "version": "devel+1e8a4a24fa1c",
+        "sourceRef": "1e8a4a24fa1c71bc390907e7475d3b29a45a0d19"
+      },
+      "observedOn": "2026-08-20",
+      "environmentClass": "non_production_physical",
+      "checks": [
+        "virtual_media_http_unmount_after_read",
+        "virtual_media_status_after_unmount_timeout",
+        "appliance_reboot_recovery",
+        "synthetic_storage_cleanup"
+      ],
+      "result": "observed_failure",
+      "limitations": [
+        "The attached Micro Computer (HK) Tech Limited MS-S1 MAX host read a 4096-byte prefix matching the synthetic URL source before unmount returned timeout with unknown outcome.",
+        "Independent host observation found the virtual CD-ROM absent, but media status timed out while ping remained responsive; no read-only path recovered or inspected the locked internal media state before an authorized appliance reboot restored unmounted status.",
+        "A separate storage listing established that the exact synthetic upload was absent after its deletion acknowledgement was malformed and unknown; unrelated storage files remained.",
+        "The minimized failure followed host I/O while five no-explicit-read iterations passed. Source localization to the application 0.5.8 NBD close path is not a broader model or firmware claim and supplies no safe client-side repair."
+      ]
     }
   ]
 }
