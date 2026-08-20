@@ -60,6 +60,38 @@ explains the independently observed detach, missing acknowledgement, responsive
 success, retry, or automatic appliance reboot would violate the existing
 unknown-outcome contract rather than repair the firmware behavior.
 
+## Observed HID acknowledgement limitation
+
+On 2026-08-20, a standing-authorized qualification run on exact server commit
+`947e65d542fe8c0e10e3fdbe33e191f5233238d8`, JetKVM application 0.5.8 /
+system 0.2.8, and an attached `MS-S1 MAX` host observed an intermittent missing
+mouse effect. A polling observer opened all JetKVM Linux input event devices and
+reported ready before dispatch. The relative `+8/+8` mouse call then returned
+completed without any host event during the bounded observation interval. The
+window stopped immediately. The initial recovery observation confirmed no
+pressed middle button and no mounted medium. After the separately authorized
+exact-file cleanup, a second read-only host observation at 2026-08-20T03:26:18Z
+confirmed zero pressed keys or buttons across all three JetKVM input devices,
+with `/dev/sr0` unmounted and containing no medium. This later observation does
+not retroactively move the keyboard check ahead of the earlier cleanup.
+
+Other bounded attempts on that fixture produced exact host events for absolute
+and relative movement, middle-button press and release, and ordinary plus
+high-resolution vertical wheel movement. The negative observation therefore
+does not establish permanent USB detach or a broader firmware incompatibility.
+Application 0.5.8 source shows that its common HID wrapper returns success
+without writing when its internal USB state is not ready and suppresses
+temporary HID-unavailable write errors. The protocol exposes neither branch in
+the acknowledgement and has no per-report delivery receipt. Existing typed USB
+status cannot prove a later report reached the host.
+
+The client consequently cannot safely turn the acknowledgement into a physical
+success claim, retry the HID action without duplication risk, or manufacture an
+`unknown` result from an otherwise successful RPC response. Physical
+qualification must continue to require independent observation. This bounded
+negative entry supplies no client workaround and makes no model- or
+firmware-wide claim.
+
 ## Focused source drift
 
 The reviewed source boundary is declared in [`jetkvm-upstream-surfaces.json`](jetkvm-upstream-surfaces.json). It covers authentication, signaling, RPC/version reads, video, HID, and virtual media. Given a separate local checkout of the official upstream repository, run:

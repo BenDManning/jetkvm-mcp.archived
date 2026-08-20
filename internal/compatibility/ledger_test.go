@@ -110,6 +110,7 @@ func TestJetKVMCompatibilityLedgerIsBoundedAndSourceGrounded(t *testing.T) {
 		},
 		"mutation_hardware": {
 			checks: allowedSet(
+				"hid_relative_move_delivery",
 				"virtual_media_http_mount",
 				"virtual_media_http_unmount_after_read",
 				"virtual_media_status_after_unmount_timeout",
@@ -167,6 +168,9 @@ func TestJetKVMCompatibilityLedgerIsBoundedAndSourceGrounded(t *testing.T) {
 	}
 	if !ids["mutation-hardware-http-unmount-2026-08-20"] {
 		t.Fatal("ledger lacks the retained HTTP virtual-media unmount failure")
+	}
+	if !ids["mutation-hardware-hid-delivery-2026-08-20"] {
+		t.Fatal("ledger lacks the retained HID delivery failure")
 	}
 }
 

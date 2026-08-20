@@ -472,6 +472,14 @@ second without duplicating image bytes in text.
 | `jetkvm_wake_host_usb` | `device`. Sends a USB HID wake action that may resume or boot the host. | Mutation; do not retry `outcome: unknown`. |
 | `jetkvm_wake_host_lan` | `device`, configured `target`. Makes the appliance send a WOL network packet to that named configured target; callers cannot provide arbitrary destinations. | Mutation; do not retry `outcome: unknown`. |
 
+JetKVM application 0.5.8 can acknowledge a HID RPC even when its internal USB
+state prevents the report from being written, and can suppress temporary HID
+write errors. A completed keyboard or mouse result therefore confirms the
+protocol operation, not an independently observed host effect. Do not retry an
+unobserved HID action: a lost observation cannot distinguish a dropped report
+from a delivered action whose local evidence was missed. Physical qualification
+requires direct host observation for this reason.
+
 ### Migrate from the removed virtual-media tool
 
 V1 removes the combined `jetkvm_virtual_media` tool. Replace its `operation`

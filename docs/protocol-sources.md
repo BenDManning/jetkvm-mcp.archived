@@ -96,6 +96,24 @@ internal media state. Host detach plus a responsive `ping` bounded the external
 state before reboot, but did not convert the internal state or prior outcome
 from unknown.
 
+Issue #144 retained a separate application 0.5.8 / system 0.2.8 HID
+observation. After a host observer opened all JetKVM input event devices and
+reported ready, a relative mouse call returned completed but produced no host
+event. Other bounded attempts observed correct absolute, relative, click, and
+wheel sequences, so the failure was intermittent. In the exact 0.5.8 source,
+`rpcHidReport` returns `nil` without calling the gadget when the firmware's
+internal USB state is unknown or not attached. It also returns `nil` for HID
+errors classified as temporarily unavailable. The WebRTC RPC response does not
+identify which branch occurred, and the available USB status is not a delivery
+receipt for an individual report.
+
+No client-side timeout or read-before-write can prove delivery after a success
+response, and retrying an unobserved movement, key, or click could duplicate its
+effect. The client therefore preserves the successful protocol result while
+physical qualification retains the independently observed missing effect as a
+failure. This is a bounded firmware/protocol limitation, not evidence for a
+broader model or firmware claim and not a basis for automatic retry.
+
 ## Model Context Protocol
 
 - Specification generation: <https://modelcontextprotocol.io/specification/2026-07-28>

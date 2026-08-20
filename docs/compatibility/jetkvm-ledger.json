@@ -153,6 +153,30 @@
         "A separate storage listing established that the exact synthetic upload was absent after its deletion acknowledgement was malformed and unknown; unrelated storage files remained.",
         "The minimized failure followed host I/O while five no-explicit-read iterations passed. Source localization to the application 0.5.8 NBD close path is not a broader model or firmware claim and supplies no safe client-side repair."
       ]
+    },
+    {
+      "id": "mutation-hardware-hid-delivery-2026-08-20",
+      "evidenceClass": "mutation_hardware",
+      "jetkvm": {
+        "firmwareVersion": "application 0.5.8 / system 0.2.8",
+        "sourceRef": "not_attributed"
+      },
+      "server": {
+        "version": "devel+947e65d542fe",
+        "sourceRef": "947e65d542fe8c0e10e3fdbe33e191f5233238d8"
+      },
+      "observedOn": "2026-08-20",
+      "environmentClass": "non_production_physical",
+      "checks": [
+        "hid_relative_move_delivery"
+      ],
+      "result": "observed_failure",
+      "limitations": [
+        "After an observer opened every JetKVM Linux input event device and reported ready, one relative +8/+8 mouse call returned completed without producing a host input event during the bounded observation interval.",
+        "Other bounded attempts on the same attached MS-S1 MAX host observed exact absolute, relative, middle-button press/release, and vertical wheel sequences, so this entry records an intermittent missing physical effect rather than a permanently detached peripheral.",
+        "Application 0.5.8 source returns success without a gadget write while its internal USB state is not ready and suppresses temporary HID-unavailable write errors; retained protocol evidence cannot distinguish those branches or prove host delivery.",
+        "Initial recovery observation established a neutral middle-button state and no mounted medium. After separately authorized exact-file cleanup, a second read-only host observation at 2026-08-20T03:26:18Z established zero pressed keys or buttons on all three JetKVM input devices, an unmounted /dev/sr0, and no medium; the later check does not retroactively precede the earlier cleanup. This entry is not a broader model or firmware claim and supplies no safe client retry or inferred-success rule."
+      ]
     }
   ]
 }
