@@ -124,7 +124,7 @@ jobs:
           platforms: arm64
       - name: Build and verify exact native subjects
         run: make release-subjects RELEASE_TAG="$RELEASE_TAG" RELEASE_VERIFY_ARM64=1
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: native-release-subjects
           path: |
@@ -170,7 +170,7 @@ jobs:
           printf '%s  %s\n' "$BUILDX_SHA256" "$buildx_path" | sha256sum --check --strict
           install -D -m 0755 "$buildx_path" "${HOME}/.docker/cli-plugins/docker-buildx"
           docker buildx version
-      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+      - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
         with:
           driver-opts: image=moby/buildkit:v0.32.2@sha256:28a898719c18a33f4e8000685287fa36fd0dd9560c6440227d3a732d79bb41d8
       - name: Build and verify exact container subjects
@@ -181,7 +181,7 @@ jobs:
             CONTAINER_VERSION="$RELEASE_TAG" \
             CONTAINER_REVISION="$GITHUB_SHA" \
             CONTAINER_CREATED="$container_created"
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: container-release-subjects
           path: dist/container
