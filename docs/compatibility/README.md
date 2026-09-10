@@ -63,7 +63,7 @@ unknown-outcome contract rather than repair the firmware behavior.
 ## Observed HID acknowledgement limitation
 
 On 2026-08-20, an explicitly authorized qualification run on exact server commit
-`947e65d542fe8c0e10e3fdbe33e191f5233238d8`, JetKVM application 0.5.8 /
+`24d8949d8b540ae7d41625a941518d8252bb96e1`, JetKVM application 0.5.8 /
 system 0.2.8, and an attached `MS-S1 MAX` host observed an intermittent missing
 mouse effect. A polling observer opened all JetKVM Linux input event devices and
 reported ready before dispatch. The relative `+8/+8` mouse call then returned
