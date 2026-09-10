@@ -1,8 +1,10 @@
 # Support
 
 Support is best effort through [GitHub Issues](https://github.com/BenDManning/jetkvm-mcp/issues).
-There is no SLA, long-term-support line, or blanket backport commitment. Please
-reproduce a problem on the latest stable release before requesting support.
+There is no currently supported release; the historical `v0.1.0` release
+predates the current product and security contracts. After v1 publication,
+please reproduce a problem on the latest stable release before requesting
+support. There is no SLA, long-term-support line, or blanket backport commitment.
 Support does not certify deployments or promise that any JetKVM model, firmware,
 attached host, or FFmpeg combination is physically compatible.
 

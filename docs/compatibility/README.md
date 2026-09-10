@@ -10,15 +10,15 @@ This directory keeps compact evidence about the observed JetKVM protocol boundar
 - `source_drift` records a bounded comparison with another exact upstream commit and uses `review_required` when a reviewed surface differs;
 - `read_only_hardware` records the retained date, server revision, environment class, check names, result, and limitations of a device run;
 - `managed_session_hardware` records physical WebRTC ownership and takeover observations against an exact application firmware version; and
-- `mutation_hardware` records a bounded negative observation from a standing-authorized mutation window. `observed_failure` is a compatibility limitation, not a positive qualification or a claim that the same failure affects other devices or firmware.
+- `mutation_hardware` records a bounded negative observation from an explicitly authorized mutation window. `observed_failure` is a compatibility limitation, not a positive qualification or a claim that the same failure affects other devices or firmware.
 
 An entry contains an exact JetKVM source reference when source was inspected, an exact server source reference, the product version when one was actually exercised, a date, a coarse environment class, fixed check names, a result, and explicit limitations. `not_observed`, `not_attributed`, and `not_retained` are evidence gaps, not wildcard compatibility.
 
-Credential values, session cookies, bearer tokens, and host-screen or media contents do not belong in this ledger. Device names, endpoints, firmware identity, and transport/event observations are not secret. A `pass` qualifies only the listed checks for the recorded combination. It never means that mocks or source inspection establish physical compatibility.
+Credential values, session cookies, bearer tokens, device names or endpoints, serial numbers, private paths, and host-screen or media contents do not belong in this public ledger. Exact operational identifiers stay in access-controlled private evidence. Firmware identity and sanitized transport/event observations may be retained when needed to bound a claim. A `pass` qualifies only the listed checks for the recorded combination. It never means that mocks or source inspection establish physical compatibility.
 
 ## Observed HTTP mount and unmount limitations
 
-On 2026-08-19, the standing-authorized expendable fixture running JetKVM
+On 2026-08-19, an explicitly authorized expendable fixture running JetKVM
 application 0.5.8 / system 0.2.8 fetched byte ranges from the approved media
 origin but returned an unknown outcome while mounting URL media. Explicit
 unmount recovered the partial media state. Local upload and mount passed in the
@@ -38,7 +38,7 @@ was not retained, so the lower-level attachment cause remains unknown and no
 evidence-backed client repair is available. Keep treating an unknown mount
 result as non-retryable and re-establish state independently.
 
-On 2026-08-20, a second standing-authorized run on application 0.5.8 / system
+On 2026-08-20, a second explicitly authorized run on application 0.5.8 / system
 0.2.8 and an attached `MS-S1 MAX` host successfully mounted URL media. The host
 read a 4096-byte prefix matching the synthetic source, after which unmount
 returned `timeout` / `unknown`. Independent host observation found `/dev/sr0`
@@ -62,7 +62,7 @@ unknown-outcome contract rather than repair the firmware behavior.
 
 ## Observed HID acknowledgement limitation
 
-On 2026-08-20, a standing-authorized qualification run on exact server commit
+On 2026-08-20, an explicitly authorized qualification run on exact server commit
 `947e65d542fe8c0e10e3fdbe33e191f5233238d8`, JetKVM application 0.5.8 /
 system 0.2.8, and an attached `MS-S1 MAX` host observed an intermittent missing
 mouse effect. A polling observer opened all JetKVM Linux input event devices and
@@ -110,9 +110,9 @@ A source-only run on 2026-08-14 compared reviewed pin `b3c29a44d9e2862b8ff753083
 |---|---|
 | A declared upstream path changes | Review the focused source diff before moving the pin; record the exact target and affected surfaces. |
 | Authentication, signaling, RPC names/parameters, typed status/media fields, RTP/video behavior, or HID/media semantics change | Update the corresponding synthetic fixtures and focused tests, then perform source review. |
-| A model, firmware version, relevant runtime, FFmpeg identity, MCP transport/client, or attached-host fixture changes for a proposed positive claim | Run the standing-authorized [physical qualification runbook](../physical-qualification.md) and retain its record tied to the exact identities required by the product contract. |
+| A model, firmware version, relevant runtime, FFmpeg identity, MCP transport/client, or attached-host fixture changes for a proposed positive claim | Obtain per-run owner authorization, run the [physical qualification runbook](../physical-qualification.md), and retain its record tied to the exact identities required by the product contract. |
 | The read-only validator's discovery, status, capture, or media-status behavior changes | Refresh validator tests and use the configured non-production physical target when device evidence is relevant. |
-| A mutation path or consequence may have changed | Stop. Repeat the standing-authorized physical qualification runbook; source or read-only evidence is insufficient. |
+| A mutation path or consequence may have changed | Stop. Obtain new owner authorization and repeat the physical qualification runbook; source or read-only evidence is insufficient. |
 | Evidence is missing, stale, unattributed, or no longer covers a declared behavior | Keep or add an explicit compatibility warning. Do not infer support, auto-upgrade, or treat fake-device success as authority. |
 
-Moving the pin or adding a positive model/firmware claim is not part of the drift command and requires reviewed evidence. Hardware use follows the repository's standing fixture authorization and mutation stop rule.
+Moving the pin or adding a positive model/firmware claim is not part of the drift command and requires reviewed evidence. Hardware use requires per-run owner authorization and follows the mutation stop rule.

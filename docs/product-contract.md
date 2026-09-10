@@ -257,8 +257,8 @@ alias, capture time, MIME type, dimensions, and byte count. It never duplicates
 PNG data into text. Operational failures remain sanitized `IsError` tool
 results rather than JSON-RPC errors.
 
-V1 publication requires one physical qualification run under the repository's
-standing owner authorization against a disposable attached host. Retained
+V1 publication requires one physical qualification run with explicit owner
+authorization against a disposable attached host. Retained
 evidence must identify the exact
 release candidate, JetKVM model and firmware, runtime and FFmpeg, and must cover
 every public operation class: reads and capture, HID, power and DC control,
@@ -507,7 +507,7 @@ to reinterpret an existing file silently.
 
 ## Compatibility evidence
 
-A positive JetKVM compatibility claim must follow the standing-authorized
+A positive JetKVM compatibility claim must follow the owner-authorized
 [physical qualification runbook](physical-qualification.md)
 and name all of the following:
 

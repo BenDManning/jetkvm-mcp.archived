@@ -33,7 +33,7 @@ for arch in amd64 arm64; do
   expected_names+=("$archive" "${archive}.spdx.json")
 done
 
-mapfile -t checksum_names < <(awk 'NF == 2 && $1 ~ /^[0-9a-f]{64}$/ { print $2 }' "$checksums" | sort)
+mapfile -t checksum_names < <(awk 'NF == 2 && length($1) == 64 && $1 ~ /^[0-9a-f]+$/ { print $2 }' "$checksums" | sort)
 mapfile -t sorted_expected_names < <(printf '%s\n' "${expected_names[@]}" | sort)
 [[ ${#checksum_names[@]} -eq ${#sorted_expected_names[@]} ]] || {
   echo "checksum manifest does not cover exactly the release archives and SBOMs" >&2

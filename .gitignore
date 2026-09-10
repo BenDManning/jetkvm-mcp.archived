@@ -3,3 +3,21 @@
 coverage.out
 *.prof
 .DS_Store
+
+# Local configuration and credentials
+config.yaml
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Private runtime/qualification artifacts
+private-fixture-plan.json
+qualification-output/
+screenshots/
+
+# Editor files
+.idea/
+.vscode/
+*.swp

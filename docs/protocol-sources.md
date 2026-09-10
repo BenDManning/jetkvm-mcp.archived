@@ -63,7 +63,7 @@ range request, changes mass-storage mode, and records HTTP virtual-media state
 before starting NBD and attaching `/dev/nbd0`. Errors after that state change do
 not roll it back.
 
-The standing-authorized physical observation on application 0.5.8 / system
+The bounded physical observation on application 0.5.8 / system
 0.2.8 reached the media origin for both the size probe and an NBD-sized range,
 then returned an unknown mount outcome and required explicit unmount to recover
 partial state. The second request can arise only from the NBD backend after NBD

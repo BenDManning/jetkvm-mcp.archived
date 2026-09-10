@@ -122,7 +122,7 @@
       ],
       "result": "observed_failure",
       "limitations": [
-        "The standing-authorized expendable fixture observed this failure; the exact device model and attached-host identity were not retained.",
+        "An explicitly authorized expendable fixture observed this failure; the exact device model and attached-host identity were not retained.",
         "The appliance completed byte-range fetches, but URL mounting returned an unknown outcome; explicit unmount recovered the partial media state.",
         "Local upload and mount passed in the same window. This entry does not establish the cause, a model or firmware support claim, or failure on other combinations."
       ]

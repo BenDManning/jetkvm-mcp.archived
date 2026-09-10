@@ -52,6 +52,28 @@ func TestContainerReleaseSnapshotBuildsOneVerifiedMultiPlatformSubject(t *testin
 	}
 }
 
+func TestContainerIncludesLicenseAndDependencyNotices(t *testing.T) {
+	root := filepath.Clean(filepath.Join("..", ".."))
+
+	dockerfile, err := os.ReadFile(filepath.Join(root, "Dockerfile"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(dockerfile), "COPY LICENSE THIRD_PARTY_NOTICES.md /usr/share/licenses/jetkvm-mcp/") {
+		t.Fatal("container image does not copy the project license and dependency notices")
+	}
+
+	dockerignore, err := os.ReadFile(filepath.Join(root, ".dockerignore"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, exception := range []string{"!LICENSE", "!THIRD_PARTY_NOTICES.md"} {
+		if !strings.Contains(string(dockerignore), exception) {
+			t.Errorf(".dockerignore does not retain %s in the build context", exception)
+		}
+	}
+}
+
 func TestReadmeExplainsContainerRehearsalVerificationWithoutPublicationClaims(t *testing.T) {
 	data, err := os.ReadFile(filepath.Join("..", "..", "README.md"))
 	if err != nil {

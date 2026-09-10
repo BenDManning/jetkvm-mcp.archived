@@ -3,6 +3,8 @@
 .hermes
 *.md
 !README.md
+!LICENSE
+!THIRD_PARTY_NOTICES.md
 objectives
 coverage.out
 bin

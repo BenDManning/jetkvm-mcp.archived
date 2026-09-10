@@ -39,5 +39,6 @@ LABEL org.opencontainers.image.source=$SOURCE \
       org.opencontainers.image.licenses=MIT \
       org.opencontainers.image.created=$CREATED
 COPY --from=build /out/jetkvm-mcp /usr/local/bin/jetkvm-mcp
+COPY LICENSE THIRD_PARTY_NOTICES.md /usr/share/licenses/jetkvm-mcp/
 USER 10001:10001
 ENTRYPOINT ["/usr/local/bin/jetkvm-mcp"]

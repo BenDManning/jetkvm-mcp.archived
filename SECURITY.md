@@ -2,7 +2,9 @@
 
 ## Supported versions
 
-Only the latest stable JetKVM MCP release receives security fixes. Development
+No currently published release is supported. The historical `v0.1.0` release
+predates the current security and release policies. After v1 publication, only
+the latest stable JetKVM MCP release will receive security fixes. Development
 builds, prereleases, and older releases are unsupported. There is no remediation
 SLA or blanket backport promise.
 

@@ -1,6 +1,22 @@
 # JetKVM MCP
 
-A conventional, single-process Go [Model Context Protocol](https://modelcontextprotocol.io/) server for operating JetKVM devices. It supports MCP over stdio and MCP Streamable HTTP using protocol generation `2026-07-28` and the official Go SDK.
+[![CI](https://github.com/BenDManning/jetkvm-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/BenDManning/jetkvm-mcp/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
+A single-process Go [Model Context Protocol](https://modelcontextprotocol.io/)
+server that lets MCP clients observe and operate JetKVM devices over stdio or
+Streamable HTTP. It uses the official Go SDK and implements protocol generation
+`2026-07-28`.
+
+This is an independent community project and is not affiliated with or endorsed
+by [JetKVM](https://jetkvm.com/).
+
+> [!IMPORTANT]
+> The current main branch is a pre-v1 release candidate. The historical
+> `v0.1.0` release predates the current security, compatibility, and release
+> policies and is unsupported. No JetKVM model or firmware currently has a
+> complete positive qualification claim; review the documented limitations
+> before using mutation tools on valuable equipment.
 
 ## Features
 
@@ -18,12 +34,12 @@ A conventional, single-process Go [Model Context Protocol](https://modelcontextp
 
 ## Installation
 
-### Option A: Using Go (Recommended)
+### Option A: Build the current candidate with Go (Recommended before v1)
 
 Requires Go 1.25.13 or newer and `ffmpeg` on `PATH`:
 
 ```sh
-go install github.com/BenDManning/jetkvm-mcp/cmd/jetkvm-mcp@latest
+go install github.com/BenDManning/jetkvm-mcp/cmd/jetkvm-mcp@main
 ```
 
 `jetkvm-mcp --version` reports the installed module version for a versioned
@@ -32,9 +48,13 @@ go install github.com/BenDManning/jetkvm-mcp/cmd/jetkvm-mcp@latest
 metadata; metadata-poor builds report `devel`. GoReleaser and container builds
 keep their explicitly injected version.
 
-### Option B: Download Binary
+### Option B: Download a release binary (after v1 is published)
 
-Download the archive for your platform from [GitHub Releases](https://github.com/BenDManning/jetkvm-mcp/releases), verify it against `checksums.txt`, extract `jetkvm-mcp`, and place it on `PATH`. Each archive also contains the project license and the compiled dependency license/notice inventory. FFmpeg must be installed on the host.
+After a supported v1 release is published, download the archive for your
+platform from [GitHub Releases](https://github.com/BenDManning/jetkvm-mcp/releases),
+verify it against `checksums.txt`, extract `jetkvm-mcp`, and place it on `PATH`.
+Each supported archive also contains the project license and the compiled
+dependency license/notice inventory. FFmpeg must be installed on the host.
 
 Release binaries are built for:
 
@@ -361,6 +381,25 @@ JetKVM firmware exposes partial-upload resumption by byte count but provides no 
 jetkvm-mcp --config config.yaml
 ```
 
+Example MCP client configuration (adjust the executable and config paths):
+
+```json
+{
+  "mcpServers": {
+    "jetkvm": {
+      "command": "/absolute/path/to/jetkvm-mcp",
+      "args": ["--config", "/absolute/path/to/config.yaml"],
+      "env": {
+        "JETKVM_LAB_PASSWORD": "set-this-through-your-client-secret-store"
+      }
+    }
+  }
+}
+```
+
+Do not commit the real configuration or credential values. Prefer the MCP
+client's secret store or process environment over plaintext client settings.
+
 Logs and bounded structured telemetry go to stderr; stdout is reserved for MCP
 messages. Missing telemetry never proves that an operation did not execute.
 Keep routine telemetry for no more than 14 days in access-controlled stderr
@@ -540,7 +579,8 @@ secrets in either or retain the streams unsafely.
 
 ## Development
 
-The repository is intentionally independent from its archived predecessor. It contains no legacy Git history or remote.
+The repository is intentionally independent from its archived predecessor; its
+current Git history starts with the standalone Go implementation.
 
 Protocol provenance and exact inspected upstream revisions are recorded in
 [`docs/protocol-sources.md`](docs/protocol-sources.md). Pinned official MCP

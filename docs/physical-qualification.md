@@ -1,10 +1,10 @@
 # Physical qualification runbook
 
 This runbook qualifies one exact JetKVM MCP release candidate and physical
-fixture. The configured development JetKVM and disposable attached host have
-standing owner authorization for repository work. Record the fixture,
-operator, observer, and start/end time before each run. CI, fakes, source
-review, builds, and earlier unattributed runs do not qualify hardware.
+fixture. Every run requires explicit owner authorization for its exact window,
+fixture, and consequence boundaries. Record the fixture, operator, observer,
+and start/end time before each run. CI, fakes, source review, builds, and
+earlier unattributed runs do not qualify hardware.
 
 ## Qualification record
 
@@ -26,12 +26,13 @@ identifiers and omit unrelated secret host-screen or media contents.
 | Synthetic URL-media fixture origin class, size, and SHA-256 | |
 | Recovery method and local console observer | |
 
-The retained record must not contain password values, session cookies, bearer
-tokens, or host-screen/media contents that contain unrelated secrets. Device
-aliases, endpoints, model and serial identity, firmware versions, transport
-events, status/RPC observations, and relative test-media names are normal
-engineering evidence and may be retained. Configured passwords remain in the
-environment rather than the record.
+The retained public record must not contain password values, session cookies,
+bearer tokens, device aliases or endpoints, serial numbers, private paths, or
+host-screen/media contents. Use coarse fixture classes and sanitized relative
+test-media names publicly. Exact device, host, and network identifiers belong
+only in access-controlled private evidence. Firmware versions and sanitized
+transport or status observations may be retained when needed to bound a claim.
+Configured passwords remain in the environment rather than the record.
 
 ## Preconditions
 
@@ -166,7 +167,7 @@ call sequences but cannot supply physical observation.
 The repository's source-run `jetkvm-mcp-fixture-runner` accepts sequential
 batches of bounded MCP calls for this purpose. A consequential plan also
 requires its explicit owner-authorization acknowledgement flag, which records
-operator intent under the standing fixture authorization.
+operator intent for that authorized run.
 Run browser checkpoints and record observations outside the helper.
 
 Retain the exact build, model, firmware, runtime, FFmpeg identity, capability
@@ -195,7 +196,7 @@ also pass every managed-session supplement scenario. Retain one record
 containing:
 
 - every exact identity from the qualification table;
-- the standing authorization reference, execution window, operator, observer, and UTC date;
+- the owner authorization reference, execution window, operator, observer, and UTC date;
 - every operation/sub-operation above with its bounded timestamps, result,
   stable code/outcome, observed-postcondition flag, and cleanup flag; and
 - an explicit statement that CI, fakes, builds, source review, and historical

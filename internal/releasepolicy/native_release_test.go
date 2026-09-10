@@ -128,6 +128,21 @@ func TestReleaseSnapshotUsesAcceptedToolchainAndVerifiesItsSubjects(t *testing.T
 	}
 }
 
+func TestNativeReleaseVerifierUsesPortableAWKForSHA256(t *testing.T) {
+	root := filepath.Clean(filepath.Join("..", ".."))
+	data, err := os.ReadFile(filepath.Join(root, "scripts", "verify-native-release.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(data)
+	if strings.Contains(text, "[0-9a-f]{64}") {
+		t.Fatal("native release verifier uses an awk interval expression unsupported by mawk")
+	}
+	if !strings.Contains(text, "length($1) == 64 && $1 ~ /^[0-9a-f]+$/") {
+		t.Fatal("native release verifier does not validate portable 64-character SHA-256 fields")
+	}
+}
+
 func TestExactReleaseSubjectsUseTheProtectedVersionWithoutPublishing(t *testing.T) {
 	root := filepath.Clean(filepath.Join("..", ".."))
 	command := exec.Command("make", "-n", "release-subjects", "RELEASE_TAG=v1.2.3")
