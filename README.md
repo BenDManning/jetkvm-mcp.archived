@@ -1,3 +1,7 @@
+Status: archived / superseded
+Early experimental MCP server for JetKVM. The project proved the core concept but accumulated excessive test/architecture overhead and is being redesigned from scratch.
+
+
 # JetKVM MCP
 
 [![CI](https://github.com/BenDManning/jetkvm-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/BenDManning/jetkvm-mcp/actions/workflows/ci.yml)
